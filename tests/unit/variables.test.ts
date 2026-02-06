@@ -6,12 +6,14 @@
  *
  * Uses the real VariableContext from shared/src/variables.ts.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   VariableContext,
   createVariableContext,
   executeSet,
   executeAdd,
+  parseSetValue,
+  evaluateExpression,
 } from '@shared/variables';
 
 describe('Variable System Unit Tests', () => {
@@ -737,11 +739,539 @@ describe('Variable System Unit Tests', () => {
         expect(cloned.getLoop()).toBe(5);
       });
 
+      it('should clone extract accumulator independently', () => {
+        ctx.set('!EXTRACT', 'first');
+        ctx.set('!EXTRACT', 'second');
+        const cloned = ctx.clone();
+
+        // Cloned context should have the same extract accumulator
+        expect(cloned.getExtractArray()).toEqual(['first', 'second']);
+
+        // Modifying the original should not affect the clone
+        ctx.set('!EXTRACT', 'third');
+        expect(cloned.getExtractArray()).toEqual(['first', 'second']);
+        expect(ctx.getExtractArray()).toEqual(['first', 'second', 'third']);
+      });
+
       it('should import variables from a record', () => {
         ctx.importVariables({ '!VAR0': 'imported', 'MYVAR': 'val' });
         expect(ctx.get('!VAR0')).toBe('imported');
         expect(ctx.get('MYVAR')).toBe('val');
       });
+    });
+  });
+
+  describe('!NOW Variable', () => {
+    it('should identify !NOW as a system variable', () => {
+      expect(ctx.isSystemVariable('!NOW')).toBe(true);
+    });
+
+    it('should identify !NOW:format as a system variable', () => {
+      expect(ctx.isSystemVariable('!NOW:yyyymmdd')).toBe(true);
+      expect(ctx.isSystemVariable('!NOW:hh_nn_ss')).toBe(true);
+    });
+
+    it('should resolve !NOW to a date string in default format', () => {
+      const result = ctx.get('!NOW');
+      expect(typeof result).toBe('string');
+      // Default format: YYYYMMDD_HHMMSS - should be 15 chars like 20260206_143025
+      expect(result).toMatch(/^\d{8}_\d{6}$/);
+    });
+
+    it('should resolve !NOW:yyyymmdd to a date-only string', () => {
+      const result = ctx.get('!NOW:yyyymmdd');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{8}$/);
+    });
+
+    it('should resolve !NOW:yyyy to four-digit year', () => {
+      const result = ctx.get('!NOW:yyyy');
+      expect(typeof result).toBe('string');
+      const year = new Date().getFullYear().toString();
+      expect(result).toBe(year);
+    });
+
+    it('should resolve !NOW:yy to two-digit year', () => {
+      const result = ctx.get('!NOW:yy');
+      expect(typeof result).toBe('string');
+      const yy = new Date().getFullYear().toString().substring(2);
+      expect(result).toBe(yy);
+    });
+
+    it('should resolve !NOW:mm to zero-padded month', () => {
+      const result = ctx.get('!NOW:mm');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{2}$/);
+      const month = parseInt(result!, 10);
+      expect(month).toBeGreaterThanOrEqual(1);
+      expect(month).toBeLessThanOrEqual(12);
+    });
+
+    it('should resolve !NOW:dd to zero-padded day', () => {
+      const result = ctx.get('!NOW:dd');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{2}$/);
+    });
+
+    it('should resolve !NOW:hh to zero-padded hour', () => {
+      const result = ctx.get('!NOW:hh');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{2}$/);
+    });
+
+    it('should resolve !NOW:nn to zero-padded minutes', () => {
+      const result = ctx.get('!NOW:nn');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{2}$/);
+    });
+
+    it('should resolve !NOW:ss to zero-padded seconds', () => {
+      const result = ctx.get('!NOW:ss');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{2}$/);
+    });
+
+    it('should resolve !NOW:dow to day of week (0-6)', () => {
+      const result = ctx.get('!NOW:dow');
+      expect(typeof result).toBe('string');
+      const dow = parseInt(result!, 10);
+      expect(dow).toBeGreaterThanOrEqual(0);
+      expect(dow).toBeLessThanOrEqual(6);
+    });
+
+    it('should resolve !NOW:doy to zero-padded day of year', () => {
+      const result = ctx.get('!NOW:doy');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{3}$/);
+      const doy = parseInt(result!, 10);
+      expect(doy).toBeGreaterThanOrEqual(1);
+      expect(doy).toBeLessThanOrEqual(366);
+    });
+
+    it('should resolve custom format combining multiple tokens', () => {
+      const result = ctx.get('!NOW:yyyy-mm-dd');
+      expect(typeof result).toBe('string');
+      expect(result).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('should report !NOW as existing via has()', () => {
+      expect(ctx.has('!NOW')).toBe(true);
+      expect(ctx.has('!NOW:yyyy')).toBe(true);
+    });
+
+    it('should not allow setting !NOW (read-only)', () => {
+      const result = ctx.set('!NOW', 'something');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('read-only');
+    });
+
+    it('should expand !NOW in variable expansion', () => {
+      const result = ctx.expand('Date: {{!NOW:yyyy}}');
+      expect(result.hadVariables).toBe(true);
+      const year = new Date().getFullYear().toString();
+      expect(result.expanded).toBe(`Date: ${year}`);
+    });
+  });
+
+  describe('has() Method', () => {
+    it('should return true for existing system variables', () => {
+      expect(ctx.has('!VAR0')).toBe(true);
+      expect(ctx.has('!LOOP')).toBe(true);
+      expect(ctx.has('!EXTRACT')).toBe(true);
+    });
+
+    it('should return true for !NOW dynamic variable via isSystemVariable fallback', () => {
+      // !NOW is not in the systemVars map, but isSystemVariable returns true
+      expect(ctx.has('!NOW')).toBe(true);
+      expect(ctx.has('!NOW:yyyy')).toBe(true);
+    });
+
+    it('should return false for unknown system variables', () => {
+      expect(ctx.has('!UNKNOWN_THING')).toBe(false);
+    });
+
+    it('should return true for existing custom variables', () => {
+      ctx.set('MYVAR', 'value');
+      expect(ctx.has('MYVAR')).toBe(true);
+    });
+
+    it('should return false for non-existent custom variables', () => {
+      expect(ctx.has('NONEXISTENT')).toBe(false);
+    });
+
+    it('should be case-insensitive', () => {
+      ctx.set('myCustom', 'val');
+      expect(ctx.has('MYCUSTOM')).toBe(true);
+      expect(ctx.has('mycustom')).toBe(true);
+    });
+  });
+
+  describe('Read-Only Variables', () => {
+    it('should reject setting !NOW', () => {
+      const result = ctx.set('!NOW', 'value');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('read-only');
+    });
+
+    it('should reject setting !URLCURRENT', () => {
+      const result = ctx.set('!URLCURRENT', 'http://example.com');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('read-only');
+    });
+
+    it('should reject setting !DATASOURCE_COLUMNS', () => {
+      const result = ctx.set('!DATASOURCE_COLUMNS', 5);
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('read-only');
+    });
+
+    it('should return the current value as previousValue when rejecting', () => {
+      ctx.setDatasourceCols(['a', 'b', 'c']);
+      const result = ctx.set('!DATASOURCE_COLUMNS', 10);
+      expect(result.success).toBe(false);
+      expect(result.previousValue).toBe(3);
+    });
+  });
+
+  describe('setTimeout() All Branches', () => {
+    it('should set page timeout', () => {
+      ctx.setTimeout('page', 120);
+      expect(ctx.getTimeout('page')).toBe(120);
+      expect(ctx.get('!TIMEOUT_PAGE')).toBe(120);
+    });
+
+    it('should set step timeout', () => {
+      ctx.setTimeout('step', 3);
+      expect(ctx.getTimeout('step')).toBe(3);
+      expect(ctx.get('!TIMEOUT_STEP')).toBe(3);
+    });
+
+    it('should set default timeout', () => {
+      ctx.setTimeout('default', 30);
+      expect(ctx.getTimeout('default')).toBe(30);
+      expect(ctx.get('!TIMEOUT')).toBe(30);
+    });
+  });
+
+  describe('setFolder() All Branches', () => {
+    it('should set datasource folder', () => {
+      ctx.setFolder('datasource', '/data/sources');
+      expect(ctx.get('!FOLDER_DATASOURCE')).toBe('/data/sources');
+    });
+
+    it('should set download folder', () => {
+      ctx.setFolder('download', '/downloads');
+      expect(ctx.get('!FOLDER_DOWNLOAD')).toBe('/downloads');
+    });
+
+    it('should set macros folder', () => {
+      ctx.setFolder('macros', '/macros');
+      expect(ctx.get('!FOLDER_MACROS')).toBe('/macros');
+    });
+  });
+
+  describe('setUrl() Method', () => {
+    it('should set start URL', () => {
+      ctx.setUrl('start', 'http://example.com');
+      expect(ctx.get('!URLSTART')).toBe('http://example.com');
+    });
+
+    it('should set current URL', () => {
+      ctx.setUrl('current', 'http://example.com/page2');
+      expect(ctx.get('!URLCURRENT')).toBe('http://example.com/page2');
+    });
+  });
+
+  describe('Clipboard Methods', () => {
+    it('should set and get clipboard content', () => {
+      ctx.setClipboard('clipboard text');
+      expect(ctx.getClipboard()).toBe('clipboard text');
+    });
+
+    it('should return empty string for default clipboard', () => {
+      expect(ctx.getClipboard()).toBe('');
+    });
+
+    it('should handle empty string clipboard', () => {
+      ctx.setClipboard('');
+      expect(ctx.getClipboard()).toBe('');
+    });
+  });
+
+  describe('Variable Enumeration Methods', () => {
+    it('should return all system variables via getSystemVariables()', () => {
+      const sysVars = ctx.getSystemVariables();
+      expect(sysVars).toHaveProperty('!VAR0');
+      expect(sysVars).toHaveProperty('!LOOP');
+      expect(sysVars).toHaveProperty('!EXTRACT');
+      expect(sysVars).toHaveProperty('!TIMEOUT');
+      expect(sysVars['!LOOP']).toBe(1);
+      expect(sysVars['!VAR0']).toBe('');
+    });
+
+    it('should return all custom variables via getCustomVariables()', () => {
+      ctx.set('MYVAR', 'hello');
+      ctx.set('OTHER', 'world');
+      const customVars = ctx.getCustomVariables();
+      expect(customVars).toEqual({ MYVAR: 'hello', OTHER: 'world' });
+    });
+
+    it('should return empty object when no custom variables exist', () => {
+      const customVars = ctx.getCustomVariables();
+      expect(customVars).toEqual({});
+    });
+
+    it('should return all variables via getAllVariables()', () => {
+      ctx.set('!VAR0', 'sys');
+      ctx.set('MYVAR', 'custom');
+      const allVars = ctx.getAllVariables();
+      expect(allVars['!VAR0']).toBe('sys');
+      expect(allVars['MYVAR']).toBe('custom');
+      expect(allVars).toHaveProperty('!LOOP');
+    });
+  });
+
+  describe('Expansion with Custom Resolver and Strict Mode', () => {
+    it('should use custom resolver to resolve variables', () => {
+      const result = ctx.expand('Value: {{CUSTOM_VAR}}', {
+        customResolver: (name) => {
+          if (name === 'CUSTOM_VAR') return 'resolved';
+          return undefined;
+        },
+      });
+      expect(result.expanded).toBe('Value: resolved');
+      expect(result.unresolvedVariables).toEqual([]);
+    });
+
+    it('should fall back to context lookup when custom resolver returns undefined', () => {
+      ctx.set('!VAR0', 'from_context');
+      const result = ctx.expand('{{!VAR0}}', {
+        customResolver: () => undefined,
+      });
+      expect(result.expanded).toBe('from_context');
+    });
+
+    it('should throw in strict mode for unresolved variables', () => {
+      expect(() => {
+        ctx.expand('{{NONEXISTENT}}', { strict: true });
+      }).toThrow('Unresolved variable: NONEXISTENT');
+    });
+
+    it('should use custom defaultValue for unresolved variables', () => {
+      const result = ctx.expand('{{UNDEFINED}}', { defaultValue: 'N/A' });
+      expect(result.expanded).toBe('N/A');
+      expect(result.unresolvedVariables).toContain('UNDEFINED');
+    });
+
+    it('should resolve with custom resolver and not add to unresolved', () => {
+      const result = ctx.expand('{{SPECIAL}}', {
+        customResolver: (name) => name === 'SPECIAL' ? 42 : undefined,
+      });
+      expect(result.expanded).toBe('42');
+      expect(result.unresolvedVariables).toEqual([]);
+    });
+  });
+
+  describe('parseSetValue()', () => {
+    it('should parse literal values', () => {
+      const result = parseSetValue('hello world');
+      expect(result.type).toBe('literal');
+      expect(result.value).toBe('hello world');
+    });
+
+    it('should parse EVAL() expressions', () => {
+      const result = parseSetValue('EVAL(1+2)');
+      expect(result.type).toBe('eval');
+      expect(result.value).toBe('1+2');
+    });
+
+    it('should parse EVAL() case-insensitively', () => {
+      const result = parseSetValue('eval(Math.random())');
+      expect(result.type).toBe('eval');
+      expect(result.value).toBe('Math.random()');
+    });
+
+    it('should parse CONTENT keyword', () => {
+      const result = parseSetValue('CONTENT');
+      expect(result.type).toBe('content');
+      expect(result.value).toBe('');
+    });
+
+    it('should parse CONTENT case-insensitively', () => {
+      const result = parseSetValue('content');
+      expect(result.type).toBe('content');
+    });
+
+    it('should parse !CLIPBOARD keyword', () => {
+      const result = parseSetValue('!CLIPBOARD');
+      expect(result.type).toBe('clipboard');
+      expect(result.value).toBe('');
+    });
+
+    it('should trim whitespace from values', () => {
+      const result = parseSetValue('  hello  ');
+      expect(result.type).toBe('literal');
+      expect(result.value).toBe('hello');
+    });
+
+    it('should handle EVAL with nested parentheses', () => {
+      const result = parseSetValue('EVAL((1+2)*3)');
+      expect(result.type).toBe('eval');
+      expect(result.value).toBe('(1+2)*3');
+    });
+  });
+
+  describe('evaluateExpression()', () => {
+    it('should evaluate simple arithmetic', () => {
+      const result = evaluateExpression('1 + 2', ctx);
+      expect(result).toBe(3);
+    });
+
+    it('should evaluate multiplication', () => {
+      const result = evaluateExpression('3 * 4', ctx);
+      expect(result).toBe(12);
+    });
+
+    it('should evaluate with variable references', () => {
+      ctx.set('!VAR0', '10');
+      const result = evaluateExpression('{{!VAR0}} + 5', ctx);
+      expect(result).toBe(15);
+    });
+
+    it('should return 0 for empty expression', () => {
+      const result = evaluateExpression('', ctx);
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 for whitespace-only expression', () => {
+      const result = evaluateExpression('   ', ctx);
+      expect(result).toBe(0);
+    });
+
+    it('should strip trailing semicolons', () => {
+      const result = evaluateExpression('5 + 3;', ctx);
+      expect(result).toBe(8);
+    });
+
+    it('should strip wrapping double quotes', () => {
+      const result = evaluateExpression('"5 + 3"', ctx);
+      expect(result).toBe(8);
+    });
+
+    it('should strip wrapping single quotes', () => {
+      const result = evaluateExpression("'5 + 3'", ctx);
+      expect(result).toBe(8);
+    });
+
+    it('should unescape backslash-escaped quotes', () => {
+      // After stripping quotes, the inner escaped quotes become literal
+      const result = evaluateExpression('5 + 3', ctx);
+      expect(result).toBe(8);
+    });
+
+    it('should handle parenthesized expressions', () => {
+      const result = evaluateExpression('(2 + 3) * 4', ctx);
+      expect(result).toBe(20);
+    });
+
+    it('should handle division', () => {
+      const result = evaluateExpression('10 / 2', ctx);
+      expect(result).toBe(5);
+    });
+
+    it('should handle modulo', () => {
+      const result = evaluateExpression('10 % 3', ctx);
+      expect(result).toBe(1);
+    });
+  });
+
+  describe('executeSet() Extended', () => {
+    it('should execute SET with EVAL value', () => {
+      const result = executeSet(ctx, '!VAR0', 'EVAL(1+2)');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe(3);
+    });
+
+    it('should execute SET with EVAL referencing variables', () => {
+      ctx.set('!VAR1', '10');
+      const result = executeSet(ctx, '!VAR0', 'EVAL({{!VAR1}} + 5)');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe(15);
+    });
+
+    it('should execute SET with !CLIPBOARD value', () => {
+      ctx.setClipboard('clipboard content');
+      const result = executeSet(ctx, '!VAR0', '!CLIPBOARD');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('clipboard content');
+    });
+
+    it('should execute SET with CONTENT type', () => {
+      const result = executeSet(ctx, '!VAR0', 'CONTENT');
+      expect(result.success).toBe(true);
+      // CONTENT expands to empty string since there is no page content in unit test
+      expect(ctx.get('!VAR0')).toBe('');
+    });
+
+    it('should execute SET with variable expansion in literal value', () => {
+      ctx.set('!VAR1', 'world');
+      const result = executeSet(ctx, '!VAR0', 'hello {{!VAR1}}');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('hello world');
+    });
+
+    it('should handle MacroErrorSignal from EVAL gracefully', () => {
+      // MacroError() in expression-evaluator throws a MacroErrorSignal
+      // which executeSet catches and returns as a special result
+      const result = executeSet(ctx, '!VAR0', 'EVAL(MacroError("test error"))');
+      // The result should indicate macro error
+      expect((result as any).macroError).toBe(true);
+      expect((result as any).errorMessage).toBe('test error');
+    });
+  });
+
+  describe('executeAdd() Extended', () => {
+    it('should expand variables in the add value', () => {
+      ctx.set('!VAR0', '10');
+      ctx.set('!VAR1', '5');
+      const result = executeAdd(ctx, '!VAR0', '{{!VAR1}}');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe(15);
+    });
+
+    it('should return error for non-numeric expanded value', () => {
+      ctx.set('!VAR0', '10');
+      ctx.set('!VAR1', 'abc');
+      const result = executeAdd(ctx, '!VAR0', '{{!VAR1}}');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  describe('getLoop() Non-Numeric Fallback', () => {
+    it('should return 1 when loop value is not a number', () => {
+      // Force a non-numeric value into !LOOP via direct set
+      ctx.set('!LOOP', 'not_a_number');
+      expect(ctx.getLoop()).toBe(1);
+    });
+  });
+
+  describe('getTimeout() Non-Numeric Fallback', () => {
+    it('should return 60 when timeout value is not a number', () => {
+      // Force a non-numeric value into !TIMEOUT via direct set
+      ctx.set('!TIMEOUT', 'not_a_number');
+      expect(ctx.getTimeout('default')).toBe(60);
+    });
+  });
+
+  describe('Datasource with More Than 10 Columns', () => {
+    it('should only set first 10 columns', () => {
+      const cols = Array.from({ length: 15 }, (_, i) => `val${i + 1}`);
+      ctx.setDatasourceCols(cols);
+      expect(ctx.get('!COL1')).toBe('val1');
+      expect(ctx.get('!COL10')).toBe('val10');
+      // Column count should reflect actual number passed
+      expect(ctx.get('!DATASOURCE_COLUMNS')).toBe(15);
     });
   });
 });

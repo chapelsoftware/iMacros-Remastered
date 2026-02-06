@@ -1,0 +1,1194 @@
+/**
+ * Extension background service worker
+ * Handles native messaging, content script relay, and tab management
+ */
+import { RequestMessage, ResponseMessage, createMessageId, createTimestamp } from '@shared/index';
+import {
+  initWebRequestHandlers,
+  handleLoginConfig,
+  handleSetFilter,
+  setAuthCredentials,
+  clearAuthCredentials,
+  getAuthCredentials,
+  setFilter,
+  disableAllFilters,
+  getFilterState,
+} from './background/web-request-handlers';
+
+const NATIVE_HOST_NAME = 'com.imacros.nativehost';
+const RECONNECT_DELAY_MS = 1000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const KEEP_ALIVE_INTERVAL_MS = 25000; // Keep service worker alive
+
+/**
+ * Connection state
+ */
+interface ConnectionState {
+  port: chrome.runtime.Port | null;
+  isConnecting: boolean;
+  reconnectAttempts: number;
+  reconnectTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * Pending request tracking
+ */
+interface PendingRequest {
+  resolve: (response: ResponseMessage) => void;
+  reject: (error: Error) => void;
+  tabId?: number;
+  frameId?: number;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Tab tracking for message routing
+ */
+interface TabInfo {
+  id: number;
+  url?: string;
+  frameIds: Set<number>;
+}
+
+// Connection state
+const connectionState: ConnectionState = {
+  port: null,
+  isConnecting: false,
+  reconnectAttempts: 0,
+  reconnectTimeout: null,
+};
+
+// Pending requests map (messageId -> PendingRequest)
+const pendingRequests = new Map<string, PendingRequest>();
+
+// Active tabs tracking
+const activeTabs = new Map<number, TabInfo>();
+
+// Keep-alive interval
+let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start keep-alive mechanism for service worker
+ */
+function startKeepAlive(): void {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+  }
+
+  keepAliveInterval = setInterval(() => {
+    // Simple operation to keep service worker alive
+    chrome.storage.local.get('keepAlive', () => {
+      console.debug('[iMacros] Keep-alive tick');
+    });
+  }, KEEP_ALIVE_INTERVAL_MS);
+}
+
+/**
+ * Stop keep-alive mechanism
+ */
+function stopKeepAlive(): void {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+/**
+ * Connect to the native host with lifecycle management
+ */
+function connectToNativeHost(): Promise<chrome.runtime.Port> {
+  return new Promise((resolve, reject) => {
+    if (connectionState.port) {
+      resolve(connectionState.port);
+      return;
+    }
+
+    if (connectionState.isConnecting) {
+      // Wait for existing connection attempt
+      const checkConnection = setInterval(() => {
+        if (connectionState.port) {
+          clearInterval(checkConnection);
+          resolve(connectionState.port);
+        } else if (!connectionState.isConnecting) {
+          clearInterval(checkConnection);
+          reject(new Error('Connection failed'));
+        }
+      }, 100);
+      return;
+    }
+
+    connectionState.isConnecting = true;
+
+    try {
+      console.log('[iMacros] Connecting to native host:', NATIVE_HOST_NAME);
+      const port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
+
+      port.onMessage.addListener((message: ResponseMessage) => {
+        console.log('[iMacros] Native host message:', message);
+        handleNativeResponse(message);
+      });
+
+      port.onDisconnect.addListener(() => {
+        const error = chrome.runtime.lastError?.message || 'Unknown disconnect reason';
+        console.log('[iMacros] Native host disconnected:', error);
+
+        connectionState.port = null;
+        connectionState.isConnecting = false;
+
+        // Reject all pending requests
+        for (const [id, pending] of pendingRequests) {
+          clearTimeout(pending.timeout);
+          pending.reject(new Error(`Connection lost: ${error}`));
+          pendingRequests.delete(id);
+        }
+
+        // Attempt reconnection if not at max attempts
+        scheduleReconnect();
+      });
+
+      connectionState.port = port;
+      connectionState.isConnecting = false;
+      connectionState.reconnectAttempts = 0;
+
+      // Start keep-alive when connected
+      startKeepAlive();
+
+      console.log('[iMacros] Connected to native host');
+      resolve(port);
+    } catch (error) {
+      connectionState.isConnecting = false;
+      console.error('[iMacros] Failed to connect to native host:', error);
+      scheduleReconnect();
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Schedule a reconnection attempt
+ */
+function scheduleReconnect(): void {
+  if (connectionState.reconnectTimeout) {
+    return; // Already scheduled
+  }
+
+  if (connectionState.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+    console.error('[iMacros] Max reconnection attempts reached');
+    stopKeepAlive();
+    return;
+  }
+
+  const delay = RECONNECT_DELAY_MS * Math.pow(2, connectionState.reconnectAttempts);
+  console.log(`[iMacros] Scheduling reconnect in ${delay}ms (attempt ${connectionState.reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+
+  connectionState.reconnectTimeout = setTimeout(() => {
+    connectionState.reconnectTimeout = null;
+    connectionState.reconnectAttempts++;
+    connectToNativeHost().catch(() => {
+      // Error already logged in connectToNativeHost
+    });
+  }, delay);
+}
+
+/**
+ * Disconnect from native host
+ */
+function disconnectFromNativeHost(): void {
+  if (connectionState.reconnectTimeout) {
+    clearTimeout(connectionState.reconnectTimeout);
+    connectionState.reconnectTimeout = null;
+  }
+
+  if (connectionState.port) {
+    connectionState.port.disconnect();
+    connectionState.port = null;
+  }
+
+  connectionState.isConnecting = false;
+  connectionState.reconnectAttempts = 0;
+
+  stopKeepAlive();
+
+  // Clear pending requests
+  for (const [id, pending] of pendingRequests) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error('Disconnected'));
+    pendingRequests.delete(id);
+  }
+
+  console.log('[iMacros] Disconnected from native host');
+}
+
+/**
+ * Send a message to the native host with response tracking
+ */
+async function sendToNativeHost(
+  message: RequestMessage,
+  tabId?: number,
+  frameId?: number,
+  timeoutMs = 30000
+): Promise<ResponseMessage> {
+  const port = await connectToNativeHost();
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingRequests.delete(message.id);
+      reject(new Error(`Request timeout: ${message.type}`));
+    }, timeoutMs);
+
+    pendingRequests.set(message.id, {
+      resolve,
+      reject,
+      tabId,
+      frameId,
+      timeout,
+    });
+
+    try {
+      port.postMessage(message);
+      console.log('[iMacros] Sent to native host:', message.type, message.id);
+    } catch (error) {
+      clearTimeout(timeout);
+      pendingRequests.delete(message.id);
+      reject(error);
+    }
+  });
+}
+
+/**
+ * Send a message to the native host without waiting for response
+ */
+async function sendToNativeHostNoWait(message: RequestMessage): Promise<void> {
+  try {
+    const port = await connectToNativeHost();
+    port.postMessage(message);
+    console.log('[iMacros] Sent to native host (no wait):', message.type, message.id);
+  } catch (error) {
+    console.error('[iMacros] Failed to send to native host:', error);
+  }
+}
+
+/**
+ * Handle responses from the native host
+ */
+function handleNativeResponse(response: ResponseMessage): void {
+  // Check if this is a response to a pending request
+  const pending = pendingRequests.get(response.id);
+  if (pending) {
+    clearTimeout(pending.timeout);
+    pendingRequests.delete(response.id);
+
+    if (response.type === 'error') {
+      pending.reject(new Error(response.error || 'Unknown error'));
+    } else {
+      pending.resolve(response);
+    }
+    return;
+  }
+
+  // Handle unsolicited messages from native host (commands to execute)
+  handleNativeCommand(response);
+}
+
+/**
+ * Send a message to all extension views (panel, popup, etc.)
+ */
+async function broadcastToExtensionViews(message: unknown): Promise<void> {
+  try {
+    // Send to all extension views (panel, popup, options page, etc.)
+    chrome.runtime.sendMessage(message).catch(() => {
+      // Extension views might not be open, ignore errors
+    });
+  } catch {
+    // Ignore errors if no listeners
+  }
+}
+
+/**
+ * Handle commands from native host that need to be relayed to content scripts
+ */
+async function handleNativeCommand(message: ResponseMessage): Promise<void> {
+  const payload = message.payload as Record<string, unknown> | undefined;
+
+  switch (message.type) {
+    case 'result':
+      // If payload contains tabId, relay to specific tab
+      if (payload?.tabId && typeof payload.tabId === 'number') {
+        await relayToContentScript(payload.tabId, payload.frameId as number | undefined, message);
+      }
+      break;
+
+    // Status updates from native host - relay to panel
+    case 'STATUS_UPDATE':
+      console.log('[iMacros] Status update from native host:', payload);
+      await broadcastToExtensionViews({ type: 'STATUS_UPDATE', payload });
+      break;
+
+    case 'MACRO_PROGRESS':
+      console.log('[iMacros] Macro progress:', payload);
+      await broadcastToExtensionViews({ type: 'MACRO_PROGRESS', payload });
+      break;
+
+    case 'MACRO_COMPLETE':
+      console.log('[iMacros] Macro complete:', payload);
+      await broadcastToExtensionViews({ type: 'MACRO_COMPLETE', payload });
+      break;
+
+    case 'MACRO_ERROR':
+      console.log('[iMacros] Macro error:', payload);
+      await broadcastToExtensionViews({ type: 'MACRO_ERROR', payload });
+      break;
+
+    case 'MACRO_PAUSED':
+      console.log('[iMacros] Macro paused');
+      await broadcastToExtensionViews({ type: 'MACRO_PAUSED', payload });
+      break;
+
+    case 'MACRO_RESUMED':
+      console.log('[iMacros] Macro resumed');
+      await broadcastToExtensionViews({ type: 'MACRO_RESUMED', payload });
+      break;
+
+    case 'RECORDING_LINE':
+      console.log('[iMacros] Recording line:', payload);
+      await broadcastToExtensionViews({ type: 'RECORDING_LINE', payload });
+      break;
+
+    case 'RECORDING_SAVED':
+      console.log('[iMacros] Recording saved');
+      await broadcastToExtensionViews({ type: 'RECORDING_SAVED', payload });
+      break;
+
+    case 'ready':
+      console.log('[iMacros] Native host ready:', payload);
+      // Native host is ready, we can now send requests
+      break;
+
+    case 'browser_command':
+      // Route browser commands from native host to appropriate handler
+      await handleBrowserCommand(message);
+      break;
+
+    default:
+      console.log('[iMacros] Unhandled native command:', message.type);
+  }
+}
+
+/**
+ * Handle browser commands from native host
+ * Routes commands to tabs/content scripts and sends responses back
+ */
+async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
+  const payload = message.payload as {
+    commandType: string;
+    tabId?: number;
+    frameId?: number;
+    [key: string]: unknown;
+  };
+
+  const { commandType, tabId, frameId, ...params } = payload;
+  const messageId = message.id;
+
+  // Get the target tab ID (use provided or get active tab)
+  let targetTabId = tabId;
+  if (!targetTabId) {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    targetTabId = activeTab?.id;
+  }
+
+  if (!targetTabId) {
+    sendBrowserCommandResponse(messageId, { success: false, error: 'No active tab' });
+    return;
+  }
+
+  try {
+    let result: unknown;
+
+    switch (commandType) {
+      // Navigation commands
+      case 'navigate': {
+        const { url } = params as { url: string };
+        await chrome.tabs.update(targetTabId, { url });
+        // Wait a bit for navigation to start
+        await new Promise(resolve => setTimeout(resolve, 100));
+        result = { success: true };
+        break;
+      }
+
+      case 'getCurrentUrl': {
+        const tab = await chrome.tabs.get(targetTabId);
+        result = { success: true, url: tab.url || '' };
+        break;
+      }
+
+      case 'goBack': {
+        await chrome.tabs.goBack(targetTabId);
+        result = { success: true };
+        break;
+      }
+
+      case 'goForward': {
+        await chrome.tabs.goForward(targetTabId);
+        result = { success: true };
+        break;
+      }
+
+      case 'refresh': {
+        await chrome.tabs.reload(targetTabId);
+        result = { success: true };
+        break;
+      }
+
+      // Tab commands
+      case 'openTab': {
+        const { url } = params as { url?: string };
+        const newTab = await chrome.tabs.create({ url, active: true });
+        result = { success: true, tabId: newTab.id };
+        break;
+      }
+
+      case 'switchTab': {
+        const { tabIndex } = params as { tabIndex: number };
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        if (tabIndex >= 0 && tabIndex < tabs.length) {
+          const tab = tabs[tabIndex];
+          if (tab.id) {
+            await chrome.tabs.update(tab.id, { active: true });
+            result = { success: true, tabId: tab.id };
+          }
+        } else {
+          result = { success: false, error: `Tab index ${tabIndex} out of range` };
+        }
+        break;
+      }
+
+      case 'closeTab': {
+        await chrome.tabs.remove(targetTabId);
+        result = { success: true };
+        break;
+      }
+
+      case 'closeOtherTabs': {
+        const tabs = await chrome.tabs.query({ currentWindow: true });
+        const tabsToClose = tabs.filter(t => t.id && t.id !== targetTabId).map(t => t.id!);
+        if (tabsToClose.length > 0) {
+          await chrome.tabs.remove(tabsToClose);
+        }
+        result = { success: true };
+        break;
+      }
+
+      // Frame commands
+      case 'selectFrame': {
+        const { frameIndex } = params as { frameIndex: number };
+        // Send to content script to handle frame selection
+        result = await chrome.tabs.sendMessage(targetTabId, {
+          type: 'SELECT_FRAME',
+          frameIndex,
+        });
+        break;
+      }
+
+      case 'selectFrameByName': {
+        const { frameName } = params as { frameName: string };
+        // Send to content script to handle frame selection
+        result = await chrome.tabs.sendMessage(targetTabId, {
+          type: 'SELECT_FRAME_BY_NAME',
+          frameName,
+        });
+        break;
+      }
+
+      // DOM interaction commands - route to content script
+      case 'TAG_COMMAND':
+      case 'CLICK_COMMAND':
+      case 'EVENT_COMMAND': {
+        const options: chrome.tabs.MessageSendOptions = {};
+        if (frameId !== undefined && frameId > 0) {
+          options.frameId = frameId;
+        }
+        result = await chrome.tabs.sendMessage(targetTabId, {
+          type: commandType,
+          id: messageId,
+          timestamp: Date.now(),
+          payload: params,
+        }, options);
+        break;
+      }
+
+      case 'waitForPageLoad': {
+        // Get tab status and wait if needed
+        let tab = await chrome.tabs.get(targetTabId);
+        const timeout = (params.timeout as number) || 30000;
+        const startTime = Date.now();
+
+        while (tab.status !== 'complete' && Date.now() - startTime < timeout) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          tab = await chrome.tabs.get(targetTabId);
+        }
+
+        result = { success: tab.status === 'complete' };
+        break;
+      }
+
+      default:
+        result = { success: false, error: `Unknown command type: ${commandType}` };
+    }
+
+    sendBrowserCommandResponse(messageId, result as Record<string, unknown>);
+
+  } catch (error) {
+    console.error('[iMacros] Browser command error:', error);
+    sendBrowserCommandResponse(messageId, {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Send a browser command response back to the native host
+ */
+function sendBrowserCommandResponse(messageId: string, payload: Record<string, unknown>): void {
+  if (connectionState.port) {
+    connectionState.port.postMessage({
+      type: 'browser_command_response',
+      id: messageId,
+      timestamp: Date.now(),
+      payload,
+      error: payload.error,
+    });
+  }
+}
+
+/**
+ * Relay a message to a content script
+ */
+async function relayToContentScript(
+  tabId: number,
+  frameId: number | undefined,
+  message: unknown
+): Promise<unknown> {
+  try {
+    const options: chrome.tabs.MessageSendOptions = {};
+    if (frameId !== undefined) {
+      options.frameId = frameId;
+    }
+
+    const response = await chrome.tabs.sendMessage(tabId, message, options);
+    return response;
+  } catch (error) {
+    console.error(`[iMacros] Failed to relay to tab ${tabId}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Broadcast a message to all content scripts
+ */
+async function broadcastToContentScripts(message: unknown): Promise<void> {
+  const tabs = await chrome.tabs.query({});
+
+  for (const tab of tabs) {
+    if (tab.id && tab.url && !tab.url.startsWith('chrome://')) {
+      try {
+        await chrome.tabs.sendMessage(tab.id, message);
+      } catch {
+        // Tab might not have content script loaded
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Tab Management Operations
+// ============================================================================
+
+/**
+ * Create a new tab
+ */
+async function createTab(options: {
+  url?: string;
+  active?: boolean;
+  windowId?: number;
+  index?: number;
+}): Promise<chrome.tabs.Tab> {
+  const tab = await chrome.tabs.create({
+    url: options.url,
+    active: options.active ?? true,
+    windowId: options.windowId,
+    index: options.index,
+  });
+
+  if (tab.id) {
+    activeTabs.set(tab.id, {
+      id: tab.id,
+      url: tab.url,
+      frameIds: new Set([0]), // Main frame
+    });
+  }
+
+  console.log('[iMacros] Created tab:', tab.id, options.url);
+  return tab;
+}
+
+/**
+ * Switch to (activate) an existing tab
+ */
+async function switchToTab(tabId: number): Promise<chrome.tabs.Tab> {
+  const tab = await chrome.tabs.update(tabId, { active: true });
+
+  // Also focus the window containing the tab
+  if (tab.windowId) {
+    await chrome.windows.update(tab.windowId, { focused: true });
+  }
+
+  console.log('[iMacros] Switched to tab:', tabId);
+  return tab;
+}
+
+/**
+ * Close a tab
+ */
+async function closeTab(tabId: number): Promise<void> {
+  await chrome.tabs.remove(tabId);
+  activeTabs.delete(tabId);
+  console.log('[iMacros] Closed tab:', tabId);
+}
+
+/**
+ * Get tab by ID
+ */
+async function getTab(tabId: number): Promise<chrome.tabs.Tab | null> {
+  try {
+    return await chrome.tabs.get(tabId);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Query tabs with optional filters
+ */
+async function queryTabs(queryInfo: chrome.tabs.QueryInfo = {}): Promise<chrome.tabs.Tab[]> {
+  return chrome.tabs.query(queryInfo);
+}
+
+/**
+ * Navigate a tab to a URL
+ */
+async function navigateTab(tabId: number, url: string): Promise<chrome.tabs.Tab> {
+  return chrome.tabs.update(tabId, { url });
+}
+
+/**
+ * Reload a tab
+ */
+async function reloadTab(tabId: number, bypassCache = false): Promise<void> {
+  await chrome.tabs.reload(tabId, { bypassCache });
+}
+
+/**
+ * Go back in tab history
+ */
+async function goBack(tabId: number): Promise<void> {
+  await chrome.tabs.goBack(tabId);
+}
+
+/**
+ * Go forward in tab history
+ */
+async function goForward(tabId: number): Promise<void> {
+  await chrome.tabs.goForward(tabId);
+}
+
+// ============================================================================
+// Message Handlers
+// ============================================================================
+
+/**
+ * Handle messages from content scripts or popup
+ */
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('[iMacros] Message received:', message.type, 'from:', sender.tab?.id || 'popup');
+
+  // Wrap async handler
+  (async () => {
+    try {
+      const result = await handleMessage(message, sender);
+      sendResponse(result);
+    } catch (error) {
+      console.error('[iMacros] Message handler error:', error);
+      sendResponse({ success: false, error: String(error) });
+    }
+  })();
+
+  return true; // Keep the message channel open for async response
+});
+
+/**
+ * Main message handler
+ */
+async function handleMessage(
+  message: { type: string; payload?: unknown; id?: string },
+  sender: chrome.runtime.MessageSender
+): Promise<unknown> {
+  const tabId = sender.tab?.id;
+  const frameId = sender.frameId;
+
+  switch (message.type) {
+    // Connection management
+    case 'CONNECT':
+      await connectToNativeHost();
+      return { success: true, connected: true };
+
+    case 'DISCONNECT':
+      disconnectFromNativeHost();
+      return { success: true, connected: false };
+
+    case 'CONNECTION_STATUS':
+      return {
+        success: true,
+        connected: connectionState.port !== null,
+        reconnecting: connectionState.isConnecting,
+        reconnectAttempts: connectionState.reconnectAttempts,
+      };
+
+    // Ping/pong for keepalive
+    case 'ping':
+      await sendToNativeHostNoWait({
+        type: 'ping',
+        id: createMessageId(),
+        timestamp: createTimestamp(),
+      });
+      return { success: true };
+
+    // Dialog events from content scripts
+    case 'DIALOG_EVENT':
+      console.log('[iMacros] Dialog event received:', message.payload);
+      await sendToNativeHostNoWait({
+        type: 'dialog_event',
+        id: createMessageId(),
+        timestamp: createTimestamp(),
+        payload: {
+          ...(message.payload as object),
+          tabId,
+          frameId,
+        },
+      });
+      return { success: true };
+
+    // Recorded events from content scripts (macro recorder)
+    case 'RECORD_EVENT':
+      console.log('[iMacros] Record event received:', message.payload);
+      await sendToNativeHostNoWait({
+        type: 'record_event',
+        id: createMessageId(),
+        timestamp: createTimestamp(),
+        payload: {
+          ...(message.payload as object),
+          tabId,
+          frameId,
+          url: sender.url,
+        },
+      });
+      return { success: true };
+
+    // Start/stop recording
+    case 'RECORD_START':
+      await sendToNativeHostNoWait({
+        type: 'record_start',
+        id: createMessageId(),
+        timestamp: createTimestamp(),
+        payload: message.payload,
+      });
+      return { success: true };
+
+    case 'RECORD_STOP':
+      await sendToNativeHostNoWait({
+        type: 'record_stop',
+        id: createMessageId(),
+        timestamp: createTimestamp(),
+        payload: message.payload,
+      });
+      return { success: true };
+
+    // Execute command and wait for response
+    case 'EXECUTE':
+      const response = await sendToNativeHost(
+        {
+          type: 'execute',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {
+            ...(message.payload as object),
+            tabId,
+            frameId,
+            url: sender.url,
+          },
+        },
+        tabId,
+        frameId
+      );
+      return { success: true, result: response.payload };
+
+    // Tab operations
+    case 'TAB_CREATE':
+      const newTab = await createTab(message.payload as { url?: string; active?: boolean });
+      return { success: true, tab: { id: newTab.id, url: newTab.url } };
+
+    case 'TAB_SWITCH':
+      const payloadSwitch = message.payload as { tabId: number };
+      const switchedTab = await switchToTab(payloadSwitch.tabId);
+      return { success: true, tab: { id: switchedTab.id, url: switchedTab.url } };
+
+    case 'TAB_CLOSE':
+      const payloadClose = message.payload as { tabId: number };
+      await closeTab(payloadClose.tabId);
+      return { success: true };
+
+    case 'TAB_GET':
+      const payloadGet = message.payload as { tabId: number };
+      const tab = await getTab(payloadGet.tabId);
+      return { success: true, tab: tab ? { id: tab.id, url: tab.url } : null };
+
+    case 'TAB_QUERY':
+      const tabs = await queryTabs(message.payload as chrome.tabs.QueryInfo);
+      return { success: true, tabs: tabs.map(t => ({ id: t.id, url: t.url, active: t.active })) };
+
+    case 'TAB_NAVIGATE':
+      const payloadNav = message.payload as { tabId: number; url: string };
+      const navTab = await navigateTab(payloadNav.tabId, payloadNav.url);
+      return { success: true, tab: { id: navTab.id, url: navTab.url } };
+
+    case 'TAB_RELOAD':
+      const payloadReload = message.payload as { tabId: number; bypassCache?: boolean };
+      await reloadTab(payloadReload.tabId, payloadReload.bypassCache);
+      return { success: true };
+
+    case 'TAB_BACK':
+      const payloadBack = message.payload as { tabId: number };
+      await goBack(payloadBack.tabId);
+      return { success: true };
+
+    case 'TAB_FORWARD':
+      const payloadForward = message.payload as { tabId: number };
+      await goForward(payloadForward.tabId);
+      return { success: true };
+
+    // Relay to content script
+    case 'RELAY_TO_TAB':
+      const relayPayload = message.payload as { tabId: number; frameId?: number; message: unknown };
+      const relayResult = await relayToContentScript(
+        relayPayload.tabId,
+        relayPayload.frameId,
+        relayPayload.message
+      );
+      return { success: true, result: relayResult };
+
+    // Broadcast to all tabs
+    case 'BROADCAST':
+      await broadcastToContentScripts(message.payload);
+      return { success: true };
+
+    // Web request handlers (ONLOGIN, FILTER)
+    case 'LOGIN_CONFIG':
+      console.log('[iMacros] LOGIN_CONFIG received:', message.payload);
+      return handleLoginConfig(message.payload as {
+        config: { user: string; password: string; active: boolean };
+      });
+
+    case 'setFilter':
+      console.log('[iMacros] setFilter received:', message.payload);
+      return await handleSetFilter(message.payload as {
+        filterType: 'IMAGES' | 'FLASH' | 'POPUPS';
+        status: 'ON' | 'OFF';
+      });
+
+    case 'SET_AUTH_CREDENTIALS':
+      const authPayload = message.payload as { username: string; password: string; urlPattern?: string };
+      setAuthCredentials(authPayload.username, authPayload.password, authPayload.urlPattern);
+      return { success: true };
+
+    case 'CLEAR_AUTH_CREDENTIALS':
+      clearAuthCredentials();
+      return { success: true };
+
+    case 'GET_AUTH_STATUS':
+      return { success: true, credentials: getAuthCredentials() };
+
+    case 'SET_FILTER':
+      const filterPayload = message.payload as { filterType: 'IMAGES' | 'FLASH' | 'POPUPS'; status: 'ON' | 'OFF' };
+      await setFilter(filterPayload.filterType, filterPayload.status);
+      return { success: true };
+
+    case 'DISABLE_ALL_FILTERS':
+      await disableAllFilters();
+      return { success: true };
+
+    case 'GET_FILTER_STATUS':
+      return { success: true, filters: getFilterState() };
+
+    // Macro file operations (for editor)
+    case 'LOAD_MACRO': {
+      const loadPayload = message.payload as { path: string };
+      console.log('[iMacros] LOAD_MACRO:', loadPayload.path);
+      try {
+        const loadResponse = await sendToNativeHost({
+          type: 'load_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { path: loadPayload.path },
+        });
+        return { success: true, content: (loadResponse.payload as { content?: string })?.content || '' };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'SAVE_MACRO': {
+      const savePayload = message.payload as { path: string; content: string };
+      console.log('[iMacros] SAVE_MACRO:', savePayload.path);
+      try {
+        const saveResponse = await sendToNativeHost({
+          type: 'save_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { path: savePayload.path, content: savePayload.content },
+        });
+        return { success: true, path: (saveResponse.payload as { path?: string })?.path || savePayload.path };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'PLAY_MACRO': {
+      const playPayload = message.payload as { path: string; loop?: boolean };
+      console.log('[iMacros] PLAY_MACRO:', playPayload.path);
+      try {
+        await sendToNativeHostNoWait({
+          type: 'play_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { path: playPayload.path, loop: playPayload.loop || false },
+        });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
+    // Open editor in a new tab
+    case 'OPEN_EDITOR':
+    case 'EDIT_MACRO': {
+      const editorPayload = message.payload as { path?: string } | undefined;
+      const editorUrl = chrome.runtime.getURL('editor.html') + (editorPayload?.path ? `?path=${encodeURIComponent(editorPayload.path)}` : '');
+      const editorTab = await chrome.tabs.create({ url: editorUrl });
+      return { success: true, tabId: editorTab.id };
+    }
+
+    // Settings operations (from options page)
+    case 'SETTINGS_UPDATE': {
+      const settingsPayload = message.payload;
+      console.log('[iMacros] SETTINGS_UPDATE:', settingsPayload);
+      try {
+        await sendToNativeHostNoWait({
+          type: 'settings_update',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: settingsPayload,
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[iMacros] Failed to send settings to native host:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'BROWSE_FOLDER': {
+      const browsePayload = message.payload as { currentPath?: string };
+      console.log('[iMacros] BROWSE_FOLDER:', browsePayload);
+      try {
+        const browseResponse = await sendToNativeHost({
+          type: 'browse_folder',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { currentPath: browsePayload.currentPath || '' },
+        });
+        const resultPayload = browseResponse.payload as { path?: string } | undefined;
+        return { success: true, path: resultPayload?.path || null };
+      } catch (error) {
+        console.error('[iMacros] Failed to browse folder:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'GET_SETTINGS': {
+      console.log('[iMacros] GET_SETTINGS');
+      try {
+        const getSettingsResponse = await sendToNativeHost({
+          type: 'get_settings',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {},
+        });
+        return { success: true, settings: getSettingsResponse.payload };
+      } catch (error) {
+        console.error('[iMacros] Failed to get settings from native host:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'GET_MACROS': {
+      console.log('[iMacros] GET_MACROS request');
+      try {
+        const macrosResponse = await sendToNativeHost({
+          type: 'get_macros',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {},
+        });
+        const macrosList = (macrosResponse.payload as { macros?: unknown[] })?.macros || [];
+        // Convert to the format the panel expects (array of file paths)
+        const files = macrosList.map((m: unknown) => (m as { path?: string })?.path || '');
+        return { success: true, files };
+      } catch (error) {
+        console.error('[iMacros] Failed to get macros from native host:', error);
+        return { success: false, error: String(error), files: [] };
+      }
+    }
+
+    default:
+      console.warn('[iMacros] Unknown message type:', message.type);
+      return { success: false, error: `Unknown message type: ${message.type}` };
+  }
+}
+
+// ============================================================================
+// Tab Event Listeners
+// ============================================================================
+
+/**
+ * Track tab creation
+ */
+chrome.tabs.onCreated.addListener((tab) => {
+  if (tab.id) {
+    activeTabs.set(tab.id, {
+      id: tab.id,
+      url: tab.url,
+      frameIds: new Set([0]),
+    });
+    console.log('[iMacros] Tab created:', tab.id);
+  }
+});
+
+/**
+ * Track tab removal
+ */
+chrome.tabs.onRemoved.addListener((tabId) => {
+  activeTabs.delete(tabId);
+  console.log('[iMacros] Tab removed:', tabId);
+});
+
+/**
+ * Track tab updates
+ */
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const tabInfo = activeTabs.get(tabId);
+  if (tabInfo) {
+    tabInfo.url = tab.url;
+  } else if (tab.id) {
+    activeTabs.set(tab.id, {
+      id: tab.id,
+      url: tab.url,
+      frameIds: new Set([0]),
+    });
+  }
+});
+
+// ============================================================================
+// External Connection Handler (for native host initiated connections)
+// ============================================================================
+
+chrome.runtime.onConnectExternal.addListener((port) => {
+  console.log('[iMacros] External connection from:', port.name);
+
+  port.onMessage.addListener(async (message) => {
+    try {
+      const result = await handleMessage(message, port.sender || {});
+      port.postMessage(result);
+    } catch (error) {
+      port.postMessage({ success: false, error: String(error) });
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    console.log('[iMacros] External connection closed:', port.name);
+  });
+});
+
+// ============================================================================
+// Action Button Handler
+// ============================================================================
+
+/**
+ * Handle action button click - open side panel
+ */
+chrome.action.onClicked.addListener(async (tab) => {
+  if (tab.id) {
+    await chrome.sidePanel.open({ tabId: tab.id });
+  }
+});
+
+// ============================================================================
+// Installation Handler
+// ============================================================================
+
+/**
+ * Initialize on install
+ */
+chrome.runtime.onInstalled.addListener(async (details) => {
+  console.log('[iMacros] Extension installed:', details.reason);
+
+  // Enable side panel
+  chrome.sidePanel.setOptions({
+    enabled: true,
+  });
+
+  // Initialize web request handlers (ONLOGIN, FILTER)
+  await initWebRequestHandlers();
+
+  // Attempt initial connection to native host
+  connectToNativeHost().catch((error) => {
+    console.log('[iMacros] Initial native host connection failed (this is normal if host not installed):', error);
+  });
+});
+
+/**
+ * Handle startup
+ */
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[iMacros] Extension startup');
+
+  // Initialize web request handlers (ONLOGIN, FILTER)
+  await initWebRequestHandlers();
+
+  // Attempt to reconnect to native host
+  connectToNativeHost().catch((error) => {
+    console.log('[iMacros] Startup native host connection failed:', error);
+  });
+});
+
+// ============================================================================
+// Initialization
+// ============================================================================
+
+console.log('[iMacros] Background service worker loaded');
+
+// Start keep-alive immediately
+startKeepAlive();
+
+// Initialize web request handlers on load (for service worker restarts)
+initWebRequestHandlers().catch((error) => {
+  console.error('[iMacros] Failed to initialize web request handlers:', error);
+});

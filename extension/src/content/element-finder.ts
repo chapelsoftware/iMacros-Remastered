@@ -77,26 +77,43 @@ export function findByCssSelector(selector: string, contextNode: Element | Docum
 }
 
 /**
+ * Normalize text content like original iMacros escapeTextContent:
+ * - Trim whitespace
+ * - Remove newlines
+ * - Collapse multiple whitespace to single space
+ */
+function escapeTextContent(str: string): string {
+  return str
+    .trim()
+    .replace(/[\r\n]+/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+/**
  * Check if a value matches a pattern with wildcard support
  * Supports * for any characters
- * Matches iMacros behavior: spaces match any whitespace, allows leading/trailing whitespace
+ * Matches original iMacros behavior exactly
  */
 export function matchesWildcard(value: string, pattern: string): boolean {
   if (pattern === '*') {
     return true;
   }
 
-  // Escape regex special characters except *
-  let regexPattern = pattern
-    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*');
+  // Normalize both value and pattern (like original iMacros)
+  const normalizedValue = escapeTextContent(value);
+  const normalizedPattern = escapeTextContent(pattern);
 
-  // Replace spaces with \s+ to match any whitespace (like original iMacros)
+  // Escape regex special characters except *
+  let regexPattern = normalizedPattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '(?:[\\r\\n]|.)*');  // * matches anything including newlines
+
+  // Replace spaces with \s+ to match any whitespace
   regexPattern = regexPattern.replace(/ /g, '\\s+');
 
-  // Allow leading/trailing whitespace (like original iMacros)
+  // Allow leading/trailing whitespace
   const regex = new RegExp(`^\\s*${regexPattern}\\s*$`, 'i');
-  return regex.test(value);
+  return regex.test(normalizedValue);
 }
 
 /**

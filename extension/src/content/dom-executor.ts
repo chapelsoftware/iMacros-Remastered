@@ -294,19 +294,24 @@ function createAttrMatcher(attrStr: string): (el: Element) => boolean {
         value = el.getAttribute(attr.toLowerCase());
       }
 
-      // Match pattern (supports * wildcard)
+      // Match pattern (supports * wildcard) - matches original iMacros behavior
       if (value === null) {
         if (pattern !== '' && pattern !== '*') return false;
       } else {
         if (pattern === '*') continue;
-        // Wildcard pattern matching (like original iMacros)
-        let regexPattern = pattern
+
+        // Normalize both value and pattern (like original iMacros escapeTextContent)
+        const normalizedValue = value.trim().replace(/[\r\n]+/g, '').replace(/\s+/g, ' ');
+        const normalizedPattern = pattern.trim().replace(/[\r\n]+/g, '').replace(/\s+/g, ' ');
+
+        // Build regex pattern
+        let regexPattern = normalizedPattern
           .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-          .replace(/\*/g, '.*');
+          .replace(/\*/g, '(?:[\\r\\n]|.)*');
         // Replace spaces with \s+ to match any whitespace
         regexPattern = regexPattern.replace(/ /g, '\\s+');
         // Allow leading/trailing whitespace
-        if (!new RegExp(`^\\s*${regexPattern}\\s*$`, 'i').test(value)) {
+        if (!new RegExp(`^\\s*${regexPattern}\\s*$`, 'i').test(normalizedValue)) {
           return false;
         }
       }

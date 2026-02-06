@@ -11,6 +11,16 @@
 export type ExecutionStatus = 'idle' | 'playing' | 'recording' | 'paused' | 'error';
 
 /**
+ * Log entry for execution tracking
+ */
+export interface LogEntry {
+  timestamp: number;
+  type: 'info' | 'debug' | 'warn' | 'error' | 'command';
+  line?: number;
+  message: string;
+}
+
+/**
  * Status update payload from native host
  */
 export interface StatusUpdate {
@@ -82,6 +92,7 @@ interface StatusSyncState {
 export class StatusSync {
   private state: StatusSyncState;
   private listeners: Set<StatusSyncListener>;
+  private logs: LogEntry[] = [];
   private uiElements: {
     statusIndicator: HTMLElement | null;
     statusText: HTMLElement | null;
@@ -152,6 +163,31 @@ export class StatusSync {
    */
   removeListener(listener: StatusSyncListener): void {
     this.listeners.delete(listener);
+  }
+
+  /**
+   * Add a log entry
+   */
+  addLog(type: LogEntry['type'], message: string, line?: number): void {
+    this.logs.push({ timestamp: Date.now(), type, message, line });
+    // Keep max 500 entries
+    if (this.logs.length > 500) {
+      this.logs.shift();
+    }
+  }
+
+  /**
+   * Get all log entries
+   */
+  getLogs(): ReadonlyArray<LogEntry> {
+    return this.logs;
+  }
+
+  /**
+   * Clear all log entries
+   */
+  clearLogs(): void {
+    this.logs = [];
   }
 
   /**
@@ -377,14 +413,22 @@ export class StatusSync {
    * Handle progress update during macro playback
    */
   private handleProgressUpdate(payload: Record<string, unknown>): void {
-    const line = typeof payload.line === 'number' ? payload.line : 0;
-    const loop = typeof payload.loop === 'number' ? payload.loop : this.state.currentLoop;
-    const maxLoop = typeof payload.maxLoop === 'number' ? payload.maxLoop : this.state.maxLoop;
-    const command = typeof payload.command === 'string' ? payload.command : undefined;
+    // Native host sends: currentLine, currentLoop, maxLoops, currentCommand
+    const line = typeof payload.currentLine === 'number' ? payload.currentLine :
+                 (typeof payload.line === 'number' ? payload.line : 0);
+    const loop = typeof payload.currentLoop === 'number' ? payload.currentLoop :
+                 (typeof payload.loop === 'number' ? payload.loop : this.state.currentLoop);
+    const maxLoop = typeof payload.maxLoops === 'number' ? payload.maxLoops :
+                    (typeof payload.maxLoop === 'number' ? payload.maxLoop : this.state.maxLoop);
+    const command = typeof payload.currentCommand === 'string' ? payload.currentCommand :
+                    (typeof payload.command === 'string' ? payload.command : undefined);
 
     this.state.currentLine = line;
     this.state.currentLoop = loop;
     this.state.maxLoop = maxLoop;
+
+    // Log the command execution
+    this.addLog('command', command || `Line ${line}`, line);
 
     this.updateUI();
     this.emit({
@@ -410,6 +454,9 @@ export class StatusSync {
     this.state.currentLine = 0;
     this.state.startTime = null;
 
+    // Log completion
+    this.addLog('info', 'Macro completed successfully');
+
     this.updateUI();
     this.emit({ type: 'complete', message });
     this.emit({ type: 'status_change', status: 'idle', message });
@@ -419,10 +466,19 @@ export class StatusSync {
    * Handle macro error
    */
   private handleError(payload: Record<string, unknown>): void {
+    // Native host sends: errorMessage/error, errorCode, errorLine
+    const message = typeof payload.errorMessage === 'string' ? payload.errorMessage :
+                    (typeof payload.error === 'string' ? payload.error :
+                    (typeof payload.message === 'string' ? payload.message : 'Error occurred'));
+    const code = typeof payload.errorCode === 'number' ? payload.errorCode :
+                 (typeof payload.code === 'number' ? payload.code : undefined);
+    const line = typeof payload.errorLine === 'number' ? payload.errorLine :
+                 (typeof payload.line === 'number' ? payload.line : undefined);
+
     const errorInfo: ErrorInfo = {
-      message: typeof payload.message === 'string' ? payload.message : 'Error occurred',
-      code: typeof payload.code === 'number' ? payload.code : undefined,
-      line: typeof payload.line === 'number' ? payload.line : undefined,
+      message,
+      code,
+      line,
       command: typeof payload.command === 'string' ? payload.command : undefined,
       details: typeof payload.details === 'string' ? payload.details : undefined,
     };
@@ -431,6 +487,10 @@ export class StatusSync {
     this.state.statusMessage = errorInfo.message;
     this.state.lastError = errorInfo;
     this.state.startTime = null;
+
+    // Log the error with details
+    const errorMsg = `${errorInfo.message}${errorInfo.line ? ` at line ${errorInfo.line}` : ''}`;
+    this.addLog('error', errorMsg, errorInfo.line);
 
     this.updateUI();
     this.emit({ type: 'error', error: errorInfo });

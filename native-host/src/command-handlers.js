@@ -6,6 +6,10 @@
  * MacroExecutor.
  */
 
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
 // Error codes matching iMacros standard
 const ERROR_CODES = {
   OK: 0,
@@ -450,6 +454,85 @@ function createBrowserHandlers(bridge) {
     EVENTS: async (ctx) => {
       // Reuse EVENT handler
       return createBrowserHandlers(bridge).EVENT(ctx);
+    },
+
+    // ===== File Commands =====
+
+    /**
+     * SAVEAS command handler
+     * SAVEAS TYPE=EXTRACT FOLDER=/path FILE=filename.csv
+     * SAVEAS TYPE=TXT FOLDER=/path FILE=filename.txt
+     */
+    SAVEAS: async (ctx) => {
+      const typeParam = ctx.getParam('TYPE');
+      const folderParam = ctx.getParam('FOLDER');
+      const fileParam = ctx.getParam('FILE');
+
+      if (!typeParam) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.MISSING_PARAMETER,
+          errorMessage: 'SAVEAS requires TYPE parameter',
+        };
+      }
+
+      if (!fileParam) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.MISSING_PARAMETER,
+          errorMessage: 'SAVEAS requires FILE parameter',
+        };
+      }
+
+      const saveType = typeParam.toUpperCase();
+      const folder = folderParam ? ctx.expand(folderParam) : os.homedir();
+      const file = ctx.expand(fileParam);
+      const fullPath = path.isAbsolute(file) ? file : path.join(folder, file);
+
+      ctx.log('info', `SAVEAS TYPE=${saveType} to ${fullPath}`);
+
+      try {
+        let content = '';
+
+        if (saveType === 'EXTRACT') {
+          // Get content from !EXTRACT variable
+          content = String(ctx.state.getVariable('!EXTRACT') || '');
+        } else if (saveType === 'TXT') {
+          // For TXT, also use !EXTRACT by default
+          content = String(ctx.state.getVariable('!EXTRACT') || '');
+        } else {
+          // Other types (HTM, PNG, PDF) need browser bridge support
+          ctx.log('warn', `SAVEAS TYPE=${saveType} not yet implemented for native host`);
+          return {
+            success: false,
+            errorCode: ERROR_CODES.INVALID_PARAMETER,
+            errorMessage: `SAVEAS TYPE=${saveType} not yet implemented`,
+          };
+        }
+
+        // Ensure directory exists
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+
+        // Write file (append if file exists for EXTRACT type)
+        if (saveType === 'EXTRACT' && fs.existsSync(fullPath)) {
+          fs.appendFileSync(fullPath, content + '\n', 'utf8');
+          ctx.log('info', `Appended to ${fullPath}`);
+        } else {
+          fs.writeFileSync(fullPath, content, 'utf8');
+          ctx.log('info', `Saved to ${fullPath}`);
+        }
+
+        return { success: true, errorCode: ERROR_CODES.OK };
+      } catch (error) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.SCRIPT_ERROR,
+          errorMessage: error.message || `Failed to save file: ${fullPath}`,
+        };
+      }
     },
   };
 }

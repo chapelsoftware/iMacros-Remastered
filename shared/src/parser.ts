@@ -78,15 +78,44 @@ export type CommandType =
  * Built-in system variables
  */
 export const SYSTEM_VARIABLES = [
+  // User variables
   '!VAR0', '!VAR1', '!VAR2', '!VAR3', '!VAR4', '!VAR5', '!VAR6', '!VAR7', '!VAR8', '!VAR9',
+  // Datasource columns
   '!COL1', '!COL2', '!COL3', '!COL4', '!COL5', '!COL6', '!COL7', '!COL8', '!COL9', '!COL10',
-  '!LOOP', '!DATASOURCE', '!DATASOURCE_LINE', '!DATASOURCE_COLUMNS',
-  '!EXTRACT', '!EXTRACT_TEST_POPUP', '!ENCRYPTION',
-  '!NOW', '!TIMEOUT', '!TIMEOUT_STEP', '!TIMEOUT_PAGE',
-  '!ERRORIGNORE', '!ERRORLOOP', '!SINGLESTEP',
-  '!FOLDER_DATASOURCE', '!FOLDER_DOWNLOAD', '!FOLDER_MACROS',
-  '!URLSTART', '!URLCURRENT', '!FILESTOPWATCH',
-  '!CLIPBOARD', '!DOWNLOADPDF',
+  // Loop
+  '!LOOP',
+  // Datasource
+  '!DATASOURCE', '!DATASOURCE_LINE', '!DATASOURCE_COLUMNS', '!DATASOURCE_DELIMITER',
+  // Extract
+  '!EXTRACT', '!EXTRACTADD', '!EXTRACT_TEST_POPUP',
+  // Encryption
+  '!ENCRYPTION',
+  // Date/time
+  '!NOW',
+  // Timeouts
+  '!TIMEOUT', '!TIMEOUT_STEP', '!TIMEOUT_PAGE', '!TIMEOUT_TAG', '!TIMEOUT_MACRO',
+  // Error handling
+  '!ERRORIGNORE', '!ERRORLOOP',
+  // Playback control
+  '!SINGLESTEP', '!REPLAYSPEED',
+  // Folders
+  '!FOLDER_DATASOURCE', '!FOLDER_DOWNLOAD', '!FOLDER_MACROS', '!FOLDER_STOPWATCH',
+  // URLs
+  '!URLSTART', '!URLCURRENT',
+  // Stopwatch
+  '!FILESTOPWATCH', '!STOPWATCH', '!STOPWATCHTIME', '!STOPWATCH_HEADER',
+  // Clipboard
+  '!CLIPBOARD',
+  // Download/PDF
+  '!DOWNLOADPDF',
+  // Browser/Page control
+  '!USERAGENT', '!POPUP_ALLOWED', '!WAITPAGECOMPLETE',
+  // Profiler
+  '!FILE_PROFILER',
+  // Image recognition
+  '!IMAGEFILTER',
+  // Line number adjustment
+  '!LINENUMBER_DELTA',
 ] as const;
 
 export type SystemVariable = typeof SYSTEM_VARIABLES[number];

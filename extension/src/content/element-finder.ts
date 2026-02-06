@@ -231,8 +231,22 @@ export function parseTagSelector(selectorString: string): TagSelector | null {
       } else {
         selector.tag = selector.type;
       }
+    } else if (upperToken.startsWith('ATTR=')) {
+      // iMacros format: ATTR=NAME:value (e.g., ATTR=TXT:Percent, ATTR=ID:myid)
+      // Can also have multiple conditions: ATTR=NAME:val&&CLASS:cls
+      const attrPart = token.substring(5);
+      // Split by && for multiple conditions
+      const conditions = attrPart.split('&&');
+      for (const condition of conditions) {
+        const colonIndex = condition.indexOf(':');
+        if (colonIndex > 0) {
+          const attrName = condition.substring(0, colonIndex);
+          const attrValue = condition.substring(colonIndex + 1);
+          selector.attrs[attrName] = attrValue;
+        }
+      }
     } else if (upperToken.startsWith('ATTR:')) {
-      // Parse ATTR:name=value or ATTR:name:value (iMacros uses : as separator)
+      // Alternate format: ATTR:name=value or ATTR:name:value
       const attrPart = token.substring(5);
       const eqIndex = attrPart.indexOf('=');
       if (eqIndex > 0) {
@@ -240,7 +254,6 @@ export function parseTagSelector(selectorString: string): TagSelector | null {
         const attrValue = attrPart.substring(eqIndex + 1);
         selector.attrs[attrName] = attrValue;
       } else {
-        // iMacros format: ATTR:NAME:value (colon-separated)
         const colonIndex = attrPart.indexOf(':');
         if (colonIndex > 0) {
           const attrName = attrPart.substring(0, colonIndex);

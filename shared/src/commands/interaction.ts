@@ -53,6 +53,8 @@ export interface ElementSelector {
   xpath?: string;
   /** CSS selector */
   css?: string;
+  /** Whether this is relative positioning (POS=R<n>) */
+  relative?: boolean;
 }
 
 /**
@@ -298,19 +300,52 @@ export function parseExtractParam(extractStr: string): ExtractType {
 }
 
 /**
+ * Parsed POS parameter result
+ */
+export interface ParsedPos {
+  /** Position value (positive = forward, negative = backward) */
+  pos: number;
+  /** Whether this is relative positioning (POS=R<n>) */
+  relative: boolean;
+}
+
+/**
  * Parse POS parameter value
- * Supports: 1, 2, -1 (last), -2 (second to last), R1 (random)
+ * Supports: 1, 2, -1 (last), -2 (second to last), R1/R-1 (relative positioning)
+ *
+ * Note: POS=R<n> means relative to previous anchor element, NOT random.
+ * The "R" prefix indicates relative positioning where:
+ * - R1 means 1st match after anchor
+ * - R-1 means 1st match before anchor
+ * - R3 means 3rd match after anchor
  */
 export function parsePosParam(posStr: string): number | 'random' {
+  const parsed = parsePosParamEx(posStr);
+  // For backwards compatibility, return just the number
+  // Callers that need relative info should use parsePosParamEx
+  return parsed.pos;
+}
+
+/**
+ * Extended POS parameter parser that returns relative positioning info
+ */
+export function parsePosParamEx(posStr: string): ParsedPos {
   const trimmed = posStr.trim().toUpperCase();
 
-  // Random position
+  // Check for relative prefix (R followed by number)
   if (trimmed.startsWith('R')) {
-    return 'random';
+    const numPart = trimmed.substring(1);
+    const num = parseInt(numPart, 10);
+    if (!isNaN(num) && num !== 0) {
+      return { pos: num, relative: true };
+    }
+    // Invalid relative position (R0 or non-numeric), treat as absolute position 1
+    return { pos: 1, relative: false };
   }
 
+  // Absolute position
   const num = parseInt(trimmed, 10);
-  return isNaN(num) ? 1 : num;
+  return { pos: isNaN(num) ? 1 : num, relative: false };
 }
 
 /**
@@ -353,7 +388,9 @@ export function buildSelector(ctx: CommandContext): ElementSelector {
   // Traditional POS/TYPE/ATTR selection
   const pos = ctx.getParam('POS');
   if (pos) {
-    selector.pos = parsePosParam(ctx.expand(pos));
+    const parsed = parsePosParamEx(ctx.expand(pos));
+    selector.pos = parsed.pos;
+    selector.relative = parsed.relative;
   }
 
   const type = ctx.getParam('TYPE');

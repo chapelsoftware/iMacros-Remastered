@@ -43,6 +43,39 @@ import type {
   DOMEventType,
 } from '@shared/commands/interaction';
 
+// ===== Anchor State for Relative Positioning =====
+
+/**
+ * The anchor element for relative positioning (POS=R<n>).
+ * Each successful TAG command updates this to the found element.
+ */
+let anchorElement: Element | null = null;
+
+/**
+ * Set the anchor element for subsequent relative positioning
+ */
+export function setAnchor(element: Element | null): void {
+  anchorElement = element;
+}
+
+/**
+ * Get the current anchor element, verifying it's still in DOM
+ */
+export function getAnchor(): Element | null {
+  // Verify anchor is still in DOM
+  if (anchorElement && !anchorElement.isConnected) {
+    anchorElement = null;
+  }
+  return anchorElement;
+}
+
+/**
+ * Clear the anchor (called on navigation or macro start)
+ */
+export function clearAnchor(): void {
+  anchorElement = null;
+}
+
 // ===== Error Codes =====
 
 /**
@@ -149,14 +182,173 @@ function scrollIntoViewIfNeeded(element: Element): void {
 // ===== Selector Resolution =====
 
 /**
+ * Find elements relative to an anchor using XPath following/preceding axes
+ * This implements POS=R<n> (relative positioning)
+ */
+function findRelativeElements(
+  anchor: Element,
+  tagName: string | undefined,
+  pos: number,
+  attrString: string | undefined
+): Element | null {
+  const doc = anchor.ownerDocument;
+  if (!doc) return null;
+
+  // Build XPath: following or preceding axis based on sign of pos
+  const axis = pos > 0 ? 'following' : 'preceding';
+  const normalizedTag = tagName?.toUpperCase() || '*';
+
+  let xpath: string;
+  if (normalizedTag === '*') {
+    xpath = `${axis}::*`;
+  } else {
+    // Case-insensitive tag name matching
+    xpath = `${axis}::*[translate(local-name(),'ABCDEFGHIJKLMNOPQRSTUVWXYZ','abcdefghijklmnopqrstuvwxyz')='${normalizedTag.toLowerCase()}']`;
+  }
+
+  try {
+    const result = doc.evaluate(xpath, anchor, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE, null);
+    const nodes: Element[] = [];
+    let node: Node | null;
+
+    while ((node = result.iterateNext())) {
+      if (node instanceof Element) {
+        nodes.push(node);
+      }
+    }
+
+    // Parse attribute filter if provided
+    const attrMatcher = attrString ? createAttrMatcher(attrString) : null;
+
+    const targetCount = Math.abs(pos);
+    let count = 0;
+
+    for (const el of nodes) {
+      // Apply tag type filter (handles subtypes like INPUT:TEXT)
+      if (tagName && tagName !== '*') {
+        const colonIndex = tagName.indexOf(':');
+        if (colonIndex > 0) {
+          const mainType = tagName.substring(0, colonIndex).toUpperCase();
+          const subType = tagName.substring(colonIndex + 1).toUpperCase();
+          if (el.tagName.toUpperCase() !== mainType) continue;
+          // Check subtype
+          if (mainType === 'INPUT') {
+            const inputType = (el.getAttribute('type') || 'text').toUpperCase();
+            if (inputType !== subType && subType !== '*') continue;
+          }
+        } else if (el.tagName.toUpperCase() !== tagName.toUpperCase()) {
+          continue;
+        }
+      }
+
+      // Apply attribute filter if provided
+      if (attrMatcher && !attrMatcher(el)) {
+        continue;
+      }
+
+      count++;
+      if (count === targetCount) {
+        return el;
+      }
+    }
+  } catch (e) {
+    console.error('[iMacros] XPath evaluation error:', e);
+  }
+
+  return null;
+}
+
+/**
+ * Create an attribute matcher function from an ATTR string
+ * Handles formats like "NAME:value" or "TXT:text" or "NAME:v1&&CLASS:v2"
+ */
+function createAttrMatcher(attrStr: string): (el: Element) => boolean {
+  // Parse attribute conditions
+  const conditions: Array<{ attr: string; pattern: string }> = [];
+  const parts = attrStr.split('&&');
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex > 0) {
+      const attr = trimmed.substring(0, colonIndex).toUpperCase();
+      const pattern = trimmed.substring(colonIndex + 1);
+      conditions.push({ attr, pattern });
+    }
+  }
+
+  return (el: Element): boolean => {
+    for (const { attr, pattern } of conditions) {
+      let value: string | null = null;
+
+      // Handle special attribute names
+      if (attr === 'TXT' || attr === 'TEXT') {
+        value = (el.textContent || '').trim();
+      } else if (attr === 'CLASS') {
+        value = el.className || null;
+      } else if (attr === 'ID') {
+        value = el.id || null;
+      } else {
+        value = el.getAttribute(attr.toLowerCase());
+      }
+
+      // Match pattern (supports * wildcard)
+      if (value === null) {
+        if (pattern !== '' && pattern !== '*') return false;
+      } else {
+        if (pattern === '*') continue;
+        // Wildcard pattern matching
+        const regexPattern = pattern
+          .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*/g, '.*');
+        if (!new RegExp(`^${regexPattern}$`, 'i').test(value)) {
+          return false;
+        }
+      }
+    }
+    return true;
+  };
+}
+
+/**
+ * Options for resolving selectors
+ */
+interface ResolveSelectorOptions {
+  relative?: boolean;
+}
+
+/**
  * Resolve element selector to a find result
  * Uses frame-aware element finding to search in the currently selected frame
  */
 async function resolveSelector(
   selector: ElementSelector,
   timeout: number = 5000,
-  waitVisible: boolean = true
+  waitVisible: boolean = true,
+  options?: ResolveSelectorOptions
 ): Promise<ElementFinderResult> {
+  // Handle relative positioning
+  if (options?.relative || selector.relative) {
+    const anchor = getAnchor();
+    if (!anchor || !anchor.isConnected) {
+      // No valid anchor - return empty with helpful error
+      console.warn('[iMacros] Relative positioning (POS=R) requires a prior TAG command to set anchor');
+      return { element: null, elements: [], count: 0 };
+    }
+
+    const tagName = selector.type || '*';
+    const pos = typeof selector.pos === 'number' ? selector.pos : 1;
+
+    const element = findRelativeElements(anchor, tagName, pos, selector.attr);
+
+    if (element) {
+      return { element, elements: [element], count: 1 };
+    }
+    return { element: null, elements: [], count: 0 };
+  }
+
   // Build selector string based on selector type
   let selectorString: string;
 
@@ -455,6 +647,9 @@ function setElementContent(element: Element, content: string): boolean {
 export async function executeTagCommand(message: TagCommandMessage): Promise<DOMExecutorResult> {
   const { selector, action, timeout, waitVisible } = message.payload;
 
+  // Check if this is relative positioning
+  const isRelative = selector.relative === true;
+
   try {
     // Find the element, retrying until a visible one is found (if waitVisible)
     let element: Element | null = null;
@@ -462,7 +657,7 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
     const startTime = Date.now();
 
     while (true) {
-      const result = await resolveSelector(selector, waitVisible ? 0 : timeoutMs, false);
+      const result = await resolveSelector(selector, waitVisible ? 0 : timeoutMs, false, { relative: isRelative });
 
       if (result.element) {
         if (!waitVisible) {
@@ -485,10 +680,13 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
     }
 
     if (!element) {
+      const errorDetail = isRelative
+        ? 'Relative element not found. Ensure anchor was set by a prior TAG command.'
+        : `Element not found (or not visible): ${JSON.stringify(selector)}`;
       return {
         success: false,
         errorCode: DOM_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: `Element not found (or not visible): ${JSON.stringify(selector)}`,
+        errorMessage: errorDetail,
       };
     }
 
@@ -571,6 +769,9 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
         dispatchClick(element);
       }
     }
+
+    // Update anchor for subsequent relative positioning (POS=R<n>)
+    setAnchor(element);
 
     return {
       success: true,
@@ -917,6 +1118,13 @@ export function setupDOMExecutorListener(): void {
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    // Handle anchor management messages
+    if (message.type === 'CLEAR_ANCHOR' || message.type === 'PAGE_NAVIGATED' || message.type === 'MACRO_START') {
+      clearAnchor();
+      sendResponse({ success: true });
+      return false;
+    }
+
     // Check if this is a DOM command message
     if (message.type === 'TAG_COMMAND' ||
         message.type === 'CLICK_COMMAND' ||
@@ -1058,6 +1266,11 @@ export default {
   executeTag,
   executeClick,
   executeEvent,
+
+  // Anchor management (for relative positioning)
+  setAnchor,
+  getAnchor,
+  clearAnchor,
 
   // Error codes
   DOM_ERROR_CODES,

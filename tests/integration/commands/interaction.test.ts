@@ -14,6 +14,7 @@ import {
   parseAttrParam,
   parseExtractParam,
   parsePosParam,
+  parsePosParamEx,
   parseContentParam,
   buildSelector,
   buildAction,
@@ -965,12 +966,27 @@ describe('TAG Command Helper Functions', () => {
       expect(parsePosParam('-2')).toBe(-2);
     });
 
-    it('should parse R (random) position and return random', () => {
-      expect(parsePosParam('R')).toBe('random');
+    // Note: POS=R<n> is relative positioning (not random)
+    // R1 = 1st match after anchor, R-1 = 1st match before anchor
+    // For backwards compatibility, parsePosParam returns the numeric value
+    // To get the relative flag, use parsePosParamEx from interaction.ts
+
+    it('should parse R1 (relative position) and return 1', () => {
+      // R1 means "1st element after anchor" - returns the position number
+      expect(parsePosParam('R1')).toBe(1);
     });
 
-    it('should parse R1 (random) and return random', () => {
-      expect(parsePosParam('R1')).toBe('random');
+    it('should parse R3 (relative position) and return 3', () => {
+      expect(parsePosParam('R3')).toBe(3);
+    });
+
+    it('should parse R-2 (relative backward position) and return -2', () => {
+      expect(parsePosParam('R-2')).toBe(-2);
+    });
+
+    it('should parse R (invalid relative) and return 1', () => {
+      // "R" without a number is invalid, defaults to 1
+      expect(parsePosParam('R')).toBe(1);
     });
 
     it('should handle whitespace around position', () => {
@@ -982,7 +998,65 @@ describe('TAG Command Helper Functions', () => {
     });
 
     it('should be case-insensitive for R prefix', () => {
-      expect(parsePosParam('r')).toBe('random');
+      // lowercase 'r' without number is invalid, defaults to 1
+      expect(parsePosParam('r')).toBe(1);
+      expect(parsePosParam('r5')).toBe(5);
+    });
+  });
+
+  describe('parsePosParamEx (relative positioning)', () => {
+    it('should parse absolute position and return relative=false', () => {
+      const result = parsePosParamEx('1');
+      expect(result.pos).toBe(1);
+      expect(result.relative).toBe(false);
+    });
+
+    it('should parse negative absolute position', () => {
+      const result = parsePosParamEx('-1');
+      expect(result.pos).toBe(-1);
+      expect(result.relative).toBe(false);
+    });
+
+    it('should parse R1 as relative with pos=1', () => {
+      const result = parsePosParamEx('R1');
+      expect(result.pos).toBe(1);
+      expect(result.relative).toBe(true);
+    });
+
+    it('should parse R3 as relative with pos=3', () => {
+      const result = parsePosParamEx('R3');
+      expect(result.pos).toBe(3);
+      expect(result.relative).toBe(true);
+    });
+
+    it('should parse R-2 as relative backward with pos=-2', () => {
+      const result = parsePosParamEx('R-2');
+      expect(result.pos).toBe(-2);
+      expect(result.relative).toBe(true);
+    });
+
+    it('should parse lowercase r5 as relative', () => {
+      const result = parsePosParamEx('r5');
+      expect(result.pos).toBe(5);
+      expect(result.relative).toBe(true);
+    });
+
+    it('should treat R0 as invalid and return absolute pos=1', () => {
+      const result = parsePosParamEx('R0');
+      expect(result.pos).toBe(1);
+      expect(result.relative).toBe(false);
+    });
+
+    it('should treat R without number as invalid and return absolute pos=1', () => {
+      const result = parsePosParamEx('R');
+      expect(result.pos).toBe(1);
+      expect(result.relative).toBe(false);
+    });
+
+    it('should handle whitespace in relative position', () => {
+      const result = parsePosParamEx('  R10  ');
+      expect(result.pos).toBe(10);
+      expect(result.relative).toBe(true);
     });
   });
 

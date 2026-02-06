@@ -1293,9 +1293,13 @@ describe('Element Finder', () => {
       expect(selector!.tag).toBe('*');
     });
 
-    it('should parse POS=R for random', () => {
+    it('should parse POS=R prefix (relative positioning at higher level)', () => {
+      // Note: R prefix signals relative positioning which is handled at dom-executor level
+      // parseTagSelector treats it as 'random' for backwards compatibility,
+      // but the actual relative logic is in dom-executor.ts
       const selector = parseTagSelector('TAG POS=R1 TYPE=DIV');
       expect(selector).not.toBeNull();
+      // The element-finder level still treats R as 'random' for direct queries
       expect(selector!.pos).toBe('random');
     });
 

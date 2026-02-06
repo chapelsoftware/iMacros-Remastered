@@ -1,0 +1,9 @@
+{
+  "name": "com.imacros.nativehost",
+  "description": "iMacros Native Messaging Host",
+  "path": "C:\\Users\\Ben\\Documents\\iMacros\\imacros_for_firefox-8.9.7-fx\\iMacros-new\\native-host\\dist-electron\\win-unpacked\\iMacros Native Host.exe",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://cpnpoacahcabfofgmjbdampkgjonckfa/"
+  ]
+}

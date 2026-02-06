@@ -1,0 +1,750 @@
+/**
+ * Interaction Command Handlers for iMacros
+ *
+ * Implements handlers for:
+ * - TAG: Find and interact with elements using POS, TYPE, ATTR, CONTENT, EXTRACT, XPATH, CSS
+ * - CLICK: Click at specific X=Y coordinates
+ * - EVENT: Dispatch DOM events with TYPE parameter
+ *
+ * These commands generate messages to be sent to content scripts for execution.
+ */
+
+import {
+  CommandHandler,
+  CommandContext,
+  CommandResult,
+  IMACROS_ERROR_CODES,
+} from '../executor';
+import type { CommandType } from '../parser';
+
+// ===== Content Script Message Types =====
+
+/**
+ * Base message interface for content script communication
+ */
+export interface ContentScriptMessage {
+  /** Unique message ID */
+  id: string;
+  /** Message type */
+  type: ContentScriptMessageType;
+  /** Timestamp */
+  timestamp: number;
+}
+
+/**
+ * Types of messages sent to content scripts
+ */
+export type ContentScriptMessageType =
+  | 'TAG_COMMAND'
+  | 'CLICK_COMMAND'
+  | 'EVENT_COMMAND';
+
+/**
+ * Element selector specification for TAG command
+ */
+export interface ElementSelector {
+  /** Position (1-based index, or negative for reverse) */
+  pos?: number;
+  /** Element type/tag name (e.g., INPUT, A, DIV, *) */
+  type?: string;
+  /** Attribute selectors (e.g., "NAME:username" or "TXT:Submit") */
+  attr?: string;
+  /** XPath expression */
+  xpath?: string;
+  /** CSS selector */
+  css?: string;
+}
+
+/**
+ * TAG command action specification
+ */
+export interface TagAction {
+  /** Content to set (for inputs, textareas, selects) */
+  content?: string;
+  /** Extract data from element */
+  extract?: ExtractType;
+  /** Form action (SUBMIT, RESET) */
+  form?: 'SUBMIT' | 'RESET';
+}
+
+/**
+ * Extract types for TAG EXTRACT parameter
+ */
+export type ExtractType =
+  | 'TXT'      // Inner text
+  | 'HTM'      // Inner HTML
+  | 'HREF'     // href attribute
+  | 'TITLE'    // title attribute
+  | 'ALT'      // alt attribute
+  | 'VALUE'    // value attribute
+  | 'SRC'      // src attribute
+  | 'ID'       // id attribute
+  | 'CLASS'    // class attribute
+  | 'NAME'     // name attribute
+  | string;    // Any attribute name with ATTR: prefix
+
+/**
+ * Message for TAG command
+ */
+export interface TagCommandMessage extends ContentScriptMessage {
+  type: 'TAG_COMMAND';
+  payload: {
+    selector: ElementSelector;
+    action: TagAction;
+    /** Timeout in milliseconds */
+    timeout: number;
+    /** Whether to wait for element to be visible */
+    waitVisible: boolean;
+  };
+}
+
+/**
+ * Message for CLICK command
+ */
+export interface ClickCommandMessage extends ContentScriptMessage {
+  type: 'CLICK_COMMAND';
+  payload: {
+    /** X coordinate (relative to viewport or element) */
+    x: number;
+    /** Y coordinate (relative to viewport or element) */
+    y: number;
+    /** Optional content/button identifier */
+    content?: string;
+    /** Click type */
+    button: 'left' | 'middle' | 'right';
+    /** Click count (1=click, 2=dblclick) */
+    clickCount: number;
+    /** Modifier keys */
+    modifiers: {
+      ctrl?: boolean;
+      shift?: boolean;
+      alt?: boolean;
+      meta?: boolean;
+    };
+  };
+}
+
+/**
+ * DOM event types for EVENT command
+ */
+export type DOMEventType =
+  | 'click'
+  | 'dblclick'
+  | 'mousedown'
+  | 'mouseup'
+  | 'mouseover'
+  | 'mouseout'
+  | 'mousemove'
+  | 'mouseenter'
+  | 'mouseleave'
+  | 'contextmenu'
+  | 'keydown'
+  | 'keyup'
+  | 'keypress'
+  | 'focus'
+  | 'blur'
+  | 'change'
+  | 'input'
+  | 'submit'
+  | 'reset'
+  | 'scroll'
+  | 'wheel'
+  | 'touchstart'
+  | 'touchend'
+  | 'touchmove'
+  | 'touchcancel';
+
+/**
+ * Message for EVENT command
+ */
+export interface EventCommandMessage extends ContentScriptMessage {
+  type: 'EVENT_COMMAND';
+  payload: {
+    /** Event type to dispatch */
+    eventType: DOMEventType | string;
+    /** Element selector (optional, defaults to active element) */
+    selector?: ElementSelector;
+    /** Mouse button (for mouse events) */
+    button?: number;
+    /** Key code (for keyboard events) */
+    key?: string;
+    /** Character value (for keypress) */
+    char?: string;
+    /** Point coordinates (for mouse events) */
+    point?: { x: number; y: number };
+    /** Modifier keys */
+    modifiers?: {
+      ctrl?: boolean;
+      shift?: boolean;
+      alt?: boolean;
+      meta?: boolean;
+    };
+    /** Whether event should bubble */
+    bubbles?: boolean;
+    /** Whether event is cancelable */
+    cancelable?: boolean;
+  };
+}
+
+/**
+ * Union type for all content script messages
+ */
+export type InteractionMessage =
+  | TagCommandMessage
+  | ClickCommandMessage
+  | EventCommandMessage;
+
+/**
+ * Response from content script after executing a command
+ */
+export interface ContentScriptResponse {
+  /** Whether the command succeeded */
+  success: boolean;
+  /** Error message if failed */
+  error?: string;
+  /** Extracted data (for TAG with EXTRACT) */
+  extractedData?: string;
+  /** Element info (for debugging) */
+  elementInfo?: {
+    tagName: string;
+    id?: string;
+    className?: string;
+    rect?: { x: number; y: number; width: number; height: number };
+  };
+}
+
+// ===== Helper Functions =====
+
+/**
+ * Generate a unique message ID
+ */
+function generateMessageId(): string {
+  return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Parse ATTR parameter value
+ * Formats:
+ * - NAME:value - match name attribute
+ * - ID:value - match id attribute
+ * - TXT:value - match inner text
+ * - CLASS:value - match class name
+ * - value - match any common attribute
+ * - Multiple: NAME:foo&&CLASS:bar
+ */
+export function parseAttrParam(attrStr: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+
+  // Split by && for multiple attributes
+  const parts = attrStr.split('&&');
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+
+    // Check for known prefixes
+    const colonIndex = trimmed.indexOf(':');
+    if (colonIndex > 0) {
+      const prefix = trimmed.substring(0, colonIndex).toUpperCase();
+      const value = trimmed.substring(colonIndex + 1);
+
+      // Map common prefixes
+      switch (prefix) {
+        case 'NAME':
+        case 'ID':
+        case 'CLASS':
+        case 'HREF':
+        case 'SRC':
+        case 'ALT':
+        case 'TITLE':
+        case 'VALUE':
+        case 'TYPE':
+        case 'PLACEHOLDER':
+          attrs[prefix.toLowerCase()] = value;
+          break;
+        case 'TXT':
+          attrs['innerText'] = value;
+          break;
+        default:
+          // Custom attribute
+          attrs[prefix.toLowerCase()] = value;
+      }
+    } else {
+      // No prefix, treat as generic selector
+      attrs['selector'] = trimmed;
+    }
+  }
+
+  return attrs;
+}
+
+/**
+ * Parse EXTRACT parameter value
+ */
+export function parseExtractParam(extractStr: string): ExtractType {
+  const upper = extractStr.toUpperCase();
+
+  // Standard extract types
+  if (['TXT', 'HTM', 'HREF', 'TITLE', 'ALT', 'VALUE', 'SRC', 'ID', 'CLASS', 'NAME'].includes(upper)) {
+    return upper as ExtractType;
+  }
+
+  // Check for ATTR: prefix for custom attributes
+  if (upper.startsWith('ATTR:')) {
+    return extractStr.substring(5);
+  }
+
+  return extractStr;
+}
+
+/**
+ * Parse POS parameter value
+ * Supports: 1, 2, -1 (last), -2 (second to last), R1 (random)
+ */
+export function parsePosParam(posStr: string): number {
+  const trimmed = posStr.trim().toUpperCase();
+
+  // Random position (not fully supported, defaults to 1)
+  if (trimmed.startsWith('R')) {
+    return 1; // Will be handled specially by content script
+  }
+
+  const num = parseInt(trimmed, 10);
+  return isNaN(num) ? 1 : num;
+}
+
+/**
+ * Parse CONTENT parameter for form filling
+ * Handles special formats:
+ * - %value - dropdown option by value
+ * - #value - dropdown option by index
+ * - text - regular text input
+ * - <SP> - space character
+ * - <BR> - newline
+ */
+export function parseContentParam(contentStr: string): string {
+  return contentStr
+    .replace(/<SP>/gi, ' ')
+    .replace(/<BR>/gi, '\n')
+    .replace(/<TAB>/gi, '\t')
+    .replace(/<ENTER>/gi, '\n');
+}
+
+/**
+ * Build element selector from TAG command parameters
+ */
+export function buildSelector(ctx: CommandContext): ElementSelector {
+  const selector: ElementSelector = {};
+
+  // XPath takes precedence
+  const xpath = ctx.getParam('XPATH');
+  if (xpath) {
+    selector.xpath = ctx.expand(xpath);
+    return selector;
+  }
+
+  // CSS selector
+  const css = ctx.getParam('CSS');
+  if (css) {
+    selector.css = ctx.expand(css);
+    return selector;
+  }
+
+  // Traditional POS/TYPE/ATTR selection
+  const pos = ctx.getParam('POS');
+  if (pos) {
+    selector.pos = parsePosParam(ctx.expand(pos));
+  }
+
+  const type = ctx.getParam('TYPE');
+  if (type) {
+    selector.type = ctx.expand(type).toUpperCase();
+  }
+
+  const attr = ctx.getParam('ATTR');
+  if (attr) {
+    selector.attr = ctx.expand(attr);
+  }
+
+  return selector;
+}
+
+/**
+ * Build action from TAG command parameters
+ */
+export function buildAction(ctx: CommandContext): TagAction {
+  const action: TagAction = {};
+
+  // Content for form filling
+  const content = ctx.getParam('CONTENT');
+  if (content) {
+    action.content = parseContentParam(ctx.expand(content));
+  }
+
+  // Extract data
+  const extract = ctx.getParam('EXTRACT');
+  if (extract) {
+    action.extract = parseExtractParam(ctx.expand(extract));
+  }
+
+  // Form actions (CONTENT=<SUBMIT> or CONTENT=<RESET>)
+  if (action.content === '<SUBMIT>') {
+    action.form = 'SUBMIT';
+    delete action.content;
+  } else if (action.content === '<RESET>') {
+    action.form = 'RESET';
+    delete action.content;
+  }
+
+  return action;
+}
+
+// ===== Message Sender Interface =====
+
+/**
+ * Interface for sending messages to content scripts
+ * This should be implemented by the extension/background script
+ */
+export interface ContentScriptSender {
+  /**
+   * Send a message to the content script and wait for response
+   */
+  sendMessage(message: InteractionMessage): Promise<ContentScriptResponse>;
+}
+
+/**
+ * Default no-op sender for testing
+ */
+export const noopSender: ContentScriptSender = {
+  async sendMessage(_message: InteractionMessage): Promise<ContentScriptResponse> {
+    return {
+      success: true,
+      extractedData: undefined,
+    };
+  },
+};
+
+/**
+ * Active content script sender (set by extension)
+ */
+let activeSender: ContentScriptSender = noopSender;
+
+/**
+ * Set the active content script sender
+ */
+export function setContentScriptSender(sender: ContentScriptSender): void {
+  activeSender = sender;
+}
+
+/**
+ * Get the active content script sender
+ */
+export function getContentScriptSender(): ContentScriptSender {
+  return activeSender;
+}
+
+// ===== Command Handlers =====
+
+/**
+ * TAG command handler
+ *
+ * TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT=john
+ * TAG POS=1 TYPE=A ATTR=TXT:Click<SP>Here
+ * TAG XPATH=//input[@id='search'] CONTENT=query
+ * TAG CSS=.submit-btn EXTRACT=TXT
+ */
+export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
+  const selector = buildSelector(ctx);
+  const action = buildAction(ctx);
+
+  // Validate selector
+  if (!selector.xpath && !selector.css && !selector.type) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
+      errorMessage: 'TAG command requires XPATH, CSS, or TYPE parameter',
+    };
+  }
+
+  // Get timeout from state variables
+  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
+  const timeout = typeof timeoutStep === 'number' ? timeoutStep * 1000 : 30000;
+
+  // Build message
+  const message: TagCommandMessage = {
+    id: generateMessageId(),
+    type: 'TAG_COMMAND',
+    timestamp: Date.now(),
+    payload: {
+      selector,
+      action,
+      timeout,
+      waitVisible: true,
+    },
+  };
+
+  ctx.log('debug', `TAG: selector=${JSON.stringify(selector)}, action=${JSON.stringify(action)}`);
+
+  try {
+    // Send to content script
+    const response = await activeSender.sendMessage(message);
+
+    if (!response.success) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: response.error || 'Element not found',
+      };
+    }
+
+    // Handle extraction
+    if (action.extract && response.extractedData !== undefined) {
+      ctx.state.addExtract(response.extractedData);
+      ctx.log('info', `Extracted: ${response.extractedData}`);
+    }
+
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+      output: response.extractedData,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorMessage: `TAG command failed: ${message}`,
+    };
+  }
+};
+
+/**
+ * CLICK command handler
+ *
+ * CLICK X=100 Y=200
+ * CLICK X=50 Y=50 CONTENT=left
+ */
+export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
+  // Get coordinates
+  const xStr = ctx.getParam('X');
+  const yStr = ctx.getParam('Y');
+
+  if (!xStr || !yStr) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
+      errorMessage: 'CLICK command requires X and Y parameters',
+    };
+  }
+
+  const x = parseInt(ctx.expand(xStr), 10);
+  const y = parseInt(ctx.expand(yStr), 10);
+
+  if (isNaN(x) || isNaN(y)) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: `Invalid coordinates: X=${xStr}, Y=${yStr}`,
+    };
+  }
+
+  // Get optional parameters
+  const content = ctx.getParam('CONTENT');
+  let button: 'left' | 'middle' | 'right' = 'left';
+
+  if (content) {
+    const contentLower = ctx.expand(content).toLowerCase();
+    if (contentLower === 'middle' || contentLower === 'center') {
+      button = 'middle';
+    } else if (contentLower === 'right') {
+      button = 'right';
+    }
+  }
+
+  // Build message
+  const message: ClickCommandMessage = {
+    id: generateMessageId(),
+    type: 'CLICK_COMMAND',
+    timestamp: Date.now(),
+    payload: {
+      x,
+      y,
+      content: content ? ctx.expand(content) : undefined,
+      button,
+      clickCount: 1,
+      modifiers: {},
+    },
+  };
+
+  ctx.log('debug', `CLICK: X=${x}, Y=${y}, button=${button}`);
+
+  try {
+    const response = await activeSender.sendMessage(message);
+
+    if (!response.success) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+        errorMessage: response.error || 'Click failed',
+      };
+    }
+
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorMessage: `CLICK command failed: ${msg}`,
+    };
+  }
+};
+
+/**
+ * EVENT command handler
+ *
+ * EVENT TYPE=CLICK SELECTOR=CSS:.my-button
+ * EVENT TYPE=KEYDOWN KEY=Enter
+ * EVENT TYPE=MOUSEMOVE POINT=100,200
+ */
+export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
+  // Get event type
+  const eventTypeStr = ctx.getParam('TYPE');
+
+  if (!eventTypeStr) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
+      errorMessage: 'EVENT command requires TYPE parameter',
+    };
+  }
+
+  const eventType = ctx.expand(eventTypeStr).toLowerCase() as DOMEventType;
+
+  // Build selector if provided
+  let selector: ElementSelector | undefined;
+
+  const selectorStr = ctx.getParam('SELECTOR');
+  const xpathStr = ctx.getParam('XPATH');
+  const cssStr = ctx.getParam('CSS');
+
+  if (selectorStr || xpathStr || cssStr) {
+    selector = {};
+    if (xpathStr) {
+      selector.xpath = ctx.expand(xpathStr);
+    } else if (cssStr) {
+      selector.css = ctx.expand(cssStr);
+    } else if (selectorStr) {
+      // Parse selector format: TYPE:value (CSS:.class or XPATH://div)
+      const expanded = ctx.expand(selectorStr);
+      if (expanded.startsWith('CSS:')) {
+        selector.css = expanded.substring(4);
+      } else if (expanded.startsWith('XPATH:')) {
+        selector.xpath = expanded.substring(6);
+      } else {
+        selector.css = expanded;
+      }
+    }
+  }
+
+  // Parse additional parameters
+  const buttonStr = ctx.getParam('BUTTON');
+  const keyStr = ctx.getParam('KEY');
+  const charStr = ctx.getParam('CHAR');
+  const pointStr = ctx.getParam('POINT');
+  const modifiersStr = ctx.getParam('MODIFIERS');
+
+  // Parse point (format: x,y)
+  let point: { x: number; y: number } | undefined;
+  if (pointStr) {
+    const [px, py] = ctx.expand(pointStr).split(',').map(s => parseInt(s.trim(), 10));
+    if (!isNaN(px) && !isNaN(py)) {
+      point = { x: px, y: py };
+    }
+  }
+
+  // Parse modifiers (format: ctrl+shift or ctrl,shift)
+  const modifiers: { ctrl?: boolean; shift?: boolean; alt?: boolean; meta?: boolean } = {};
+  if (modifiersStr) {
+    const modList = ctx.expand(modifiersStr).toLowerCase().split(/[+,]/);
+    for (const mod of modList) {
+      const trimmed = mod.trim();
+      if (trimmed === 'ctrl' || trimmed === 'control') modifiers.ctrl = true;
+      if (trimmed === 'shift') modifiers.shift = true;
+      if (trimmed === 'alt') modifiers.alt = true;
+      if (trimmed === 'meta' || trimmed === 'cmd' || trimmed === 'command') modifiers.meta = true;
+    }
+  }
+
+  // Build message
+  const message: EventCommandMessage = {
+    id: generateMessageId(),
+    type: 'EVENT_COMMAND',
+    timestamp: Date.now(),
+    payload: {
+      eventType,
+      selector,
+      button: buttonStr ? parseInt(ctx.expand(buttonStr), 10) : undefined,
+      key: keyStr ? ctx.expand(keyStr) : undefined,
+      char: charStr ? ctx.expand(charStr) : undefined,
+      point,
+      modifiers: Object.keys(modifiers).length > 0 ? modifiers : undefined,
+      bubbles: true,
+      cancelable: true,
+    },
+  };
+
+  ctx.log('debug', `EVENT: type=${eventType}, selector=${JSON.stringify(selector)}`);
+
+  try {
+    const response = await activeSender.sendMessage(message);
+
+    if (!response.success) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+        errorMessage: response.error || 'Event dispatch failed',
+      };
+    }
+
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorMessage: `EVENT command failed: ${msg}`,
+    };
+  }
+};
+
+// ===== Handler Registration =====
+
+/**
+ * All interaction command handlers
+ */
+export const interactionHandlers: Partial<Record<CommandType, CommandHandler>> = {
+  TAG: tagHandler,
+  CLICK: clickHandler,
+  EVENT: eventHandler,
+  EVENTS: eventHandler, // EVENTS is alias for EVENT
+};
+
+/**
+ * Register interaction handlers with an executor
+ */
+export function registerInteractionHandlers(
+  registerFn: (type: CommandType, handler: CommandHandler) => void
+): void {
+  for (const [type, handler] of Object.entries(interactionHandlers)) {
+    if (handler) {
+      registerFn(type as CommandType, handler);
+    }
+  }
+}

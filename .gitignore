@@ -1,0 +1,65 @@
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+.tmp/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.npm/
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+native-host/dist-electron/
+
+# TypeScript compiled output
+*.d.ts.map
+*.js.map
+*.d.ts
+!native-host/src/declarations.d.ts
+
+# Compiled .js from .ts sources
+tests/**/*.js
+!tests/unit/native-host-bridge.test.js
+extension/vite.config.js
+native-host/vite.config.js
+vitest.config.js
+
+# Coverage reports
+coverage/
+
+# Python (if used)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Build artifacts
+*.bak
+*.orig

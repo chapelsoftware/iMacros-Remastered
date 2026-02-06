@@ -105,9 +105,10 @@ get_next_issue() {
     local ready_output
     ready_output=$(bd ready 2>/dev/null || true)
 
-    # Extract first issue ID (format: "1. [● P2] [task] ScriptureCipher-xxx: Title")
+    # Extract first issue ID (format: "1. [● P2] [task] prefix-xxx: Title")
+    # Pattern matches any prefix followed by alphanumeric IDs with optional dots for hierarchy
     local issue_id
-    issue_id=$(echo "$ready_output" | grep -oE 'ScriptureCipher-[a-z0-9]+' | head -1)
+    issue_id=$(echo "$ready_output" | grep -oE '[A-Za-z0-9_-]+-[a-z0-9.]+' | head -1)
 
     if [[ -z "$issue_id" ]]; then
         return 1

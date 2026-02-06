@@ -1,0 +1,56 @@
+{
+  "name": "imacros-new",
+  "version": "1.0.0",
+  "private": true,
+  "description": "iMacros for Firefox - Monorepo",
+  "workspaces": [
+    "native-host",
+    "extension",
+    "shared",
+    "tests"
+  ],
+  "scripts": {
+    "build": "npm run build:extension && npm run build:native-host",
+    "build:extension": "vite build --config extension/vite.config.ts",
+    "build:native-host": "vite build --config native-host/vite.config.ts",
+    "build:tsc": "tsc --build",
+    "build:clean": "tsc --build --clean && rm -rf extension/dist native-host/dist",
+    "dev:extension": "vite build --config extension/vite.config.ts --watch",
+    "dev:native-host": "vite build --config native-host/vite.config.ts --watch",
+    "typecheck": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:ui": "vitest --ui",
+    "build:zip": "npm run build:extension && cd extension/dist && zip -r ../store/imacros-chrome-v$(node -p \"require('../../package.json').version\").zip ."
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.18.6",
+    "@codemirror/commands": "^6.8.1",
+    "@codemirror/language": "^6.11.0",
+    "@codemirror/lint": "^6.8.5",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.36.5",
+    "@lezer/highlight": "^1.2.1",
+    "codemirror": "^6.0.1"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.3.0",
+    "@types/chrome": "^0.0.260",
+    "@types/jest": "^29.5.12",
+    "@types/jsdom": "^27.0.0",
+    "@types/node": "^20.11.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "jest": "^29.7.0",
+    "jsdom": "^28.0.0",
+    "puppeteer": "^24.37.1",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.3.3",
+    "vite": "^7.3.1",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vite-plugin-static-copy": "^3.2.0",
+    "vitest": "^4.0.18"
+  },
+  "license": "UNLICENSED"
+}

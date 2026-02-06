@@ -1,0 +1,59 @@
+' test-dialogs.iim - Exercise ONDIALOG command with alert/confirm/prompt
+' Requires: http://localhost:8080/dialogs.html
+
+URL GOTO=http://localhost:8080/dialogs.html
+
+' === Alert Dialog - Click OK ===
+ONDIALOG POS=1 BUTTON=OK
+TAG POS=1 TYPE=BUTTON ATTR=ID:alert-simple
+WAIT SECONDS=0.5
+
+' === Confirm Dialog - Click OK ===
+ONDIALOG POS=1 BUTTON=OK
+TAG POS=1 TYPE=BUTTON ATTR=ID:confirm-simple
+WAIT SECONDS=0.5
+
+' Check result shows OK/true
+TAG POS=1 TYPE=DIV ATTR=ID:result EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+
+' === Confirm Dialog - Click Cancel ===
+ONDIALOG POS=1 BUTTON=CANCEL
+TAG POS=1 TYPE=BUTTON ATTR=ID:confirm-delete
+WAIT SECONDS=0.5
+
+' Check result shows Cancel/false
+TAG POS=1 TYPE=DIV ATTR=ID:result EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' === Prompt Dialog - Enter Text ===
+ONDIALOG POS=1 BUTTON=YES CONTENT=John
+TAG POS=1 TYPE=BUTTON ATTR=ID:prompt-simple
+WAIT SECONDS=0.5
+
+' Check result shows entered text
+TAG POS=1 TYPE=DIV ATTR=ID:result EXTRACT=TXT
+SET !VAR2 {{!EXTRACT}}
+
+' === Prompt Dialog with Default - Accept Default ===
+ONDIALOG POS=1 BUTTON=OK
+TAG POS=1 TYPE=BUTTON ATTR=ID:prompt-default
+WAIT SECONDS=0.5
+
+' === Prompt Dialog - Cancel ===
+ONDIALOG POS=1 BUTTON=CANCEL
+TAG POS=1 TYPE=BUTTON ATTR=ID:prompt-number
+WAIT SECONDS=0.5
+
+' Check result shows cancelled
+TAG POS=1 TYPE=DIV ATTR=ID:result EXTRACT=TXT
+SET !VAR3 {{!EXTRACT}}
+
+' === Multi-line Alert ===
+ONDIALOG POS=1 BUTTON=OK
+TAG POS=1 TYPE=BUTTON ATTR=ID:alert-multiline
+WAIT SECONDS=0.5
+
+' === Special Characters Alert ===
+ONDIALOG POS=1 BUTTON=OK
+TAG POS=1 TYPE=BUTTON ATTR=ID:alert-special

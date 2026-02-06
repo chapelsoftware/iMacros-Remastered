@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iMacros Remastered - Demo Test Site</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+    .nav-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 16px; margin-top: 20px; }
+    .nav-card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; transition: box-shadow 0.2s; }
+    .nav-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+    .nav-card h3 { margin-top: 0; }
+    .nav-card a { color: #007bff; text-decoration: none; font-weight: bold; }
+    .nav-card p { color: #666; font-size: 14px; margin-bottom: 0; }
+    #info { background: #f8f9fa; padding: 12px; border-radius: 6px; margin-top: 20px; font-size: 14px; color: #555; }
+  </style>
+</head>
+<body>
+  <h1 id="page-title">iMacros Remastered - Demo Test Site</h1>
+  <p id="description">This site exercises every major feature of the iMacros Remastered browser extension.</p>
+
+  <div class="nav-grid">
+    <div class="nav-card">
+      <h3><a href="forms.html">Forms</a></h3>
+      <p>Text inputs, selects, checkboxes, radios, textareas, contenteditable, file inputs, multiple forms.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="extraction.html">Extraction</a></h3>
+      <p>TXT, HTM, HREF, SRC, ALT, TITLE extraction. Tables, nested elements, wildcard matching.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="navigation.html">Navigation</a></h3>
+      <p>Internal links, anchors, query params, new-tab links, BACK command testing.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="frames.html">Frames</a></h3>
+      <p>Named iframes, indexed frames, nested frames, TAG within frame context.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="dialogs.html">Dialogs</a></h3>
+      <p>Alert, confirm, prompt triggers with result display.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="dynamic.html">Dynamic Content</a></h3>
+      <p>Delayed visibility, dynamic creation, disabled→enabled transitions, simulated AJAX.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="downloads.html">Downloads</a></h3>
+      <p>Direct file downloads, JS-triggered downloads, image saving.</p>
+    </div>
+    <div class="nav-card">
+      <h3><a href="clicks.html">Clicks &amp; Events</a></h3>
+      <p>Coordinate clicks, right-click, double-click, drag-and-drop, keyboard events.</p>
+    </div>
+  </div>
+
+  <div id="info">
+    <strong>Server:</strong> Run <code>bash tests/demo-site/serve.sh</code> from the project root to start on port 8080.
+  </div>
+</body>
+</html>

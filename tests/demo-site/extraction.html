@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extraction - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background: #f0f0f0; }
+    .highlight { color: #e74c3c; font-weight: bold; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    .multi-pos span { display: inline-block; margin-right: 12px; padding: 4px 8px; background: #eef; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Data Extraction Test Page</h1>
+
+  <!-- Headings for TXT extraction -->
+  <section>
+    <h2 id="section-headings">Headings</h2>
+    <h3 class="test-heading">First Test Heading</h3>
+    <h3 class="test-heading">Second Test Heading</h3>
+    <h3 class="test-heading">Third Test Heading</h3>
+  </section>
+
+  <!-- Paragraphs with nested content -->
+  <section>
+    <h2 id="section-paragraphs">Paragraphs &amp; Nested Text</h2>
+    <p id="simple-para">This is a simple paragraph for text extraction.</p>
+    <p id="nested-para">This has <span class="highlight">nested bold text</span> inside it.</p>
+    <p id="multi-nested">Start <em>italic</em> middle <strong>bold <span>deep</span></strong> end.</p>
+  </section>
+
+  <!-- Links for HREF, TXT, TITLE extraction -->
+  <section>
+    <h2 id="section-links">Links</h2>
+    <ul>
+      <li><a id="link1" href="https://example.com" title="Example Site">Example Link</a></li>
+      <li><a id="link2" href="https://example.org/path?q=test" title="Test Query">Query Link</a></li>
+      <li><a id="link3" href="navigation.html" title="Internal Nav">Internal Navigation Link</a></li>
+      <li><a id="link4" href="mailto:test@example.com" title="Email Link">Contact Us</a></li>
+    </ul>
+  </section>
+
+  <!-- Images for SRC, ALT, TITLE extraction -->
+  <section>
+    <h2 id="section-images">Images</h2>
+    <img id="img1" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23007bff' width='100' height='100'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='14'%3EImage 1%3C/text%3E%3C/svg%3E" alt="Blue Square" title="First test image">
+    <img id="img2" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%2328a745' width='100' height='100'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='14'%3EImage 2%3C/text%3E%3C/svg%3E" alt="Green Square" title="Second test image">
+    <img id="img3" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Crect fill='%23dc3545' width='100' height='100'/%3E%3Ctext x='50' y='55' text-anchor='middle' fill='white' font-size='14'%3EImage 3%3C/text%3E%3C/svg%3E" alt="Red Square" title="Third test image">
+  </section>
+
+  <!-- Table for structured data extraction -->
+  <section>
+    <h2 id="section-table">Table Data</h2>
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Age</th>
+          <th>City</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="name-cell">Alice</td>
+          <td class="email-cell">alice@example.com</td>
+          <td class="age-cell">30</td>
+          <td class="city-cell">New York</td>
+        </tr>
+        <tr>
+          <td class="name-cell">Bob</td>
+          <td class="email-cell">bob@example.com</td>
+          <td class="age-cell">25</td>
+          <td class="city-cell">London</td>
+        </tr>
+        <tr>
+          <td class="name-cell">Charlie</td>
+          <td class="email-cell">charlie@example.com</td>
+          <td class="age-cell">35</td>
+          <td class="city-cell">Tokyo</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Elements with various attributes for ID, CLASS, NAME extraction -->
+  <section>
+    <h2 id="section-attributes">Attribute Extraction</h2>
+    <div id="attr-test-1" class="test-class primary" name="testDiv1" data-value="custom-data-1">Element with id, class, name, and data-value attributes</div>
+    <div id="attr-test-2" class="test-class secondary" name="testDiv2" data-value="custom-data-2">Another attributed element</div>
+    <input type="text" id="attr-input" name="attrInput" class="form-control" value="input-value-here">
+  </section>
+
+  <!-- innerHTML vs textContent (HTM vs TXT) -->
+  <section>
+    <h2 id="section-htm-vs-txt">HTM vs TXT Extraction</h2>
+    <div id="htm-test">This has <strong>bold</strong> and <em>italic</em> and <a href="#">a link</a> inside.</div>
+    <div id="htm-nested"><div class="inner"><span>Deeply</span> nested <b>content</b></div></div>
+  </section>
+
+  <!-- Multiple elements at different POS values -->
+  <section>
+    <h2 id="section-positions">Position (POS) Testing</h2>
+    <div class="multi-pos">
+      <span class="pos-item">Item Alpha</span>
+      <span class="pos-item">Item Beta</span>
+      <span class="pos-item">Item Gamma</span>
+      <span class="pos-item">Item Delta</span>
+      <span class="pos-item">Item Epsilon</span>
+    </div>
+  </section>
+
+  <!-- Wildcard text matching -->
+  <section>
+    <h2 id="section-wildcards">Wildcard Text Matching</h2>
+    <p class="wild-text">Product: Widget A - Price: $10.00</p>
+    <p class="wild-text">Product: Widget B - Price: $20.00</p>
+    <p class="wild-text">Product: Gadget C - Price: $15.50</p>
+    <p class="wild-text">Service: Support Plan - Price: $99.00</p>
+  </section>
+
+  <!-- SEARCH command targets -->
+  <section>
+    <h2 id="section-search">SEARCH Command Targets</h2>
+    <div id="search-target">
+      <p>Order number: ORD-12345-ABC confirmed on 2024-01-15.</p>
+      <p>Email: customer@example.com | Phone: +1-555-0123</p>
+      <p>Total amount: $1,234.56 (includes $98.76 tax)</p>
+      <p>Reference code: REF-2024-XYZ-789 for tracking.</p>
+    </div>
+  </section>
+</body>
+</html>

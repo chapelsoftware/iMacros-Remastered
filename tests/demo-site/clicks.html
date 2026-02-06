@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clicks &amp; Events - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+
+    /* Click grid */
+    .click-grid { display: grid; grid-template-columns: repeat(4, 80px); grid-template-rows: repeat(4, 80px); gap: 4px; margin: 12px 0; }
+    .grid-cell { display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white; border-radius: 4px; cursor: pointer; user-select: none; }
+
+    /* Event targets */
+    .event-target { padding: 20px; margin: 8px 0; border: 2px solid #ddd; border-radius: 6px; text-align: center; cursor: pointer; user-select: none; }
+    .event-target:hover { border-color: #007bff; }
+
+    /* Drag and drop */
+    .drag-zone { display: flex; gap: 20px; align-items: center; margin: 12px 0; }
+    .drag-item { width: 80px; height: 80px; background: #007bff; color: white; display: flex; align-items: center; justify-content: center; border-radius: 8px; cursor: grab; user-select: none; }
+    .drop-target { width: 120px; height: 120px; border: 3px dashed #ccc; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #888; }
+    .drop-target.hover { border-color: #28a745; background: #d4edda; }
+
+    /* Keyboard area */
+    #keyboard-area { padding: 20px; border: 2px solid #6c757d; border-radius: 6px; background: #f8f9fa; min-height: 60px; outline: none; }
+
+    /* Result display */
+    #result { background: #f0f8ff; border: 1px solid #b3d9ff; padding: 12px; border-radius: 6px; margin-top: 12px; font-family: monospace; font-size: 13px; min-height: 30px; max-height: 200px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Clicks &amp; Events Test Page</h1>
+
+  <!-- Coordinate click grid -->
+  <section>
+    <h2>Click Grid (Coordinate Testing)</h2>
+    <p>Click cells to test coordinate-based clicking. Each cell reports its position.</p>
+    <div class="click-grid" id="click-grid"></div>
+    <div>Last click: <span id="click-coords" style="font-family:monospace;">none</span></div>
+  </section>
+
+  <!-- Right-click target -->
+  <section>
+    <h2>Right-Click Target</h2>
+    <div class="event-target" id="right-click-target" oncontextmenu="handleRightClick(event)">
+      Right-click this area (context menu is suppressed, event is logged)
+    </div>
+  </section>
+
+  <!-- Double-click target -->
+  <section>
+    <h2>Double-Click Target</h2>
+    <div class="event-target" id="dblclick-target" ondblclick="handleDblClick(event)">
+      Double-click this area
+    </div>
+    <div>Double-click count: <span id="dblclick-count">0</span></div>
+  </section>
+
+  <!-- Drag and drop -->
+  <section>
+    <h2>Drag and Drop</h2>
+    <div class="drag-zone">
+      <div class="drag-item" id="drag-source" draggable="true">Drag Me</div>
+      <span style="font-size:24px; color:#888;">&#8594;</span>
+      <div class="drop-target" id="drop-target">Drop Here</div>
+    </div>
+    <div>Drop status: <span id="drag-status" style="font-family:monospace;">waiting</span></div>
+  </section>
+
+  <!-- Keyboard events -->
+  <section>
+    <h2>Keyboard Events</h2>
+    <p>Click the area below and press keys to capture keyboard events.</p>
+    <div id="keyboard-area" tabindex="0">Click here, then press any key...</div>
+    <div style="margin-top:8px;">
+      Last key: <span id="last-key" style="font-family:monospace;">none</span> |
+      Modifiers: <span id="key-modifiers" style="font-family:monospace;">none</span>
+    </div>
+  </section>
+
+  <!-- Mouse event details -->
+  <section>
+    <h2>Mouse Event Details</h2>
+    <div class="event-target" id="mouse-detail-target">
+      Hover, click, or interact to see event details
+    </div>
+    <div>
+      Event: <span id="mouse-event-type" style="font-family:monospace;">none</span> |
+      Button: <span id="mouse-button" style="font-family:monospace;">-</span> |
+      Position: <span id="mouse-position" style="font-family:monospace;">-</span>
+    </div>
+  </section>
+
+  <h2>Event Log</h2>
+  <div id="result">No events yet.</div>
+  <button onclick="document.getElementById('result').innerHTML=''; logCount=0;" style="padding:6px 12px; margin-top:6px; background:#6c757d; color:white; border:none; border-radius:4px; cursor:pointer;">Clear Log</button>
+
+  <script>
+    let logCount = 0;
+    const resultDiv = document.getElementById('result');
+
+    function log(msg) {
+      logCount++;
+      if (logCount === 1) resultDiv.innerHTML = '';
+      const entry = document.createElement('div');
+      entry.textContent = '[' + logCount + '] ' + msg;
+      resultDiv.appendChild(entry);
+      resultDiv.scrollTop = resultDiv.scrollHeight;
+    }
+
+    // Build click grid
+    const colors = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c','#3498db','#9b59b6','#e91e63',
+                     '#ff5722','#795548','#607d8b','#00bcd4','#8bc34a','#ff9800','#673ab7','#009688'];
+    const grid = document.getElementById('click-grid');
+    for (let i = 0; i < 16; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'grid-cell';
+      cell.style.backgroundColor = colors[i];
+      cell.textContent = (i + 1);
+      cell.dataset.index = i + 1;
+      cell.addEventListener('click', function(e) {
+        const rect = grid.getBoundingClientRect();
+        const x = Math.round(e.clientX - rect.left);
+        const y = Math.round(e.clientY - rect.top);
+        document.getElementById('click-coords').textContent = 'Cell ' + this.dataset.index + ' at X=' + x + ' Y=' + y;
+        log('Grid click: Cell ' + this.dataset.index + ' at (' + x + ',' + y + ')');
+      });
+      grid.appendChild(cell);
+    }
+
+    // Right-click
+    function handleRightClick(e) {
+      e.preventDefault();
+      log('Right-click at (' + e.offsetX + ',' + e.offsetY + ')');
+    }
+
+    // Double-click
+    let dblClickCount = 0;
+    function handleDblClick(e) {
+      dblClickCount++;
+      document.getElementById('dblclick-count').textContent = dblClickCount;
+      log('Double-click #' + dblClickCount + ' at (' + e.offsetX + ',' + e.offsetY + ')');
+    }
+
+    // Drag and drop
+    const dragSource = document.getElementById('drag-source');
+    const dropTarget = document.getElementById('drop-target');
+
+    dragSource.addEventListener('dragstart', function(e) {
+      e.dataTransfer.setData('text/plain', 'dragged');
+      log('Drag started');
+    });
+    dropTarget.addEventListener('dragover', function(e) {
+      e.preventDefault();
+      this.classList.add('hover');
+    });
+    dropTarget.addEventListener('dragleave', function(e) {
+      this.classList.remove('hover');
+    });
+    dropTarget.addEventListener('drop', function(e) {
+      e.preventDefault();
+      this.classList.remove('hover');
+      this.textContent = 'Dropped!';
+      this.style.borderColor = '#28a745';
+      this.style.background = '#d4edda';
+      document.getElementById('drag-status').textContent = 'dropped successfully';
+      log('Drop completed');
+    });
+
+    // Keyboard events
+    const kbArea = document.getElementById('keyboard-area');
+    kbArea.addEventListener('keydown', function(e) {
+      const modifiers = [];
+      if (e.ctrlKey) modifiers.push('Ctrl');
+      if (e.shiftKey) modifiers.push('Shift');
+      if (e.altKey) modifiers.push('Alt');
+      if (e.metaKey) modifiers.push('Meta');
+
+      document.getElementById('last-key').textContent = e.key + ' (code: ' + e.code + ')';
+      document.getElementById('key-modifiers').textContent = modifiers.length ? modifiers.join('+') : 'none';
+      log('Key: ' + e.key + ' code=' + e.code + (modifiers.length ? ' mods=' + modifiers.join('+') : ''));
+    });
+
+    // Mouse event details
+    const mouseTarget = document.getElementById('mouse-detail-target');
+    ['click', 'mousedown', 'mouseup', 'mouseover', 'mouseout'].forEach(function(evt) {
+      mouseTarget.addEventListener(evt, function(e) {
+        const buttons = ['Left', 'Middle', 'Right'];
+        document.getElementById('mouse-event-type').textContent = e.type;
+        document.getElementById('mouse-button').textContent = buttons[e.button] || e.button;
+        document.getElementById('mouse-position').textContent = '(' + e.offsetX + ',' + e.offsetY + ')';
+        if (e.type === 'click' || e.type === 'mousedown') {
+          log('Mouse ' + e.type + ': button=' + (buttons[e.button] || e.button) + ' at (' + e.offsetX + ',' + e.offsetY + ')');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

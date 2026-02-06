@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dynamic Content - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; margin: 4px; }
+    button:hover { opacity: 0.85; }
+    .hidden { display: none; }
+    .faded { opacity: 0; transition: opacity 1s; }
+    .visible { opacity: 1; }
+    .test-element { padding: 12px; margin: 8px 0; border-radius: 6px; border: 1px solid #ddd; }
+    .status { font-size: 12px; color: #888; margin-top: 4px; }
+    #ajax-content { background: #f0f8ff; padding: 16px; border-radius: 6px; min-height: 40px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Dynamic Content Test Page</h1>
+  <p>This page tests visibility changes, delayed elements, and dynamically created content.</p>
+
+  <!-- Auto-delayed element: hidden initially, appears after 2 seconds -->
+  <section>
+    <h2>Auto-Delayed Element (2s)</h2>
+    <p class="status">This element appears automatically 2 seconds after page load.</p>
+    <div id="delayed-auto" class="test-element hidden" style="background:#d4edda;">
+      This element appeared after a 2-second delay.
+    </div>
+  </section>
+
+  <!-- Opacity transition element -->
+  <section>
+    <h2>Opacity Transition</h2>
+    <p class="status">Fades from transparent to visible over 1 second, starting 3 seconds after page load.</p>
+    <div id="fading-element" class="test-element faded" style="background:#cce5ff;">
+      This element fades in via opacity transition.
+    </div>
+  </section>
+
+  <!-- Button-triggered dynamic element creation -->
+  <section>
+    <h2>Dynamic Element Creation</h2>
+    <button id="create-element-btn" onclick="createDynamicElement()">Create Element</button>
+    <div id="dynamic-container"></div>
+  </section>
+
+  <!-- Disabled → Enabled transition -->
+  <section>
+    <h2>Disabled to Enabled</h2>
+    <p class="status">The input and button become enabled 2.5 seconds after page load.</p>
+    <input type="text" id="delayed-input" disabled placeholder="Becomes enabled after delay" style="padding:6px; width:250px;">
+    <button id="delayed-btn" disabled onclick="document.getElementById('delayed-result').textContent='Button clicked!'">Delayed Button</button>
+    <span id="delayed-result"></span>
+  </section>
+
+  <!-- Simulated AJAX content loading -->
+  <section>
+    <h2>Simulated AJAX Content</h2>
+    <button id="load-ajax-btn" onclick="loadAjaxContent()">Load Content</button>
+    <button id="load-ajax-auto-btn" onclick="autoLoadSequence()">Auto-Load Sequence</button>
+    <div id="ajax-content">
+      <p id="ajax-placeholder">Click "Load Content" to load data...</p>
+    </div>
+  </section>
+
+  <!-- Sequential appearance (for POS + visibility testing) -->
+  <section>
+    <h2>Sequential Appearance</h2>
+    <button id="start-sequence-btn" onclick="startSequence()">Start Sequence</button>
+    <div id="sequence-container">
+      <div class="test-element hidden sequence-item" data-index="1" style="background:#f8d7da;">Sequence Item 1</div>
+      <div class="test-element hidden sequence-item" data-index="2" style="background:#d4edda;">Sequence Item 2</div>
+      <div class="test-element hidden sequence-item" data-index="3" style="background:#cce5ff;">Sequence Item 3</div>
+      <div class="test-element hidden sequence-item" data-index="4" style="background:#fff3cd;">Sequence Item 4</div>
+    </div>
+    <p class="status">Items appear one at a time, 1 second apart.</p>
+  </section>
+
+  <!-- Toggle visibility -->
+  <section>
+    <h2>Toggle Visibility</h2>
+    <button id="toggle-btn" onclick="toggleElement()">Toggle Element</button>
+    <div id="toggle-target" class="test-element" style="background:#e2e3e5;">
+      <p id="toggle-text">This element can be toggled visible/hidden.</p>
+    </div>
+  </section>
+
+  <script>
+    // Auto-delayed element: show after 2 seconds
+    setTimeout(function() {
+      document.getElementById('delayed-auto').classList.remove('hidden');
+    }, 2000);
+
+    // Opacity transition: fade in after 3 seconds
+    setTimeout(function() {
+      document.getElementById('fading-element').classList.add('visible');
+    }, 3000);
+
+    // Enable disabled elements after 2.5 seconds
+    setTimeout(function() {
+      document.getElementById('delayed-input').disabled = false;
+      document.getElementById('delayed-input').placeholder = 'Now enabled!';
+      document.getElementById('delayed-btn').disabled = false;
+    }, 2500);
+
+    // Dynamic element creation
+    let dynamicCount = 0;
+    function createDynamicElement() {
+      dynamicCount++;
+      const el = document.createElement('div');
+      el.className = 'test-element dynamic-item';
+      el.id = 'dynamic-' + dynamicCount;
+      el.style.background = '#d1ecf1';
+      el.textContent = 'Dynamically created element #' + dynamicCount;
+      document.getElementById('dynamic-container').appendChild(el);
+    }
+
+    // Simulated AJAX content
+    function loadAjaxContent() {
+      document.getElementById('ajax-placeholder').textContent = 'Loading...';
+      setTimeout(function() {
+        document.getElementById('ajax-content').innerHTML =
+          '<div id="ajax-loaded" class="test-element" style="background:#d4edda;">' +
+          '<h4>AJAX Content Loaded</h4>' +
+          '<p id="ajax-data">Server response: {"status":"ok","items":3,"timestamp":"2024-01-15T10:30:00Z"}</p>' +
+          '<ul>' +
+          '<li class="ajax-item">Loaded Item A</li>' +
+          '<li class="ajax-item">Loaded Item B</li>' +
+          '<li class="ajax-item">Loaded Item C</li>' +
+          '</ul>' +
+          '</div>';
+      }, 1500);
+    }
+
+    // Auto-load sequence
+    function autoLoadSequence() {
+      document.getElementById('ajax-content').innerHTML = '<p>Starting auto-load sequence...</p>';
+      setTimeout(function() {
+        document.getElementById('ajax-content').innerHTML += '<p id="auto-step-1" class="auto-step">Step 1: Data fetched</p>';
+      }, 500);
+      setTimeout(function() {
+        document.getElementById('ajax-content').innerHTML += '<p id="auto-step-2" class="auto-step">Step 2: Processing complete</p>';
+      }, 1000);
+      setTimeout(function() {
+        document.getElementById('ajax-content').innerHTML += '<p id="auto-step-3" class="auto-step">Step 3: All done!</p>';
+      }, 1500);
+    }
+
+    // Sequential appearance
+    function startSequence() {
+      const items = document.querySelectorAll('.sequence-item');
+      items.forEach(function(item) { item.classList.add('hidden'); });
+      items.forEach(function(item, i) {
+        setTimeout(function() { item.classList.remove('hidden'); }, (i + 1) * 1000);
+      });
+    }
+
+    // Toggle visibility
+    function toggleElement() {
+      const el = document.getElementById('toggle-target');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+      } else {
+        el.classList.add('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

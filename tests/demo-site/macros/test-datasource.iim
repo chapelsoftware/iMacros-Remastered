@@ -1,0 +1,53 @@
+' test-datasource.iim - Exercise DS CMD=READ/NEXT/RESET with sample-data.csv
+' Requires: http://localhost:8080 and sample-data.csv loaded as datasource
+
+URL GOTO=http://localhost:8080/forms.html
+
+' Set the datasource file
+SET !DATASOURCE sample-data.csv
+
+' === DS CMD=READ - Read First Row ===
+DS CMD=READ
+' !COL1=Alice, !COL2=alice@example.com, !COL3=30, !COL4=New York
+SET !VAR0 {{!COL1}}
+SET !VAR1 {{!COL2}}
+
+' Fill form with datasource values
+TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT={{!COL1}}
+TAG POS=1 TYPE=INPUT ATTR=ID:email CONTENT={{!COL2}}
+
+' === DS CMD=NEXT - Advance to Next Row ===
+DS CMD=NEXT
+' !COL1=Bob, !COL2=bob@example.com, !COL3=25, !COL4=London
+SET !VAR2 {{!COL1}}
+SET !VAR3 {{!COL4}}
+
+' Clear and refill form with second row
+TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT={{!COL1}}
+TAG POS=1 TYPE=INPUT ATTR=ID:email CONTENT={{!COL2}}
+
+' === DS CMD=NEXT - Third Row ===
+DS CMD=NEXT
+' !COL1=Charlie, !COL2=charlie@example.com, !COL3=35, !COL4=Tokyo
+SET !VAR4 {{!COL1}}
+SET !VAR5 {{!COL3}}
+
+' === DS CMD=RESET - Go Back to First Row ===
+DS CMD=RESET
+DS CMD=READ
+' Should be back to Alice
+SET !VAR6 {{!COL1}}
+
+' Verify we're back to first row
+TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT={{!COL1}}
+
+' === Loop Through All Rows ===
+DS CMD=RESET
+DS CMD=READ
+TAG POS=1 TYPE=TEXTAREA ATTR=NAME:message CONTENT={{!COL1}}<SP>-<SP>{{!COL4}}
+
+DS CMD=NEXT
+TAG POS=1 TYPE=TEXTAREA ATTR=NAME:message CONTENT={{!COL1}}<SP>-<SP>{{!COL4}}
+
+DS CMD=NEXT
+TAG POS=1 TYPE=TEXTAREA ATTR=NAME:message CONTENT={{!COL1}}<SP>-<SP>{{!COL4}}

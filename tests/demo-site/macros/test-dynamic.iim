@@ -1,0 +1,77 @@
+' test-dynamic.iim - Exercise dynamic/delayed content on dynamic.html
+' Requires: http://localhost:8080/dynamic.html
+
+URL GOTO=http://localhost:8080/dynamic.html
+
+' === Wait for Auto-Delayed Element (appears after 2s) ===
+' The TAG command should retry until the element becomes visible
+' (!TIMEOUT_TAG controls retry duration)
+SET !TIMEOUT_TAG 5
+TAG POS=1 TYPE=DIV ATTR=ID:delayed-auto EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+
+' === Wait for Opacity Transition (fades in after 3s) ===
+TAG POS=1 TYPE=DIV ATTR=ID:fading-element EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' === Dynamic Element Creation ===
+' Click button to create element
+TAG POS=1 TYPE=BUTTON ATTR=ID:create-element-btn
+
+' Wait a moment for DOM update
+WAIT SECONDS=0.5
+
+' Extract the created element
+TAG POS=1 TYPE=DIV ATTR=ID:dynamic-1 EXTRACT=TXT
+SET !VAR2 {{!EXTRACT}}
+
+' Create a second dynamic element
+TAG POS=1 TYPE=BUTTON ATTR=ID:create-element-btn
+WAIT SECONDS=0.5
+TAG POS=1 TYPE=DIV ATTR=ID:dynamic-2 EXTRACT=TXT
+
+' === Disabled to Enabled ===
+' Wait for elements to become enabled (2.5s after load)
+WAIT SECONDS=1
+TAG POS=1 TYPE=INPUT ATTR=ID:delayed-input CONTENT=enabled-input-value
+TAG POS=1 TYPE=BUTTON ATTR=ID:delayed-btn
+
+' Check button click result
+TAG POS=1 TYPE=SPAN ATTR=ID:delayed-result EXTRACT=TXT
+SET !VAR3 {{!EXTRACT}}
+
+' === Simulated AJAX Content ===
+TAG POS=1 TYPE=BUTTON ATTR=ID:load-ajax-btn
+
+' Wait for AJAX content to load (1.5s delay)
+SET !TIMEOUT_TAG 5
+TAG POS=1 TYPE=DIV ATTR=ID:ajax-loaded EXTRACT=TXT
+SET !VAR4 {{!EXTRACT}}
+
+' Extract individual AJAX items
+TAG POS=1 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
+TAG POS=2 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
+TAG POS=3 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
+
+' === Sequential Appearance ===
+TAG POS=1 TYPE=BUTTON ATTR=ID:start-sequence-btn
+
+' Wait for sequence items to appear (1s apart)
+SET !TIMEOUT_TAG 6
+TAG POS=1 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
+TAG POS=2 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
+TAG POS=3 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
+TAG POS=4 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
+
+' === Toggle Visibility ===
+' Hide the element
+TAG POS=1 TYPE=BUTTON ATTR=ID:toggle-btn
+WAIT SECONDS=0.5
+
+' Show it again
+TAG POS=1 TYPE=BUTTON ATTR=ID:toggle-btn
+WAIT SECONDS=0.5
+
+' Verify it's visible again
+TAG POS=1 TYPE=P ATTR=ID:toggle-text EXTRACT=TXT
+SET !VAR5 {{!EXTRACT}}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Frames - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    iframe { border: 2px solid #007bff; border-radius: 6px; margin: 8px 0; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    .frame-info { background: #f8f8f8; padding: 8px 12px; border-radius: 4px; font-size: 14px; color: #666; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Frames Test Page</h1>
+  <p>This page contains multiple iframes for testing FRAME F=n and FRAME NAME=name commands.</p>
+
+  <section>
+    <h2>Frame 1 (name="frame1", id="frame1")</h2>
+    <div class="frame-info">Access via: <code>FRAME NAME=frame1</code> or <code>FRAME F=1</code></div>
+    <iframe name="frame1" id="frame1" src="frame-inner.html?frame=1&color=blue" width="100%" height="200"></iframe>
+  </section>
+
+  <section>
+    <h2>Frame 2 (name="frame2", id="frame2")</h2>
+    <div class="frame-info">Access via: <code>FRAME NAME=frame2</code> or <code>FRAME F=2</code></div>
+    <iframe name="frame2" id="frame2" src="frame-inner.html?frame=2&color=green" width="100%" height="200"></iframe>
+  </section>
+
+  <section>
+    <h2>Frame 3 - Nested Frames (name="frame-outer")</h2>
+    <div class="frame-info">Access via: <code>FRAME NAME=frame-outer</code> then <code>FRAME NAME=frame-nested</code></div>
+    <iframe name="frame-outer" id="frame-outer" srcdoc='
+      <!DOCTYPE html>
+      <html>
+      <head><style>body { font-family: Arial, sans-serif; margin: 10px; background: #fff8e1; }</style></head>
+      <body>
+        <h3>Outer Frame Content</h3>
+        <p id="outer-text">This is the outer frame. Below is a nested frame:</p>
+        <iframe name="frame-nested" id="frame-nested" src="frame-inner.html?frame=nested&color=orange" width="100%" height="120" style="border:2px solid #ff9800;border-radius:4px;"></iframe>
+      </body>
+      </html>
+    ' width="100%" height="350"></iframe>
+  </section>
+
+  <section>
+    <h2>Main Page Content (F=0)</h2>
+    <div class="frame-info">Access via: <code>FRAME F=0</code> (return to main page context)</div>
+    <p id="main-page-text">This text is in the main page context, outside all frames.</p>
+    <input type="text" id="main-input" name="mainInput" placeholder="Main page input" value="">
+  </section>
+</body>
+</html>

@@ -1,0 +1,103 @@
+' test-extraction.iim - Exercise all extraction types on extraction.html
+' Requires: http://localhost:8080/extraction.html
+
+URL GOTO=http://localhost:8080/extraction.html
+
+' === Heading TXT Extraction ===
+' Extract first heading (POS=1)
+TAG POS=1 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+
+' Extract second heading (POS=2)
+TAG POS=2 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' Extract third heading (POS=3)
+TAG POS=3 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR2 {{!EXTRACT}}
+
+' === Paragraph Text Extraction ===
+' Simple paragraph
+TAG POS=1 TYPE=P ATTR=ID:simple-para EXTRACT=TXT
+
+' Nested paragraph (TXT gets full text content)
+TAG POS=1 TYPE=P ATTR=ID:nested-para EXTRACT=TXT
+
+' === HTM vs TXT Extraction ===
+' HTM includes HTML tags
+TAG POS=1 TYPE=DIV ATTR=ID:htm-test EXTRACT=HTM
+
+' TXT is text only
+TAG POS=1 TYPE=DIV ATTR=ID:htm-test EXTRACT=TXT
+
+' === Link Extractions ===
+' Extract link text (TXT)
+TAG POS=1 TYPE=A ATTR=ID:link1 EXTRACT=TXT
+
+' Extract link href (HREF)
+TAG POS=1 TYPE=A ATTR=ID:link1 EXTRACT=HREF
+
+' Extract link title (TITLE)
+TAG POS=1 TYPE=A ATTR=ID:link1 EXTRACT=TITLE
+
+' Extract second link href
+TAG POS=1 TYPE=A ATTR=ID:link2 EXTRACT=HREF
+
+' === Image Extractions ===
+' Extract image alt text
+TAG POS=1 TYPE=IMG ATTR=ID:img1 EXTRACT=ALT
+
+' Extract image src
+TAG POS=1 TYPE=IMG ATTR=ID:img1 EXTRACT=SRC
+
+' Extract image title
+TAG POS=1 TYPE=IMG ATTR=ID:img2 EXTRACT=TITLE
+
+' === Table Data Extraction ===
+' Extract table cell by class
+TAG POS=1 TYPE=TD ATTR=CLASS:name-cell EXTRACT=TXT
+TAG POS=2 TYPE=TD ATTR=CLASS:name-cell EXTRACT=TXT
+TAG POS=3 TYPE=TD ATTR=CLASS:name-cell EXTRACT=TXT
+
+' Extract email column
+TAG POS=1 TYPE=TD ATTR=CLASS:email-cell EXTRACT=TXT
+
+' === Attribute Extraction ===
+' Extract element id
+TAG POS=1 TYPE=DIV ATTR=ID:attr-test-1 EXTRACT=ID
+
+' Extract element class
+TAG POS=1 TYPE=DIV ATTR=ID:attr-test-1 EXTRACT=CLASS
+
+' Extract element name attribute
+TAG POS=1 TYPE=DIV ATTR=ID:attr-test-1 EXTRACT=NAME
+
+' === Position (POS) Testing ===
+' Extract items at various positions
+TAG POS=1 TYPE=SPAN ATTR=CLASS:pos-item EXTRACT=TXT
+TAG POS=2 TYPE=SPAN ATTR=CLASS:pos-item EXTRACT=TXT
+TAG POS=3 TYPE=SPAN ATTR=CLASS:pos-item EXTRACT=TXT
+TAG POS=4 TYPE=SPAN ATTR=CLASS:pos-item EXTRACT=TXT
+TAG POS=5 TYPE=SPAN ATTR=CLASS:pos-item EXTRACT=TXT
+
+' === Wildcard Text Matching ===
+' Match by partial text with wildcard
+TAG POS=1 TYPE=P ATTR=TXT:Product:*Widget* EXTRACT=TXT
+TAG POS=1 TYPE=P ATTR=TXT:Service:* EXTRACT=TXT
+
+' === SEARCH Command ===
+' Search for order number pattern
+SEARCH SOURCE=TXT:ORD-*-ABC
+SET !VAR3 {{!EXTRACT}}
+
+' Search for email with regex
+SEARCH SOURCE=REGEXP:[a-z]+@example\.com
+SET !VAR4 {{!EXTRACT}}
+
+' Search for dollar amount
+SEARCH SOURCE=REGEXP:\$[\d,]+\.\d{2}
+SET !VAR5 {{!EXTRACT}}
+
+' Search for reference code
+SEARCH SOURCE=TXT:REF-*-XYZ-*
+SET !VAR6 {{!EXTRACT}}

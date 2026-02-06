@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigation - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    .link-list { list-style: none; padding: 0; }
+    .link-list li { margin-bottom: 10px; padding: 8px; background: #f8f8f8; border-radius: 4px; }
+    .link-list a { color: #007bff; text-decoration: none; font-weight: bold; }
+    .link-list a:hover { text-decoration: underline; }
+    .link-list small { color: #888; display: block; margin-top: 2px; }
+    #anchor-section { margin-top: 600px; padding: 20px; background: #fff3cd; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Navigation Test Page</h1>
+
+  <section>
+    <h2>Internal Links (BACK testing)</h2>
+    <ul class="link-list">
+      <li>
+        <a href="forms.html" id="nav-forms">Go to Forms</a>
+        <small>Navigate to forms page, then BACK to return here.</small>
+      </li>
+      <li>
+        <a href="extraction.html" id="nav-extraction">Go to Extraction</a>
+        <small>Navigate to extraction page, then BACK to return here.</small>
+      </li>
+      <li>
+        <a href="index.html" id="nav-home">Go to Hub</a>
+        <small>Navigate to hub, then BACK to return here.</small>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Navigation Target Links</h2>
+    <ul class="link-list">
+      <li>
+        <a href="navigation-target.html" id="nav-target-plain">Target Page (plain)</a>
+        <small>Simple navigation to target page.</small>
+      </li>
+      <li>
+        <a href="navigation-target.html?source=nav&id=42" id="nav-target-query">Target Page (with query params)</a>
+        <small>Navigation with query parameters for URL CURRENT testing.</small>
+      </li>
+      <li>
+        <a href="navigation-target.html?filter=active&page=2&sort=name" id="nav-target-multi-query">Target Page (multiple params)</a>
+        <small>Multiple query parameters.</small>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Anchor Links</h2>
+    <ul class="link-list">
+      <li>
+        <a href="#anchor-section" id="nav-anchor">Jump to Anchor Section</a>
+        <small>In-page anchor navigation.</small>
+      </li>
+      <li>
+        <a href="navigation-target.html#section2" id="nav-target-anchor">Target Page with Anchor</a>
+        <small>Navigation to a specific anchor on another page.</small>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>New Tab Links (TAB testing)</h2>
+    <ul class="link-list">
+      <li>
+        <a href="navigation-target.html" target="_blank" id="nav-new-tab">Open Target in New Tab</a>
+        <small>Opens in new tab for TAB OPEN/CLOSE testing.</small>
+      </li>
+      <li>
+        <a href="forms.html" target="_blank" id="nav-forms-tab">Open Forms in New Tab</a>
+        <small>Opens forms page in new tab.</small>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Current Page Info</h2>
+    <div style="background:#f0f8ff; padding:12px; border-radius:6px; font-family:monospace;">
+      <div>URL: <span id="current-url"></span></div>
+      <div>Title: <span id="current-title"></span></div>
+    </div>
+  </section>
+
+  <div id="anchor-section">
+    <h2>Anchor Target Section</h2>
+    <p>You scrolled (or jumped) to this anchor section. The URL hash should now be <code>#anchor-section</code>.</p>
+    <a href="#" id="back-to-top">Back to Top</a>
+  </div>
+
+  <script>
+    document.getElementById('current-url').textContent = window.location.href;
+    document.getElementById('current-title').textContent = document.title;
+  </script>
+</body>
+</html>

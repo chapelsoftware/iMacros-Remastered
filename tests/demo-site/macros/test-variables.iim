@@ -1,0 +1,67 @@
+' test-variables.iim - Exercise SET, ADD, EVAL(), !VARn, !LOOP, !EXTRACT
+' Requires: http://localhost:8080/forms.html (for form interaction)
+
+URL GOTO=http://localhost:8080/forms.html
+
+' === SET Command ===
+' Set simple string variable
+SET !VAR0 hello
+
+' Set variable with spaces (quoted)
+SET !VAR1 "hello world"
+
+' Set numeric variable
+SET !VAR2 42
+
+' === ADD Command ===
+' Numeric addition
+SET !VAR3 10
+ADD !VAR3 5
+' !VAR3 should now be 15
+
+' String concatenation
+SET !VAR4 Hello
+ADD !VAR4 " World"
+' !VAR4 should now be "Hello World"
+
+' === Variable Expansion in TAG ===
+' Use variable in CONTENT
+SET !VAR5 testuser_from_var
+TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT={{!VAR5}}
+
+' Use variable in URL
+SET !VAR6 http://localhost:8080/extraction.html
+URL GOTO={{!VAR6}}
+WAIT SECONDS=0.5
+
+' === EVAL() Expressions ===
+' Arithmetic expression
+SET !VAR7 EVAL(10 + 20 * 2)
+' !VAR7 should be 50
+
+' Expression with variables
+SET !VAR8 EVAL({{!VAR2}} + {{!VAR3}})
+' !VAR8 should be 57 (42 + 15)
+
+' String expression
+SET !VAR9 EVAL("hello" + " " + "world")
+
+' === !EXTRACT Variable ===
+' Extract text and access via !EXTRACT
+TAG POS=1 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+
+' Multiple extractions (accumulates with [EXTRACT] delimiter)
+SET !EXTRACT NULL
+TAG POS=1 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+TAG POS=2 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+TAG POS=3 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' === !LOOP Variable ===
+' !LOOP is set by the macro runner for loop iterations
+' In single-run mode, !LOOP defaults to 1
+SET !VAR2 {{!LOOP}}
+
+' === Navigate Back ===
+URL GOTO=http://localhost:8080/index.html

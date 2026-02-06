@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Frame Inner Content</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 10px; }
+    h3 { margin-top: 0; }
+    .frame-label { display: inline-block; padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; margin-bottom: 8px; }
+    #frame-input { width: 200px; padding: 4px; }
+  </style>
+</head>
+<body>
+  <div class="frame-label" id="frame-label">Frame</div>
+  <h3 id="frame-title">Frame Content</h3>
+  <p id="frame-text">This is content inside the frame.</p>
+
+  <div style="margin-top: 8px;">
+    <label for="frame-input">Frame Input:</label>
+    <input type="text" id="frame-input" name="frameInput" placeholder="Type here inside frame">
+  </div>
+
+  <div style="margin-top: 8px;">
+    <button id="frame-btn" onclick="document.getElementById('frame-result').textContent='Button in frame clicked!'">Frame Button</button>
+    <span id="frame-result"></span>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const frameNum = params.get('frame') || '?';
+    const color = params.get('color') || '#007bff';
+
+    document.getElementById('frame-label').textContent = 'Frame ' + frameNum;
+    document.getElementById('frame-label').style.backgroundColor = color;
+    document.getElementById('frame-title').textContent = 'Content of Frame ' + frameNum;
+    document.getElementById('frame-text').textContent = 'This is content inside frame ' + frameNum + '.';
+    document.title = 'Frame ' + frameNum + ' Inner';
+  </script>
+</body>
+</html>

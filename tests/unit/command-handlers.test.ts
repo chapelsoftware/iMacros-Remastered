@@ -614,7 +614,9 @@ describe('command-handlers', () => {
       expect(params.content).toBe('col1\tcol2');
     });
 
-    it('replaces <ENTER> with newline in CONTENT', async () => {
+    it('treats <ENTER> as a key action (sets pressEnter flag)', async () => {
+      // In iMacros, <ENTER> triggers an Enter keypress after setting content,
+      // rather than inserting a newline character (use <BR> for newlines)
       const ctx = createMockCtx([
         { key: 'TYPE', value: 'INPUT' },
         { key: 'CONTENT', value: 'value<ENTER>' },
@@ -622,10 +624,13 @@ describe('command-handlers', () => {
       await handlers.TAG(ctx);
 
       const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.content).toBe('value\n');
+      expect(params.content).toBe('value');
+      expect(params.pressEnter).toBe(true);
     });
 
     it('handles multiple special tokens in CONTENT simultaneously', async () => {
+      // <SP>=space, <BR>=newline, <TAB>=tab
+      // <ENTER> is stripped from content and triggers a keypress (pressEnter=true)
       const ctx = createMockCtx([
         { key: 'TYPE', value: 'TEXTAREA' },
         { key: 'CONTENT', value: 'a<SP>b<BR>c<TAB>d<ENTER>e' },
@@ -633,7 +638,8 @@ describe('command-handlers', () => {
       await handlers.TAG(ctx);
 
       const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.content).toBe('a b\nc\td\ne');
+      expect(params.content).toBe('a b\nc\tde');
+      expect(params.pressEnter).toBe(true);
     });
 
     // ----- EXTRACT -----

@@ -12,6 +12,9 @@
  * - iimSet: Set a variable value
  * - iimGetLastExtract: Get the last extracted data
  * - iimGetLastError: Get the last error message
+ * - iimGetLastPerformance: Get timing data from last macro execution
+ * - iimGetStopwatch: Get elapsed time of a stopwatch
+ * - iimDisplay: Display a message
  * - iimStop: Stop the currently running macro
  * - iimExit: Disconnect client
  */
@@ -95,6 +98,26 @@ export interface ParsedCommand {
 }
 
 /**
+ * Performance data from the last macro execution
+ */
+export interface PerformanceData {
+  /** Total execution time in milliseconds */
+  totalTimeMs: number;
+  /** Start time as ISO 8601 string (UTC) */
+  startTime: string;
+  /** End time as ISO 8601 string (UTC) */
+  endTime: string;
+  /** Number of loops completed */
+  loopsCompleted: number;
+  /** Number of commands executed */
+  commandsExecuted: number;
+  /** Whether the macro completed successfully */
+  success: boolean;
+  /** Error code if failed (0 = success) */
+  errorCode: number;
+}
+
+/**
  * Handler interface for macro execution
  */
 export interface MacroHandler {
@@ -108,6 +131,8 @@ export interface MacroHandler {
   getLastExtract(): string;
   /** Get the last error message */
   getLastError(): string;
+  /** Get performance data from the last macro execution */
+  getLastPerformance(): PerformanceData | null;
   /** Check if a macro is currently running */
   isRunning(): boolean;
   /** Stop the currently running macro */
@@ -129,6 +154,7 @@ export class ExecutorMacroHandler implements MacroHandler {
   private variables: Map<string, string> = new Map();
   private lastExtract: string = '';
   private lastError: string = '';
+  private lastPerformance: PerformanceData | null = null;
   private running: boolean = false;
   private activeExecutor: MacroExecutor | null = null;
   private executorOptions: ExecutorOptions;
@@ -170,6 +196,10 @@ export class ExecutorMacroHandler implements MacroHandler {
     this.running = true;
     this.lastError = '';
     this.lastExtract = '';
+    this.lastPerformance = null;
+
+    const startTime = new Date();
+    let commandsExecuted = 0;
 
     try {
       // Build initial variables from iimSet calls
@@ -210,6 +240,16 @@ export class ExecutorMacroHandler implements MacroHandler {
       if (parsed.errors.length > 0) {
         const firstError = parsed.errors[0];
         this.lastError = `Line ${firstError.lineNumber}: ${firstError.message}`;
+        const endTime = new Date();
+        this.lastPerformance = {
+          totalTimeMs: endTime.getTime() - startTime.getTime(),
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          loopsCompleted: 0,
+          commandsExecuted: 0,
+          success: false,
+          errorCode: ReturnCode.ERROR,
+        };
         this.running = false;
         this.activeExecutor = null;
         return { code: ReturnCode.ERROR, data: this.lastError };
@@ -233,7 +273,20 @@ export class ExecutorMacroHandler implements MacroHandler {
         this.lastExtract = result.extractData.join('[EXTRACT]');
       }
 
-      // Capture error info
+      // Capture performance data and error info
+      const endTime = new Date();
+      const returnCode = result.success ? ReturnCode.OK : this.mapErrorCode(result.errorCode);
+
+      this.lastPerformance = {
+        totalTimeMs: result.executionTimeMs,
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        loopsCompleted: result.loopsCompleted,
+        commandsExecuted: commandsExecuted,
+        success: result.success,
+        errorCode: returnCode,
+      };
+
       if (!result.success) {
         this.lastError = result.errorMessage ?? `Error code: ${result.errorCode}`;
         this.running = false;
@@ -241,7 +294,7 @@ export class ExecutorMacroHandler implements MacroHandler {
 
         // Map iMacros error codes to SI return codes
         return {
-          code: this.mapErrorCode(result.errorCode),
+          code: returnCode,
           data: this.lastError,
         };
       }
@@ -250,14 +303,26 @@ export class ExecutorMacroHandler implements MacroHandler {
       this.activeExecutor = null;
       return { code: ReturnCode.OK };
     } catch (error) {
+      const endTime = new Date();
+      const errorCode = error instanceof Error && error.message.includes('timeout')
+        ? ReturnCode.TIMEOUT
+        : ReturnCode.ERROR;
+
+      this.lastPerformance = {
+        totalTimeMs: endTime.getTime() - startTime.getTime(),
+        startTime: startTime.toISOString(),
+        endTime: endTime.toISOString(),
+        loopsCompleted: 0,
+        commandsExecuted: commandsExecuted,
+        success: false,
+        errorCode: errorCode,
+      };
+
       this.running = false;
       this.activeExecutor = null;
       this.lastError = error instanceof Error ? error.message : String(error);
 
-      if (this.lastError.includes('timeout')) {
-        return { code: ReturnCode.TIMEOUT, data: this.lastError };
-      }
-      return { code: ReturnCode.ERROR, data: this.lastError };
+      return { code: errorCode, data: this.lastError };
     }
   }
 
@@ -275,6 +340,10 @@ export class ExecutorMacroHandler implements MacroHandler {
 
   getLastError(): string {
     return this.lastError;
+  }
+
+  getLastPerformance(): PerformanceData | null {
+    return this.lastPerformance;
   }
 
   isRunning(): boolean {
@@ -600,6 +669,9 @@ export class ScriptingInterfaceServer extends EventEmitter {
       case 'iimgetstopwatch':
         return this.handleIimGetStopwatch(args);
 
+      case 'iimgetlastperformance':
+        return this.handleIimGetLastPerformance();
+
       default:
         return {
           code: ReturnCode.UNKNOWN_COMMAND,
@@ -740,6 +812,32 @@ export class ScriptingInterfaceServer extends EventEmitter {
     const id = args.length > 0 ? args[0] : undefined;
     const elapsed = getStopwatchElapsed(id);
     return { code: ReturnCode.OK, data: String(elapsed) };
+  }
+
+  /**
+   * Handle iimGetLastPerformance command - Get performance data from last macro execution
+   *
+   * Returns timing data from the last macro run as a JSON string containing:
+   * - totalTimeMs: Total execution time in milliseconds
+   * - startTime: Start time as ISO 8601 string (UTC)
+   * - endTime: End time as ISO 8601 string (UTC)
+   * - loopsCompleted: Number of loops completed
+   * - commandsExecuted: Number of commands executed
+   * - success: Whether the macro completed successfully
+   * - errorCode: Error code if failed (1 = success)
+   */
+  private handleIimGetLastPerformance(): CommandResult {
+    const performance = this.handler.getLastPerformance();
+    if (!performance) {
+      return {
+        code: ReturnCode.OK,
+        data: '',
+      };
+    }
+    return {
+      code: ReturnCode.OK,
+      data: JSON.stringify(performance),
+    };
   }
 
   /**

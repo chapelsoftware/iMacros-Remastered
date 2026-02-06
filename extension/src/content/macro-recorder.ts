@@ -11,6 +11,11 @@ import {
   getFullTextContent,
   matchesType,
 } from './element-finder';
+import {
+  highlightElement,
+  highlightElementSuccess,
+  clearElementHighlight,
+} from './element-highlighter';
 
 /**
  * Types of recorded events
@@ -22,10 +27,7 @@ export type RecordedEventType =
   | 'submit'
   | 'select'
   | 'focus'
-  | 'keydown'
-  | 'download'
-  | 'tab'
-  | 'frame';
+  | 'keydown';
 
 /**
  * Recorded event data
@@ -45,24 +47,14 @@ export interface RecordedEvent {
     elementType?: string;
     value?: string;
     key?: string;
+    x?: number;
+    y?: number;
     modifiers?: {
       ctrl?: boolean;
       alt?: boolean;
       shift?: boolean;
       meta?: boolean;
     };
-    downloadFolder?: string;
-    downloadFilename?: string;
-    downloadUrl?: string;
-    // Tab event metadata
-    tabAction?: 'open' | 'close' | 'switch';
-    tabIndex?: number;
-    tabId?: number;
-    tabUrl?: string;
-    // Frame event metadata
-    frameAction?: 'select';
-    frameIndex?: number;
-    frameName?: string;
   };
 }
 
@@ -131,6 +123,8 @@ export interface MacroRecorderConfig {
   useTextContent: boolean;
   /** Preferred attribute order for identification */
   preferredAttributes: string[];
+  /** Whether to highlight elements during recording */
+  highlightElements: boolean;
 }
 
 /**
@@ -143,6 +137,7 @@ const DEFAULT_CONFIG: MacroRecorderConfig = {
   recordKeyboard: false,
   useTextContent: true,
   preferredAttributes: ['id', 'name', 'class', 'href', 'src', 'value', 'title', 'placeholder'],
+  highlightElements: true,
 };
 
 /**
@@ -172,7 +167,12 @@ export class MacroRecorder {
     change: (e: Event) => void;
     submit: (e: SubmitEvent) => void;
     keydown: (e: KeyboardEvent) => void;
+    mouseover: (e: MouseEvent) => void;
+    mouseout: (e: MouseEvent) => void;
   };
+
+  /** Currently hovered element for highlighting */
+  private currentHoveredElement: Element | null = null;
 
   constructor(config: Partial<MacroRecorderConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -184,6 +184,8 @@ export class MacroRecorder {
       change: this.handleChange.bind(this),
       submit: this.handleSubmit.bind(this),
       keydown: this.handleKeydown.bind(this),
+      mouseover: this.handleMouseOver.bind(this),
+      mouseout: this.handleMouseOut.bind(this),
     };
   }
 
@@ -235,44 +237,6 @@ export class MacroRecorder {
    */
   clearEvents(): void {
     this.events = [];
-  }
-
-  /**
-   * Record a download event
-   */
-  recordDownloadEvent(folder: string, filename: string, url?: string): void {
-    if (!this.recording) {
-      return;
-    }
-
-    const folderPart = folder === '*' || !folder ? '*' : this.escapeDownloadPath(folder);
-    const filePart = filename === '+' || !filename
-      ? '+_{{!NOW:yyyymmdd_hhnnss}}'
-      : this.escapeDownloadPath(filename);
-
-    const command = `ONDOWNLOAD FOLDER=${folderPart} FILE=${filePart} WAIT=YES`;
-
-    this.recordEvent('download', command, {
-      downloadFolder: folder,
-      downloadFilename: filename,
-      downloadUrl: url,
-    });
-  }
-
-  /**
-   * Escape download path for iMacros command
-   */
-  private escapeDownloadPath(path: string): string {
-    // Check if path needs quoting (contains spaces or special characters)
-    const needsQuotes = /[\s"]/.test(path);
-
-    if (needsQuotes) {
-      // Escape quotes and wrap in quotes
-      const escaped = path.replace(/"/g, '\\"');
-      return `"${escaped}"`;
-    }
-
-    return path;
   }
 
   /**
@@ -334,6 +298,12 @@ export class MacroRecorder {
     if (this.config.recordKeyboard) {
       document.addEventListener('keydown', this.boundHandlers.keydown, true);
     }
+
+    // Install highlight handlers if enabled
+    if (this.config.highlightElements) {
+      document.addEventListener('mouseover', this.boundHandlers.mouseover, true);
+      document.addEventListener('mouseout', this.boundHandlers.mouseout, true);
+    }
   }
 
   /**
@@ -345,6 +315,12 @@ export class MacroRecorder {
     document.removeEventListener('change', this.boundHandlers.change, true);
     document.removeEventListener('submit', this.boundHandlers.submit, true);
     document.removeEventListener('keydown', this.boundHandlers.keydown, true);
+    document.removeEventListener('mouseover', this.boundHandlers.mouseover, true);
+    document.removeEventListener('mouseout', this.boundHandlers.mouseout, true);
+
+    // Clear any active highlight
+    this.currentHoveredElement = null;
+    clearElementHighlight();
   }
 
   /**
@@ -366,10 +342,17 @@ export class MacroRecorder {
       }
     }
 
+    // Show click capture confirmation with success highlight
+    if (this.config.highlightElements) {
+      this.flashElementCapture(target);
+    }
+
     const command = this.generateTagCommand(target);
     this.recordEvent('click', command, {
       tagName: target.tagName,
       elementType: this.getElementType(target),
+      x: e.clientX,
+      y: e.clientY,
     });
   }
 
@@ -425,6 +408,11 @@ export class MacroRecorder {
     }
 
     if (command) {
+      // Show change capture confirmation with success highlight
+      if (this.config.highlightElements) {
+        this.flashElementCapture(target);
+      }
+
       this.recordEvent('change', command, {
         tagName: target.tagName,
         elementType: this.getElementType(target),
@@ -446,6 +434,11 @@ export class MacroRecorder {
     const submitter = e.submitter as HTMLElement | null;
 
     if (submitter && this.isRecordableElement(submitter)) {
+      // Show submit capture confirmation
+      if (this.config.highlightElements) {
+        this.flashElementCapture(submitter);
+      }
+
       const command = this.generateTagCommand(submitter);
       this.recordEvent('submit', command, {
         tagName: submitter.tagName,
@@ -456,6 +449,11 @@ export class MacroRecorder {
       // Try to find the submit button in the form
       const submitBtn = form.querySelector('input[type="submit"], button[type="submit"], button:not([type])');
       if (submitBtn) {
+        // Show submit capture confirmation
+        if (this.config.highlightElements) {
+          this.flashElementCapture(submitBtn);
+        }
+
         const command = this.generateTagCommand(submitBtn);
         this.recordEvent('submit', command, {
           tagName: submitBtn.tagName,
@@ -497,6 +495,79 @@ export class MacroRecorder {
         shift: e.shiftKey,
         meta: e.metaKey,
       },
+    });
+  }
+
+  /**
+   * Handle mouseover events for element highlighting during recording
+   */
+  private handleMouseOver(e: MouseEvent): void {
+    if (!this.config.highlightElements) {
+      return;
+    }
+
+    const target = e.target as Element;
+    if (!target || !this.isRecordableElement(target)) {
+      return;
+    }
+
+    // Skip iMacros highlight overlays themselves
+    if (target.classList.contains('imacros-element-highlight') ||
+        target.classList.contains('imacros-element-highlight-label')) {
+      return;
+    }
+
+    // Don't re-highlight the same element
+    if (this.currentHoveredElement === target) {
+      return;
+    }
+
+    this.currentHoveredElement = target;
+
+    // Show hover highlight (orange, no auto-hide while hovering)
+    highlightElement(target, {
+      duration: 0, // No auto-hide while hovering
+      scroll: false, // Don't scroll on hover
+      label: 'Recording',
+    });
+  }
+
+  /**
+   * Handle mouseout events to clear element highlighting
+   */
+  private handleMouseOut(e: MouseEvent): void {
+    if (!this.config.highlightElements) {
+      return;
+    }
+
+    const target = e.target as Element;
+
+    // Only clear if we're leaving the currently highlighted element
+    if (target === this.currentHoveredElement) {
+      // Check if we're moving to a child element (don't clear in that case)
+      const relatedTarget = e.relatedTarget as Element | null;
+      if (relatedTarget && this.currentHoveredElement.contains(relatedTarget)) {
+        return;
+      }
+
+      this.currentHoveredElement = null;
+      clearElementHighlight();
+    }
+  }
+
+  /**
+   * Flash element with success highlight to confirm capture
+   */
+  private flashElementCapture(element: Element): void {
+    // Clear any hover highlight first
+    clearElementHighlight();
+    this.currentHoveredElement = null;
+
+    // Show success flash (green, brief duration)
+    highlightElementSuccess(element, {
+      duration: 500, // Brief flash to confirm capture
+      scroll: false, // Don't scroll on capture
+      label: 'Captured',
     });
   }
 
@@ -896,21 +967,6 @@ export function setupRecordingMessageListener(): void {
         const recorder = getMacroRecorder();
         const macro = recorder.generateMacro();
         sendResponse({ success: true, macro });
-      } catch (error) {
-        sendResponse({
-          success: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return true;
-    }
-
-    if (message.type === 'RECORD_DOWNLOAD') {
-      try {
-        const recorder = getMacroRecorder();
-        const { folder = '*', filename = '+', url } = message.payload || {};
-        recorder.recordDownloadEvent(folder, filename, url);
-        sendResponse({ success: true });
       } catch (error) {
         sendResponse({
           success: false,

@@ -75,6 +75,10 @@ const activeTabs = new Map<number, TabInfo>();
 // Keep-alive interval
 let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
 
+// Recording state for capturing tab/frame events
+let isRecording: boolean = false;
+let recordingTabId: number | null = null; // The tab where recording started
+
 /**
  * Start keep-alive mechanism for service worker
  */
@@ -836,6 +840,7 @@ async function handleMessage(
 
     // Start/stop recording
     case 'RECORD_START':
+      setRecordingState(true, tabId);
       await sendToNativeHostNoWait({
         type: 'record_start',
         id: createMessageId(),
@@ -845,6 +850,7 @@ async function handleMessage(
       return { success: true };
 
     case 'RECORD_STOP':
+      setRecordingState(false);
       await sendToNativeHostNoWait({
         type: 'record_stop',
         id: createMessageId(),
@@ -1135,9 +1141,38 @@ async function handleMessage(
 // ============================================================================
 
 /**
+ * Helper to send tab event to content script during recording
+ */
+async function sendTabEventToContentScript(
+  action: 'open' | 'close' | 'switch',
+  tabIndex?: number,
+  tabId?: number,
+  url?: string
+): Promise<void> {
+  if (!isRecording || !recordingTabId) {
+    return;
+  }
+
+  try {
+    await chrome.tabs.sendMessage(recordingTabId, {
+      type: 'RECORD_TAB_EVENT',
+      payload: {
+        action,
+        tabIndex,
+        tabId,
+        url,
+      },
+    });
+    console.log('[iMacros] Tab event recorded:', action, tabIndex);
+  } catch (error) {
+    console.debug('[iMacros] Could not send tab event to content script:', error);
+  }
+}
+
+/**
  * Track tab creation
  */
-chrome.tabs.onCreated.addListener((tab) => {
+chrome.tabs.onCreated.addListener(async (tab) => {
   if (tab.id) {
     activeTabs.set(tab.id, {
       id: tab.id,
@@ -1145,15 +1180,31 @@ chrome.tabs.onCreated.addListener((tab) => {
       frameIds: new Set([0]),
     });
     console.log('[iMacros] Tab created:', tab.id);
+
+    // Record TAB OPEN event if recording
+    if (isRecording) {
+      await sendTabEventToContentScript('open', undefined, tab.id, tab.url);
+    }
   }
 });
 
 /**
  * Track tab removal
  */
-chrome.tabs.onRemoved.addListener((tabId) => {
+chrome.tabs.onRemoved.addListener(async (tabId) => {
   activeTabs.delete(tabId);
   console.log('[iMacros] Tab removed:', tabId);
+
+  // Record TAB CLOSE event if recording (unless the recording tab was closed)
+  if (isRecording && tabId !== recordingTabId) {
+    await sendTabEventToContentScript('close', undefined, tabId);
+  }
+
+  // If the recording tab was closed, stop recording
+  if (tabId === recordingTabId) {
+    setRecordingState(false);
+    console.log('[iMacros] Recording tab closed, stopping recording');
+  }
 });
 
 /**
@@ -1169,6 +1220,38 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       url: tab.url,
       frameIds: new Set([0]),
     });
+  }
+});
+
+/**
+ * Track tab activation (switching between tabs)
+ */
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  console.log('[iMacros] Tab activated:', activeInfo.tabId);
+
+  // Record TAB T=n event if recording
+  if (isRecording && recordingTabId) {
+    // Get the tab index (1-based for iMacros TAB T=n command)
+    const tabs = await chrome.tabs.query({ windowId: activeInfo.windowId });
+    const tabIndex = tabs.findIndex(t => t.id === activeInfo.tabId);
+
+    if (tabIndex >= 0) {
+      // TAB T=n is 1-based
+      await sendTabEventToContentScript('switch', tabIndex + 1, activeInfo.tabId);
+
+      // Update recordingTabId to the new active tab so events are captured there
+      recordingTabId = activeInfo.tabId;
+
+      // Start recording in the new tab as well
+      try {
+        await chrome.tabs.sendMessage(activeInfo.tabId, {
+          type: 'RECORD_START',
+          payload: {},
+        });
+      } catch {
+        // Content script might not be ready yet, that's okay
+      }
+    }
   }
 });
 
@@ -1191,6 +1274,65 @@ chrome.runtime.onConnectExternal.addListener((port) => {
   port.onDisconnect.addListener(() => {
     console.log('[iMacros] External connection closed:', port.name);
   });
+});
+
+// ============================================================================
+// Download Recording Handler
+// ============================================================================
+
+/**
+ * Set the recording state (called when recording starts/stops)
+ */
+function setRecordingState(recording: boolean, tabId?: number): void {
+  isRecording = recording;
+  recordingTabId = recording ? (tabId ?? recordingTabId) : null;
+  console.log('[iMacros] Recording state:', recording, 'Tab:', recordingTabId);
+}
+
+/**
+ * Listen for download events during recording
+ * When a download starts, send a RECORD_DOWNLOAD message to the active tab's content script
+ */
+chrome.downloads.onCreated.addListener(async (downloadItem) => {
+  if (!isRecording) {
+    return;
+  }
+
+  console.log('[iMacros] Download detected during recording:', downloadItem);
+
+  // Extract folder and filename from the download path
+  const fullPath = downloadItem.filename || '';
+  let folder = '*';
+  let filename = '+';
+
+  if (fullPath) {
+    // Split the path to get folder and filename
+    const lastSlash = Math.max(fullPath.lastIndexOf('/'), fullPath.lastIndexOf('\\'));
+    if (lastSlash >= 0) {
+      folder = fullPath.substring(0, lastSlash);
+      filename = fullPath.substring(lastSlash + 1);
+    } else {
+      filename = fullPath;
+    }
+  }
+
+  // Send download event to the active tab's content script
+  try {
+    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (activeTab?.id) {
+      await chrome.tabs.sendMessage(activeTab.id, {
+        type: 'RECORD_DOWNLOAD',
+        payload: {
+          folder,
+          filename,
+          url: downloadItem.url,
+        },
+      });
+      console.log('[iMacros] Download event sent to content script');
+    }
+  } catch (error) {
+    console.error('[iMacros] Failed to send download event to content script:', error);
+  }
 });
 
 // ============================================================================

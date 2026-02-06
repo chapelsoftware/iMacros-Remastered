@@ -12,7 +12,7 @@
  * - ONPRINT: Print dialog handling (not available in extensions)
  * - ONSECURITYDIALOG: Security dialog handling (not available in extensions)
  * - ONWEBPAGEDIALOG: Web page dialog handling (not available in extensions)
- * - PRINT: Print page command (not available in extensions)
+ * - PRINT: Print page command (now implemented in print.ts with native host + fallback)
  * - SIZE: Resize browser window (not reliably available in extensions)
  * - WINCLICK: Windows desktop click (requires native host winclick-service)
  * - DISCONNECT: Network disconnect (requires OS-specific implementation)
@@ -112,16 +112,7 @@ export const onWebPageDialogUnsupportedHandler: CommandHandler = createUnsupport
   'Web page dialog handling is not available in browser extensions'
 );
 
-/**
- * PRINT command handler (unsupported)
- *
- * The PRINT command triggers the browser print function. Browser extensions
- * cannot reliably trigger or control printing.
- */
-export const printHandler: CommandHandler = createUnsupportedHandler(
-  'PRINT',
-  'Print command is not available in browser extensions'
-);
+// PRINT command is now implemented in print.ts with native host support + fallback
 
 /**
  * SIZE command handler (unsupported)
@@ -211,7 +202,7 @@ export const unsupportedHandlers: Partial<Record<CommandType, CommandHandler>> =
   ONPRINT: onPrintUnsupportedHandler,
   ONSECURITYDIALOG: onSecurityDialogUnsupportedHandler,
   ONWEBPAGEDIALOG: onWebPageDialogUnsupportedHandler,
-  PRINT: printHandler,
+  // PRINT is now implemented in print.ts
   SIZE: sizeHandler,
   WINCLICK: winClickHandler,
   DISCONNECT: disconnectUnsupportedHandler,

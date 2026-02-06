@@ -22,7 +22,9 @@ import {
   VariableContext,
   VariableValue,
   executeSet,
+  executeSetAsync,
   executeAdd,
+  NativeEvalCallback,
 } from './variables';
 import {
   StateManager,
@@ -225,6 +227,8 @@ export interface ExecutorOptions {
   singleStep?: boolean;
   /** Callback to load datasource content when !DATASOURCE is set via SET command */
   onDatasourceLoad?: (path: string) => Promise<string> | string;
+  /** Callback for native JavaScript evaluation (used when expr-eval cannot handle the expression) */
+  onNativeEval?: NativeEvalCallback;
 }
 
 // ===== Macro Executor Class =====
@@ -268,6 +272,8 @@ export class MacroExecutor {
   private initialVariables: Record<string, VariableValue> | undefined;
   /** Callback to load datasource content when !DATASOURCE is set */
   private onDatasourceLoad?: (path: string) => Promise<string> | string;
+  /** Callback for native JavaScript evaluation */
+  private onNativeEval?: NativeEvalCallback;
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -282,6 +288,7 @@ export class MacroExecutor {
     this.singleStep = options.singleStep ?? false;
     this.errorIgnore = options.errorIgnore ?? false;
     this.onDatasourceLoad = options.onDatasourceLoad;
+    this.onNativeEval = options.onNativeEval;
 
     // Register built-in command handlers
     this.registerBuiltinHandlers();
@@ -332,13 +339,14 @@ export class MacroExecutor {
       const varName = params[0].key;
       const value = ctx.expand(params[1].rawValue || params[1].value);
 
-      const result = executeSet(ctx.variables, varName, value);
-      if ((result as any).macroError) {
+      // Use async version with native eval callback for JavaScript EVAL support
+      const result = await executeSetAsync(ctx.variables, varName, value, this.onNativeEval);
+      if (result.macroError) {
         return {
           success: true,
           errorCode: IMACROS_ERROR_CODES.OK,
           stopExecution: true,
-          errorMessage: (result as any).errorMessage,
+          errorMessage: result.errorMessage,
         };
       }
       if (!result.success) {

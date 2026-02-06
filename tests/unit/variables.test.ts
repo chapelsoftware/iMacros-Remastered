@@ -11,9 +11,12 @@ import {
   VariableContext,
   createVariableContext,
   executeSet,
+  executeSetAsync,
   executeAdd,
   parseSetValue,
   evaluateExpression,
+  evaluateExpressionAsync,
+  NativeEvalCallback,
 } from '@shared/variables';
 
 describe('Variable System Unit Tests', () => {
@@ -1272,6 +1275,140 @@ describe('Variable System Unit Tests', () => {
       expect(ctx.get('!COL10')).toBe('val10');
       // Column count should reflect actual number passed
       expect(ctx.get('!DATASOURCE_COLUMNS')).toBe(15);
+    });
+  });
+
+  describe('evaluateExpressionAsync()', () => {
+    it('should evaluate simple math expressions without nativeEval', async () => {
+      const result = await evaluateExpressionAsync('1 + 2', ctx);
+      expect(result.value).toBe(3);
+    });
+
+    it('should expand variables in expressions', async () => {
+      ctx.set('!VAR0', '10');
+      const result = await evaluateExpressionAsync('{{!VAR0}} + 5', ctx);
+      expect(result.value).toBe(15);
+    });
+
+    it('should fall back to nativeEval for JavaScript expressions', async () => {
+      const nativeEval: NativeEvalCallback = async (expr) => {
+        // Simulate JS evaluation
+        if (expr.includes('s.replace')) {
+          return { success: true, value: '123' };
+        }
+        return { success: false, value: 0, error: 'Unknown expression' };
+      };
+
+      ctx.set('!EXTRACT', '1%2%3%');
+      const result = await evaluateExpressionAsync(
+        "var s='{{!EXTRACT}}'; s.replace(/%/g, '')",
+        ctx,
+        nativeEval
+      );
+      expect(result.value).toBe('123');
+    });
+
+    it('should return 0 when both expr-eval and nativeEval fail', async () => {
+      const nativeEval: NativeEvalCallback = async () => ({
+        success: false,
+        value: 0,
+        error: 'Eval failed'
+      });
+
+      const result = await evaluateExpressionAsync(
+        'invalid javascript syntax {{',
+        ctx,
+        nativeEval
+      );
+      expect(result.value).toBe(0);
+    });
+
+    it('should handle MacroError from nativeEval for JS-only expressions', async () => {
+      // Use an expression that expr-eval cannot parse, forcing it to try nativeEval
+      const nativeEval: NativeEvalCallback = async () => ({
+        success: false,
+        value: 0,
+        error: 'Intentional stop',
+        isMacroError: true
+      });
+
+      const result = await evaluateExpressionAsync(
+        'function(){throw new Error();}()',
+        ctx,
+        nativeEval
+      );
+      expect(result.isMacroError).toBe(true);
+      expect(result.errorMessage).toBe('Intentional stop');
+    });
+
+    it('should return empty string for empty expressions', async () => {
+      const result = await evaluateExpressionAsync('', ctx);
+      expect(result.value).toBe(0);
+    });
+
+    it('should strip quotes from expression', async () => {
+      const result = await evaluateExpressionAsync('"5 + 3"', ctx);
+      expect(result.value).toBe(8);
+    });
+  });
+
+  describe('executeSetAsync()', () => {
+    it('should execute SET with EVAL using nativeEval callback', async () => {
+      const nativeEval: NativeEvalCallback = async (expr) => {
+        // Simulate JavaScript string replacement
+        if (expr.includes('replace')) {
+          return { success: true, value: 'cleaned_value' };
+        }
+        return { success: false, value: 0 };
+      };
+
+      ctx.set('!EXTRACT', 'raw%value%');
+      const result = await executeSetAsync(
+        ctx,
+        '!VAR0',
+        'EVAL("var s=\'{{!EXTRACT}}\'; s.replace(/%/g, \'\')")',
+        nativeEval
+      );
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('cleaned_value');
+    });
+
+    it('should work without nativeEval for simple math', async () => {
+      const result = await executeSetAsync(ctx, '!VAR0', 'EVAL(1+2)');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe(3);
+    });
+
+    it('should handle literal values without EVAL', async () => {
+      const result = await executeSetAsync(ctx, '!VAR0', 'hello world');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('hello world');
+    });
+
+    it('should handle !CLIPBOARD value', async () => {
+      ctx.setClipboard('clipboard content');
+      const result = await executeSetAsync(ctx, '!VAR0', '!CLIPBOARD');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('clipboard content');
+    });
+
+    it('should handle MacroError from nativeEval for JS-only expressions', async () => {
+      // Use an expression that expr-eval cannot parse, forcing it to try nativeEval
+      const nativeEval: NativeEvalCallback = async () => ({
+        success: false,
+        value: 0,
+        error: 'User stopped macro',
+        isMacroError: true
+      });
+
+      const result = await executeSetAsync(
+        ctx,
+        '!VAR0',
+        'EVAL((function(){throw new Error();}()))',
+        nativeEval
+      );
+      expect(result.macroError).toBe(true);
+      expect(result.errorMessage).toBe('User stopped macro');
     });
   });
 });

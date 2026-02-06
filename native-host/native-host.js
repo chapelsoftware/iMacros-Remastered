@@ -3,15 +3,13 @@
  * iMacros Native Messaging Host
  *
  * This is the main entry point for native messaging.
- * It handles all communication with the browser extension and spawns
- * the Electron app for UI features (tray icon, dialogs, etc.)
+ * It handles all communication with the browser extension via the
+ * native messaging protocol (4-byte length-prefixed JSON over stdio).
  */
 
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { spawn } = require('child_process');
-const net = require('net');
 
 // Import shared library and local modules
 let sharedLib;
@@ -35,10 +33,6 @@ try {
 const MACROS_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Macros');
 const DATASOURCES_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Datasources');
 const DOWNLOADS_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Downloads');
-const IPC_PIPE_NAME = process.platform === 'win32'
-  ? '\\\\.\\pipe\\imacros-native-host'
-  : '/tmp/imacros-native-host.sock';
-
 // Ensure directories exist
 [MACROS_DIR, DATASOURCES_DIR, DOWNLOADS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) {
@@ -67,9 +61,6 @@ const stdin = process.stdin;
 const stdout = process.stdout;
 
 let messageBuffer = Buffer.alloc(0);
-let electronProcess = null;
-let ipcServer = null;
-let ipcClient = null;
 let currentStatus = 'idle';
 
 // Macro execution state
@@ -140,128 +131,11 @@ function readMessage() {
   }
 }
 
-// ============================================================================
-// IPC Communication with Electron
-// ============================================================================
-
 /**
- * Send a message to the Electron UI process
- */
-function sendToElectron(message) {
-  if (ipcClient && !ipcClient.destroyed) {
-    const data = JSON.stringify(message) + '\n';
-    ipcClient.write(data);
-    log('Sent to Electron:', message.type);
-  }
-}
-
-/**
- * Update the tray status in Electron
+ * Update the current status
  */
 function updateTrayStatus(status) {
   currentStatus = status;
-  sendToElectron({ type: 'status', status });
-}
-
-/**
- * Start the IPC server for Electron communication
- */
-function startIPCServer() {
-  // Clean up old socket file on Unix
-  if (process.platform !== 'win32' && fs.existsSync(IPC_PIPE_NAME)) {
-    fs.unlinkSync(IPC_PIPE_NAME);
-  }
-
-  ipcServer = net.createServer((socket) => {
-    log('Electron connected via IPC');
-    ipcClient = socket;
-
-    // Send current status
-    sendToElectron({ type: 'status', status: currentStatus });
-
-    socket.on('data', (data) => {
-      // Handle messages from Electron (e.g., tray menu actions)
-      const lines = data.toString().split('\n').filter(l => l.trim());
-      for (const line of lines) {
-        try {
-          const message = JSON.parse(line);
-          handleElectronMessage(message);
-        } catch (e) {
-          log('Failed to parse Electron message:', e);
-        }
-      }
-    });
-
-    socket.on('close', () => {
-      log('Electron disconnected');
-      ipcClient = null;
-    });
-
-    socket.on('error', (err) => {
-      log('IPC socket error:', err);
-    });
-  });
-
-  ipcServer.listen(IPC_PIPE_NAME, () => {
-    log('IPC server listening on:', IPC_PIPE_NAME);
-    // Now spawn Electron
-    spawnElectron();
-  });
-
-  ipcServer.on('error', (err) => {
-    log('IPC server error:', err);
-  });
-}
-
-/**
- * Handle messages from Electron (tray menu actions, etc.)
- */
-function handleElectronMessage(message) {
-  log('Received from Electron:', message.type);
-
-  switch (message.type) {
-    case 'quit':
-      cleanup();
-      process.exit(0);
-      break;
-
-    case 'show_folder':
-      // Could open file explorer to macros folder
-      break;
-
-    default:
-      log('Unknown Electron message:', message.type);
-  }
-}
-
-/**
- * Spawn the Electron UI process
- */
-function spawnElectron() {
-  const electronPath = path.join(__dirname, 'dist-electron', 'win-unpacked', 'iMacros Native Host.exe');
-
-  if (!fs.existsSync(electronPath)) {
-    log('Electron app not found at:', electronPath);
-    return;
-  }
-
-  log('Spawning Electron:', electronPath);
-
-  electronProcess = spawn(electronPath, ['--ipc-mode', IPC_PIPE_NAME], {
-    detached: false,
-    stdio: 'ignore',  // Don't inherit stdio - Electron will use IPC
-    windowsHide: false
-  });
-
-  electronProcess.on('error', (err) => {
-    log('Failed to spawn Electron:', err);
-    electronProcess = null;
-  });
-
-  electronProcess.on('exit', (code) => {
-    log('Electron exited with code:', code);
-    electronProcess = null;
-  });
 }
 
 /**
@@ -269,24 +143,6 @@ function spawnElectron() {
  */
 function cleanup() {
   log('Cleaning up...');
-
-  if (electronProcess) {
-    electronProcess.kill();
-    electronProcess = null;
-  }
-
-  if (ipcServer) {
-    ipcServer.close();
-    ipcServer = null;
-  }
-
-  if (process.platform !== 'win32' && fs.existsSync(IPC_PIPE_NAME)) {
-    try {
-      fs.unlinkSync(IPC_PIPE_NAME);
-    } catch (e) {
-      // Ignore
-    }
-  }
 }
 
 // ============================================================================
@@ -615,13 +471,7 @@ function handleMessage(message) {
       break;
 
     case 'browse_folder':
-      // Request Electron to show folder picker
-      if (ipcClient) {
-        // TODO: Implement native folder picker via Electron
-        sendResponse(message.id, 'folder_selected', { path: MACROS_DIR });
-      } else {
-        sendResponse(message.id, 'folder_selected', { path: MACROS_DIR });
-      }
+      sendResponse(message.id, 'folder_selected', { path: MACROS_DIR });
       break;
 
     case 'execute':
@@ -680,14 +530,6 @@ process.on('SIGTERM', () => {
   cleanup();
   process.exit(0);
 });
-
-// Optionally start IPC server and spawn Electron (only if Electron binary exists)
-const electronPath = path.join(__dirname, 'dist-electron', 'win-unpacked', 'iMacros Native Host.exe');
-if (fs.existsSync(electronPath)) {
-  startIPCServer();
-} else {
-  log('Electron app not found, running in stdio-only mode');
-}
 
 // Send ready message to extension
 sendMessage({

@@ -2,23 +2,10 @@
  * Tests for Credential Storage Service
  * native-host/src/services/credential-storage.ts
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
-
-// Mock electron module BEFORE importing CredentialStorageService.
-// The source code does both `import { app } from 'electron'` and
-// `require('electron').safeStorage`. We provide a full mock so the
-// module-level code doesn't throw.
-vi.mock('electron', () => ({
-  app: {
-    getPath: vi.fn(() => '/tmp/test-electron-userdata'),
-  },
-  safeStorage: {
-    isEncryptionAvailable: () => false,
-  },
-}));
 
 import {
   CredentialStorageService,
@@ -45,7 +32,6 @@ afterEach(() => {
 function createService(overrides: Record<string, unknown> = {}) {
   return new CredentialStorageService({
     storagePath,
-    useSafeStorage: false,
     ...overrides,
   });
 }
@@ -442,7 +428,6 @@ describe('Credential Storage Service', () => {
       const storagePath2 = path.join(tmpDir, 'import.enc');
       const service2 = new CredentialStorageService({
         storagePath: storagePath2,
-        useSafeStorage: false,
       });
 
       const importResult = service2.importEncryptedVariables(exported);
@@ -472,7 +457,6 @@ describe('Credential Storage Service', () => {
       const otherPath = path.join(tmpDir, 'other.enc');
       const otherService = new CredentialStorageService({
         storagePath: otherPath,
-        useSafeStorage: false,
       });
       otherService.encryptVariable('NEW', 'newval', 'p2');
       const exported = otherService.exportEncryptedVariables();
@@ -589,13 +573,8 @@ describe('Credential Storage Service', () => {
       expect(result.data).toBe('');
     });
 
-    it('should report safeStorage as unavailable when useSafeStorage is false', () => {
-      const service = createService();
-      expect(service.isSafeStorageAvailable()).toBe(false);
-    });
-
     it('should use factory function createCredentialStorage', () => {
-      const service = createCredentialStorage({ storagePath, useSafeStorage: false });
+      const service = createCredentialStorage({ storagePath });
       expect(service).toBeInstanceOf(CredentialStorageService);
       expect(service.hasMasterPassword()).toBe(false);
     });

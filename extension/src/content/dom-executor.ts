@@ -299,11 +299,14 @@ function createAttrMatcher(attrStr: string): (el: Element) => boolean {
         if (pattern !== '' && pattern !== '*') return false;
       } else {
         if (pattern === '*') continue;
-        // Wildcard pattern matching
-        const regexPattern = pattern
+        // Wildcard pattern matching (like original iMacros)
+        let regexPattern = pattern
           .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
           .replace(/\*/g, '.*');
-        if (!new RegExp(`^${regexPattern}$`, 'i').test(value)) {
+        // Replace spaces with \s+ to match any whitespace
+        regexPattern = regexPattern.replace(/ /g, '\\s+');
+        // Allow leading/trailing whitespace
+        if (!new RegExp(`^\\s*${regexPattern}\\s*$`, 'i').test(value)) {
           return false;
         }
       }

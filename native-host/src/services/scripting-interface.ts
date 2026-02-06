@@ -315,57 +315,6 @@ export class ExecutorMacroHandler implements MacroHandler {
 }
 
 /**
- * Default macro handler implementation (placeholder).
- * For backward compatibility. Use ExecutorMacroHandler for real execution.
- */
-export class DefaultMacroHandler implements MacroHandler {
-  private variables: Map<string, string> = new Map();
-  private lastExtract: string = '';
-  private lastError: string = '';
-  private running: boolean = false;
-
-  async play(macroNameOrContent: string, timeout?: number): Promise<CommandResult> {
-    this.running = true;
-    this.lastError = '';
-    this.lastExtract = '';
-
-    try {
-      console.log(`[SI] Executing macro: ${macroNameOrContent}`);
-      this.running = false;
-      return { code: ReturnCode.OK };
-    } catch (error) {
-      this.running = false;
-      this.lastError = error instanceof Error ? error.message : String(error);
-      return { code: ReturnCode.ERROR, data: this.lastError };
-    }
-  }
-
-  setVariable(name: string, value: string): void {
-    this.variables.set(name, value);
-  }
-
-  getVariable(name: string): string | undefined {
-    return this.variables.get(name);
-  }
-
-  getLastExtract(): string {
-    return this.lastExtract;
-  }
-
-  getLastError(): string {
-    return this.lastError;
-  }
-
-  isRunning(): boolean {
-    return this.running;
-  }
-
-  stop(): void {
-    this.running = false;
-  }
-}
-
-/**
  * TCP Scripting Interface Server
  *
  * Provides external program control of iMacros through a TCP socket interface.
@@ -395,7 +344,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
       debug: config.debug ?? false,
     };
 
-    this.handler = handler ?? new DefaultMacroHandler();
+    this.handler = handler ?? new ExecutorMacroHandler();
   }
 
   /**

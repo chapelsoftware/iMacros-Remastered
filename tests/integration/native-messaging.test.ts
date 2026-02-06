@@ -163,21 +163,21 @@ describe('Native Messaging Integration Tests', () => {
   });
 
   describe('Connection Establishment', () => {
-    it('should handle ping/pong handshake for connection verification', () => {
+    it('should handle ping/pong handshake for connection verification', async () => {
       const pingMessage: RequestMessage = {
         type: 'ping',
         id: createMessageId(),
         timestamp: createTimestamp(),
       };
 
-      const response = handleMessage(pingMessage);
+      const response = await handleMessage(pingMessage);
 
       expect(response.type).toBe('pong');
       expect(response.timestamp).toBeDefined();
       expect(response.id).toBeDefined();
     });
 
-    it('should respond immediately to ping requests', () => {
+    it('should respond immediately to ping requests', async () => {
       const beforeTimestamp = Date.now();
       const pingMessage: RequestMessage = {
         type: 'ping',
@@ -185,7 +185,7 @@ describe('Native Messaging Integration Tests', () => {
         timestamp: createTimestamp(),
       };
 
-      const response = handleMessage(pingMessage);
+      const response = await handleMessage(pingMessage);
       const afterTimestamp = Date.now();
 
       expect(response.type).toBe('pong');
@@ -193,7 +193,7 @@ describe('Native Messaging Integration Tests', () => {
       expect(response.timestamp).toBeLessThanOrEqual(afterTimestamp);
     });
 
-    it('should handle multiple sequential connection requests', () => {
+    it('should handle multiple sequential connection requests', async () => {
       const responses: ResponseMessage[] = [];
 
       for (let i = 0; i < 5; i++) {
@@ -202,7 +202,7 @@ describe('Native Messaging Integration Tests', () => {
           id: `ping-${i}`,
           timestamp: createTimestamp(),
         };
-        responses.push(handleMessage(pingMessage));
+        responses.push(await handleMessage(pingMessage));
       }
 
       expect(responses.length).toBe(5);
@@ -213,7 +213,7 @@ describe('Native Messaging Integration Tests', () => {
   });
 
   describe('Message Relay Between Extension and Host', () => {
-    it('should relay ping message from extension to host and return pong', () => {
+    it('should relay ping message from extension to host and return pong', async () => {
       // Extension creates a ping message
       const extensionMessage = sendMessage('ping');
       expect(extensionMessage.type).toBe('ping');
@@ -221,18 +221,17 @@ describe('Native Messaging Integration Tests', () => {
       expect(extensionMessage.timestamp).toBeDefined();
 
       // Host receives and processes the message
-      const hostResponse = handleMessage(extensionMessage);
+      const hostResponse = await handleMessage(extensionMessage);
       expect(hostResponse.type).toBe('pong');
     });
 
-    it('should relay execute message from extension to host and return result', () => {
+    it('should relay execute message from extension to host and return result', async () => {
       // Extension creates an execute message with payload
-      const extensionMessage = sendMessage('execute', { script: 'test.iim' });
+      const extensionMessage = sendMessage('execute', { script: 'VERSION BUILD=1\nURL GOTO=https://example.com' });
       expect(extensionMessage.type).toBe('execute');
-      expect(extensionMessage.payload).toEqual({ script: 'test.iim' });
 
       // Host receives and processes the message
-      const hostResponse = handleMessage(extensionMessage);
+      const hostResponse = await handleMessage(extensionMessage);
       expect(hostResponse.type).toBe('result');
       expect(hostResponse.payload).toBeDefined();
     });
@@ -274,10 +273,10 @@ describe('Native Messaging Integration Tests', () => {
       );
     });
 
-    it('should complete full round-trip message relay', () => {
+    it('should complete full round-trip message relay', async () => {
       // Simulate full message flow:
       // 1. Extension creates message
-      const requestMessage = sendMessage('execute', { action: 'run' });
+      const requestMessage = sendMessage('execute', { script: 'VERSION BUILD=1' });
 
       // 2. Encode for transport (as if sending over stdin)
       const encodedRequest = encodeMessage(requestMessage as ResponseMessage);
@@ -287,7 +286,7 @@ describe('Native Messaging Integration Tests', () => {
       expect(parsedRequest).not.toBeNull();
 
       // 4. Host processes message
-      const response = handleMessage(parsedRequest!.message);
+      const response = await handleMessage(parsedRequest!.message);
 
       // 5. Encode response for transport (as if sending over stdout)
       const encodedResponse = encodeMessage(response);
@@ -300,14 +299,14 @@ describe('Native Messaging Integration Tests', () => {
   });
 
   describe('Error Handling for Malformed Messages', () => {
-    it('should handle unknown message type gracefully', () => {
+    it('should handle unknown message type gracefully', async () => {
       const unknownMessage = {
         type: 'unknown',
         id: createMessageId(),
         timestamp: createTimestamp(),
       } as unknown as Message;
 
-      const response = handleMessage(unknownMessage);
+      const response = await handleMessage(unknownMessage);
 
       expect(response.type).toBe('error');
       expect(response.error).toBe('Unknown message type');
@@ -323,7 +322,7 @@ describe('Native Messaging Integration Tests', () => {
       expect(() => parseMessage(buffer)).toThrow();
     });
 
-    it('should handle message with missing required fields', () => {
+    it('should handle message with missing required fields', async () => {
       // Message without type field
       const incompleteMessage = {
         id: createMessageId(),
@@ -331,13 +330,13 @@ describe('Native Messaging Integration Tests', () => {
       } as Message;
 
       // The handleMessage should handle this gracefully
-      const response = handleMessage(incompleteMessage);
+      const response = await handleMessage(incompleteMessage);
 
       // Should return error for undefined message type
       expect(response.type).toBe('error');
     });
 
-    it('should handle message with null payload gracefully', () => {
+    it('should handle message with null payload gracefully', async () => {
       const messageWithNullPayload: RequestMessage = {
         type: 'execute',
         id: createMessageId(),
@@ -345,7 +344,7 @@ describe('Native Messaging Integration Tests', () => {
         payload: null,
       };
 
-      const response = handleMessage(messageWithNullPayload);
+      const response = await handleMessage(messageWithNullPayload);
 
       // Should still process the message
       expect(['result', 'error']).toContain(response.type);
@@ -407,20 +406,23 @@ describe('Native Messaging Integration Tests', () => {
         timestamp: createTimestamp(),
       };
 
-      const response = handleMessage(pingMessage);
+      const response = await handleMessage(pingMessage);
 
       expect(response.type).toBe('pong');
     });
 
-    it('should maintain connection through multiple message exchanges', () => {
+    it('should maintain connection through multiple message exchanges', async () => {
       const messages: Message[] = [
         { type: 'ping', id: '1', timestamp: createTimestamp() },
-        { type: 'execute', id: '2', timestamp: createTimestamp(), payload: {} },
+        { type: 'execute', id: '2', timestamp: createTimestamp(), payload: { script: 'VERSION BUILD=1' } },
         { type: 'ping', id: '3', timestamp: createTimestamp() },
-        { type: 'execute', id: '4', timestamp: createTimestamp(), payload: { cmd: 'test' } },
+        { type: 'execute', id: '4', timestamp: createTimestamp(), payload: { script: 'VERSION BUILD=1' } },
       ];
 
-      const responses = messages.map(msg => handleMessage(msg));
+      const responses: ResponseMessage[] = [];
+      for (const msg of messages) {
+        responses.push(await handleMessage(msg));
+      }
 
       expect(responses[0].type).toBe('pong');
       expect(responses[1].type).toBe('result');
@@ -437,9 +439,9 @@ describe('Native Messaging Integration Tests', () => {
           type: i % 2 === 0 ? 'ping' : 'execute',
           id: `rapid-${i}`,
           timestamp: createTimestamp(),
-          payload: i % 2 === 1 ? { index: i } : undefined,
+          payload: i % 2 === 1 ? { script: 'VERSION BUILD=1' } : undefined,
         };
-        responses.push(handleMessage(message));
+        responses.push(await handleMessage(message));
       }
 
       expect(responses.length).toBe(messageCount);
@@ -450,7 +452,7 @@ describe('Native Messaging Integration Tests', () => {
       });
     });
 
-    it('should handle connection state after error', () => {
+    it('should handle connection state after error', async () => {
       // Send a message that triggers error
       const errorMessage = {
         type: 'invalid',
@@ -458,7 +460,7 @@ describe('Native Messaging Integration Tests', () => {
         timestamp: createTimestamp(),
       } as unknown as Message;
 
-      const errorResponse = handleMessage(errorMessage);
+      const errorResponse = await handleMessage(errorMessage);
       expect(errorResponse.type).toBe('error');
 
       // Verify connection still works after error
@@ -468,11 +470,11 @@ describe('Native Messaging Integration Tests', () => {
         timestamp: createTimestamp(),
       };
 
-      const recoveryResponse = handleMessage(pingMessage);
+      const recoveryResponse = await handleMessage(pingMessage);
       expect(recoveryResponse.type).toBe('pong');
     });
 
-    it('should handle interleaved message types', () => {
+    it('should handle interleaved message types', async () => {
       const sequence = [
         { type: 'ping', expected: 'pong' },
         { type: 'execute', expected: 'result' },
@@ -482,17 +484,17 @@ describe('Native Messaging Integration Tests', () => {
         { type: 'ping', expected: 'pong' },
       ];
 
-      sequence.forEach(({ type, expected }, index) => {
+      for (const [index, { type, expected }] of sequence.entries()) {
         const message = {
           type,
           id: `seq-${index}`,
           timestamp: createTimestamp(),
-          payload: type === 'execute' ? { data: index } : undefined,
+          payload: type === 'execute' ? { script: 'VERSION BUILD=1' } : undefined,
         } as Message;
 
-        const response = handleMessage(message);
+        const response = await handleMessage(message);
         expect(response.type).toBe(expected);
-      });
+      }
     });
   });
 
@@ -565,29 +567,29 @@ describe('Native Messaging Integration Tests', () => {
   });
 
   describe('All Message Types', () => {
-    it('should handle ping message type', () => {
+    it('should handle ping message type', async () => {
       const message: RequestMessage = {
         type: 'ping',
         id: createMessageId(),
         timestamp: createTimestamp(),
       };
 
-      const response = handleMessage(message);
+      const response = await handleMessage(message);
       expect(response.type).toBe('pong');
     });
 
-    it('should handle execute message type', () => {
+    it('should handle execute message type', async () => {
       const message: RequestMessage = {
         type: 'execute',
         id: createMessageId(),
         timestamp: createTimestamp(),
         payload: {
-          script: 'test.iim',
+          script: 'VERSION BUILD=1\nSET !VAR1 value1',
           variables: { VAR1: 'value1' },
         },
       };
 
-      const response = handleMessage(message);
+      const response = await handleMessage(message);
       expect(response.type).toBe('result');
       expect(response.payload).toBeDefined();
     });

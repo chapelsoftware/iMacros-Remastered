@@ -3,6 +3,9 @@
  */
 import { createMessageId, createTimestamp } from '@shared/index';
 
+let isRecording = false;
+let selectedMacro: string | null = null;
+
 /**
  * Send a message to the background script
  */
@@ -70,13 +73,81 @@ function initializeSidePanel(): void {
     }
   });
 
-  document.getElementById('btn-record')?.addEventListener('click', () => {
-    setStatus('Recording not yet implemented');
+  document.getElementById('btn-record')?.addEventListener('click', async () => {
+    if (!isRecording) {
+      isRecording = true;
+      setStatus('Recording...');
+      try {
+        await sendToBackground('START_RECORDING');
+      } catch (error) {
+        setStatus('Failed to start recording: ' + String(error));
+        isRecording = false;
+      }
+    } else {
+      isRecording = false;
+      setStatus('Recording stopped');
+      try {
+        await sendToBackground('RECORD_STOP');
+      } catch (error) {
+        setStatus('Failed to stop recording: ' + String(error));
+      }
+    }
   });
 
-  document.getElementById('btn-play')?.addEventListener('click', () => {
-    setStatus('Playback not yet implemented');
+  document.getElementById('btn-play')?.addEventListener('click', async () => {
+    if (!selectedMacro) {
+      setStatus('No macro selected');
+      return;
+    }
+    setStatus('Playing macro: ' + selectedMacro);
+    try {
+      await sendToBackground('PLAY_MACRO', { path: selectedMacro, loop: false });
+      setStatus('Macro finished: ' + selectedMacro);
+    } catch (error) {
+      setStatus('Playback failed: ' + String(error));
+    }
   });
+
+  // Load macros into the list
+  loadMacros();
+}
+
+/**
+ * Load macros from background and populate the macro list
+ */
+async function loadMacros(): Promise<void> {
+  const listEl = document.getElementById('macro-list');
+  if (!listEl) return;
+
+  try {
+    const response = (await sendToBackground('GET_MACROS')) as {
+      macros?: { path: string; name: string }[];
+    };
+    const macros = response?.macros ?? [];
+
+    if (macros.length === 0) {
+      listEl.innerHTML = '<li class="empty">No macros available</li>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    for (const macro of macros) {
+      const li = document.createElement('li');
+      li.textContent = macro.name ?? macro.path;
+      li.dataset.path = macro.path;
+      li.addEventListener('click', () => {
+        // Remove active class from all items
+        listEl.querySelectorAll('li').forEach((el) => el.classList.remove('active'));
+        li.classList.add('active');
+        selectedMacro = macro.path;
+        setStatus('Selected: ' + (macro.name ?? macro.path));
+      });
+      listEl.appendChild(li);
+    }
+  } catch (error) {
+    listEl.innerHTML = '<li class="empty">Failed to load macros</li>';
+    console.error('Failed to load macros:', error);
+  }
 }
 
 /**

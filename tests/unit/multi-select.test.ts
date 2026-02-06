@@ -1,26 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { parseMultiSelectValues } from '@extension/content/dom-executor';
 
-// Import the parseMultiSelectValues helper - it's not exported, so we test the logic
 describe('Multiple select (%"val1":%"val2")', () => {
-  function parseMultiSelectValues(content: string): string[] {
-    const values: string[] = [];
-    const tokens = content.split(':%');
-    for (const token of tokens) {
-      let val = token.trim();
-      if (val.startsWith('%')) {
-        val = val.substring(1);
-      }
-      if ((val.startsWith('"') && val.endsWith('"')) ||
-          (val.startsWith("'") && val.endsWith("'"))) {
-        val = val.slice(1, -1);
-      }
-      if (val) {
-        values.push(val);
-      }
-    }
-    return values;
-  }
-
   it('parses single value', () => {
     expect(parseMultiSelectValues('%"val1"')).toEqual(['val1']);
   });

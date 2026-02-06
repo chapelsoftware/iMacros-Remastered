@@ -44,17 +44,6 @@ function sendToBackground(type: string, payload?: unknown): Promise<unknown> {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Content script received message:', message);
 
-  if (message.type === 'execute') {
-    // Handle macro execution in page context
-    try {
-      const result = executeInPage(message.payload);
-      sendResponse({ success: true, result });
-    } catch (error) {
-      sendResponse({ success: false, error: String(error) });
-    }
-    return true;
-  }
-
   // Handle dialog configuration messages
   if (message.type === 'DIALOG_CONFIG') {
     try {
@@ -112,15 +101,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
-
-/**
- * Execute an action in the page context
- */
-function executeInPage(action: unknown): unknown {
-  // Placeholder for macro execution logic
-  console.log('Executing in page:', action);
-  return { executed: true };
-}
 
 /**
  * Inject a custom event listener for page communication

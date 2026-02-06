@@ -1,7 +1,13 @@
 /**
  * Extension content script - runs in web page context
  */
-import { createMessageId, createTimestamp } from '@shared/index';
+// Inlined to avoid @shared chunk import — content scripts can't use ESM imports
+function createMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+function createTimestamp(): number {
+  return Date.now();
+}
 import {
   initializeDialogInterceptor,
   setupDialogMessageListener,
@@ -42,6 +48,12 @@ function sendToBackground(type: string, payload?: unknown): Promise<unknown> {
  * Listen for messages from the background script
  */
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Content script readiness check
+  if (message.type === 'PING') {
+    sendResponse({ ready: true });
+    return true;
+  }
+
   console.log('Content script received message:', message);
 
   // Handle dialog configuration messages
@@ -99,7 +111,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  return true;
+  // Let other listeners (DOM executor) handle unrecognized messages
+  return false;
 });
 
 /**

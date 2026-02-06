@@ -244,6 +244,7 @@ function createBrowserBridge(sendMessage, createMessageId) {
         content: params.content,
         extract: params.extract,
         form: params.form,
+        pressEnter: params.pressEnter,
       },
       timeout: params.timeout || 30000,
       waitVisible: params.waitVisible !== false,

@@ -6,6 +6,18 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
+import {
+  createExecutor,
+  MacroExecutor,
+  IMACROS_ERROR_CODES,
+} from '@shared/executor';
+import {
+  registerNavigationHandlers,
+  setBrowserBridge,
+  BrowserBridge,
+  BrowserOperationMessage,
+  BrowserOperationResponse,
+} from '@shared/commands/navigation';
 
 /**
  * Mock browser navigation context
@@ -436,5 +448,918 @@ describe('Navigation Commands Integration Tests', () => {
       expect(context.history).toContain('https://second-tab.com');
       expect(context.history).toContain('https://third-tab.com');
     });
+  });
+});
+
+/**
+ * URL Command Handler Integration Tests via MacroExecutor
+ *
+ * Tests the real urlHandler from navigation.ts through the MacroExecutor
+ * pipeline with a mock BrowserBridge. This verifies that URL GOTO navigates
+ * via the bridge (background.ts tab API) and URL CURRENT stores the page
+ * URL in !URLCURRENT.
+ */
+describe('URL Handler via MacroExecutor (with mock BrowserBridge)', () => {
+  let executor: MacroExecutor;
+  let mockBridge: BrowserBridge;
+  let sentMessages: BrowserOperationMessage[];
+
+  beforeEach(() => {
+    sentMessages = [];
+
+    // Create a mock BrowserBridge that records messages and returns success
+    mockBridge = {
+      sendMessage: vi.fn(async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+
+        if (message.type === 'navigate') {
+          return { success: true };
+        }
+
+        if (message.type === 'getCurrentUrl') {
+          return {
+            success: true,
+            data: { url: 'https://current-page.example.com/path' },
+          };
+        }
+
+        return { success: true };
+      }),
+    };
+
+    setBrowserBridge(mockBridge);
+
+    executor = createExecutor();
+    registerNavigationHandlers(executor);
+  });
+
+  afterEach(() => {
+    // Clear the bridge so it does not leak between tests
+    setBrowserBridge(null as unknown as BrowserBridge);
+  });
+
+  it('URL GOTO=<url> sends navigate message via BrowserBridge and sets !URLCURRENT', async () => {
+    executor.loadMacro('URL GOTO=https://example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a navigate message
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('navigate');
+    expect((msg as { url: string }).url).toBe('https://example.com');
+
+    // Verify !URLCURRENT is stored
+    expect(result.variables['!URLCURRENT']).toBe('https://example.com');
+  });
+
+  it('URL GOTO with variable expansion resolves variable before navigating', async () => {
+    const script = [
+      'SET !VAR1 https://expanded.example.com',
+      'URL GOTO={{!VAR1}}',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+
+    // The bridge should have received the expanded URL
+    const navigateMsg = sentMessages.find(m => m.type === 'navigate');
+    expect(navigateMsg).toBeDefined();
+    expect((navigateMsg as { url: string }).url).toBe('https://expanded.example.com');
+
+    // !URLCURRENT should contain the expanded URL
+    expect(result.variables['!URLCURRENT']).toBe('https://expanded.example.com');
+  });
+
+  it('URL CURRENT sends getCurrentUrl message and stores result in !URLCURRENT', async () => {
+    executor.loadMacro('URL CURRENT');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a getCurrentUrl message
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('getCurrentUrl');
+
+    // Verify !URLCURRENT is stored with the bridge response data
+    expect(result.variables['!URLCURRENT']).toBe('https://current-page.example.com/path');
+  });
+
+  it('URL without GOTO or CURRENT returns MISSING_PARAMETER error', async () => {
+    executor.loadMacro('URL');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+    expect(result.errorMessage).toMatch(/GOTO|CURRENT/i);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('URL GOTO returns PAGE_TIMEOUT error when bridge returns failure', async () => {
+    // Override the mock to return failure for navigate
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Connection timed out',
+    });
+
+    executor.loadMacro('URL GOTO=https://unreachable.example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.PAGE_TIMEOUT);
+    expect(result.errorMessage).toContain('Connection timed out');
+  });
+
+  it('URL CURRENT returns SCRIPT_ERROR when bridge returns failure', async () => {
+    // Override the mock to return failure for getCurrentUrl
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Tab not available',
+    });
+
+    executor.loadMacro('URL CURRENT');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Tab not available');
+  });
+
+  it('URL GOTO followed by URL CURRENT updates !URLCURRENT for both', async () => {
+    const navigatedUrl = 'https://navigated.example.com';
+    const currentUrl = 'https://current-after-nav.example.com';
+
+    // Replace the bridge with a custom one that tracks messages and returns
+    // different responses for navigate vs getCurrentUrl
+    const localMessages: BrowserOperationMessage[] = [];
+    const localBridge: BrowserBridge = {
+      sendMessage: vi.fn(async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        localMessages.push(message);
+        if (message.type === 'navigate') {
+          return { success: true };
+        }
+        if (message.type === 'getCurrentUrl') {
+          return { success: true, data: { url: currentUrl } };
+        }
+        return { success: true };
+      }),
+    };
+    setBrowserBridge(localBridge);
+
+    const script = [
+      `URL GOTO=${navigatedUrl}`,
+      'URL CURRENT',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+
+    // Both navigate and getCurrentUrl should have been sent
+    expect(localMessages.length).toBe(2);
+    expect(localMessages[0].type).toBe('navigate');
+    expect(localMessages[1].type).toBe('getCurrentUrl');
+
+    // !URLCURRENT should reflect the URL CURRENT result (last write wins)
+    expect(result.variables['!URLCURRENT']).toBe(currentUrl);
+  });
+
+  it('URL GOTO with bridge exception is caught and reported as failure', async () => {
+    // Override the mock to throw an error
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('Bridge disconnected')
+    );
+
+    executor.loadMacro('URL GOTO=https://example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.PAGE_TIMEOUT);
+    expect(result.errorMessage).toContain('Bridge disconnected');
+  });
+});
+
+/**
+ * BACK and REFRESH Command Handler Integration Tests via MacroExecutor
+ *
+ * Tests the backHandler and refreshHandler from navigation.ts through the
+ * MacroExecutor pipeline with a mock BrowserBridge. BACK sends a 'goBack'
+ * message to navigate browser history. REFRESH sends a 'refresh' message
+ * to reload the current page.
+ */
+describe('BACK and REFRESH Handlers via MacroExecutor (with mock BrowserBridge)', () => {
+  let executor: MacroExecutor;
+  let mockBridge: BrowserBridge;
+  let sentMessages: BrowserOperationMessage[];
+
+  beforeEach(() => {
+    sentMessages = [];
+
+    // Create a mock BrowserBridge that records messages and returns success
+    mockBridge = {
+      sendMessage: vi.fn(async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        return { success: true };
+      }),
+    };
+
+    setBrowserBridge(mockBridge);
+
+    executor = createExecutor();
+    registerNavigationHandlers(executor);
+  });
+
+  afterEach(() => {
+    // Clear the bridge so it does not leak between tests
+    setBrowserBridge(null as unknown as BrowserBridge);
+  });
+
+  // --- BACK command tests ---
+
+  it('BACK sends goBack message via BrowserBridge and succeeds', async () => {
+    executor.loadMacro('BACK');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a goBack message
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('goBack');
+    // Verify message has required id and timestamp fields
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  it('BACK returns SCRIPT_ERROR when bridge returns failure', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'No history entries available',
+    });
+
+    executor.loadMacro('BACK');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('No history entries available');
+  });
+
+  it('BACK returns SCRIPT_ERROR when bridge throws an exception', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('Bridge connection lost')
+    );
+
+    executor.loadMacro('BACK');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Bridge connection lost');
+  });
+
+  // --- REFRESH command tests ---
+
+  it('REFRESH sends refresh message via BrowserBridge and succeeds', async () => {
+    executor.loadMacro('REFRESH');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a refresh message
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('refresh');
+    // Verify message has required id and timestamp fields
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  it('REFRESH returns SCRIPT_ERROR when bridge returns failure', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Page reload blocked by policy',
+    });
+
+    executor.loadMacro('REFRESH');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Page reload blocked by policy');
+  });
+
+  it('REFRESH returns SCRIPT_ERROR when bridge throws an exception', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error('Extension context invalidated')
+    );
+
+    executor.loadMacro('REFRESH');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Extension context invalidated');
+  });
+
+  // --- Sequence tests ---
+
+  it('URL GOTO followed by BACK sends navigate then goBack messages in order', async () => {
+    const script = [
+      'URL GOTO=https://example.com/page1',
+      'BACK',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Both messages should have been sent in order
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect((sentMessages[0] as { url: string }).url).toBe('https://example.com/page1');
+    expect(sentMessages[1].type).toBe('goBack');
+  });
+
+  it('URL GOTO followed by REFRESH sends navigate then refresh messages in order', async () => {
+    const script = [
+      'URL GOTO=https://example.com/dashboard',
+      'REFRESH',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Both messages should have been sent in order
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect((sentMessages[0] as { url: string }).url).toBe('https://example.com/dashboard');
+    expect(sentMessages[1].type).toBe('refresh');
+  });
+
+  it('URL GOTO + BACK + REFRESH executes all three commands in sequence', async () => {
+    const script = [
+      'URL GOTO=https://example.com/start',
+      'BACK',
+      'REFRESH',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // All three messages should have been sent in order
+    expect(sentMessages.length).toBe(3);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect((sentMessages[0] as { url: string }).url).toBe('https://example.com/start');
+    expect(sentMessages[1].type).toBe('goBack');
+    expect(sentMessages[2].type).toBe('refresh');
+  });
+
+  it('multi-step navigation: two GOTOs then BACK then REFRESH', async () => {
+    const script = [
+      'URL GOTO=https://example.com/page1',
+      'URL GOTO=https://example.com/page2',
+      'BACK',
+      'REFRESH',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(sentMessages.length).toBe(4);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect((sentMessages[0] as { url: string }).url).toBe('https://example.com/page1');
+    expect(sentMessages[1].type).toBe('navigate');
+    expect((sentMessages[1] as { url: string }).url).toBe('https://example.com/page2');
+    expect(sentMessages[2].type).toBe('goBack');
+    expect(sentMessages[3].type).toBe('refresh');
+  });
+
+  it('BACK failure in a sequence stops execution (errorIgnore off)', async () => {
+    // First call (navigate) succeeds, second call (goBack) fails
+    // Use mockImplementationOnce so that sentMessages is still populated
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(async (msg: BrowserOperationMessage) => {
+        sentMessages.push(msg);
+        return { success: true };
+      })
+      .mockImplementationOnce(async (msg: BrowserOperationMessage) => {
+        sentMessages.push(msg);
+        return { success: false, error: 'Cannot go back' };
+      });
+
+    const script = [
+      'URL GOTO=https://example.com',
+      'BACK',
+      'REFRESH',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Cannot go back');
+
+    // REFRESH should NOT have been called since BACK failed and errorIgnore is off
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect(sentMessages[1].type).toBe('goBack');
+  });
+});
+
+/**
+ * FRAME Command Handler Integration Tests via MacroExecutor
+ *
+ * Tests the frameHandler from navigation.ts through the MacroExecutor
+ * pipeline with a mock BrowserBridge. FRAME F=n selects a frame by index
+ * (0 = main document). FRAME NAME=x selects a frame by name. Both send
+ * a 'selectFrame' message to the browser bridge.
+ */
+describe('FRAME Handler via MacroExecutor (with mock BrowserBridge)', () => {
+  let executor: MacroExecutor;
+  let mockBridge: BrowserBridge;
+  let sentMessages: BrowserOperationMessage[];
+
+  beforeEach(() => {
+    sentMessages = [];
+
+    // Create a mock BrowserBridge that records messages and returns success
+    mockBridge = {
+      sendMessage: vi.fn(async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        return { success: true };
+      }),
+    };
+
+    setBrowserBridge(mockBridge);
+
+    executor = createExecutor();
+    registerNavigationHandlers(executor);
+  });
+
+  afterEach(() => {
+    // Clear the bridge so it does not leak between tests
+    setBrowserBridge(null as unknown as BrowserBridge);
+  });
+
+  // --- FRAME F=n tests ---
+
+  it('FRAME F=1 sends selectFrame with frameIndex=1 and succeeds', async () => {
+    executor.loadMacro('FRAME F=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a selectFrame message with frameIndex=1
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameIndex?: number }).frameIndex).toBe(1);
+  });
+
+  it('FRAME F=0 sends selectFrame with frameIndex=0 (main document) and succeeds', async () => {
+    executor.loadMacro('FRAME F=0');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a selectFrame message with frameIndex=0
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameIndex?: number }).frameIndex).toBe(0);
+  });
+
+  it('FRAME F=3 sends selectFrame with frameIndex=3', async () => {
+    executor.loadMacro('FRAME F=3');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameIndex?: number }).frameIndex).toBe(3);
+  });
+
+  it('FRAME F with variable expansion (SET !VAR1 2, FRAME F={{!VAR1}})', async () => {
+    const script = [
+      'SET !VAR1 2',
+      'FRAME F={{!VAR1}}',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // The bridge should have received selectFrame with the expanded value
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameIndex?: number }).frameIndex).toBe(2);
+  });
+
+  it('FRAME F=-1 returns INVALID_PARAMETER error', async () => {
+    executor.loadMacro('FRAME F=-1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toMatch(/invalid frame index/i);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('FRAME F=abc returns INVALID_PARAMETER error (NaN)', async () => {
+    executor.loadMacro('FRAME F=abc');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toMatch(/invalid frame index/i);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // --- FRAME NAME=x tests ---
+
+  it('FRAME NAME=myframe sends selectFrame with frameName and succeeds', async () => {
+    executor.loadMacro('FRAME NAME=myframe');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received a selectFrame message with frameName
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameName?: string }).frameName).toBe('myframe');
+  });
+
+  it('FRAME NAME with variable expansion (SET !VAR1 sidebar, FRAME NAME={{!VAR1}})', async () => {
+    const script = [
+      'SET !VAR1 sidebar',
+      'FRAME NAME={{!VAR1}}',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // The bridge should have received selectFrame with the expanded name
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('selectFrame');
+    expect((msg as { frameName?: string }).frameName).toBe('sidebar');
+  });
+
+  // --- Missing parameter test ---
+
+  it('FRAME without F or NAME returns MISSING_PARAMETER error', async () => {
+    executor.loadMacro('FRAME');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+    expect(result.errorMessage).toMatch(/F|NAME/i);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // --- Bridge failure tests ---
+
+  it('FRAME F=1 bridge failure returns FRAME_NOT_FOUND error', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Frame at index 1 does not exist',
+    });
+
+    executor.loadMacro('FRAME F=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.FRAME_NOT_FOUND);
+    expect(result.errorMessage).toContain('Frame at index 1 does not exist');
+  });
+
+  it('FRAME NAME=missing bridge failure returns FRAME_NOT_FOUND error', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'No frame with name "missing"',
+    });
+
+    executor.loadMacro('FRAME NAME=missing');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.FRAME_NOT_FOUND);
+    expect(result.errorMessage).toContain('No frame with name "missing"');
+  });
+
+  // --- Multi-command sequence test ---
+
+  it('URL GOTO then FRAME F=1 sends navigate then selectFrame in order', async () => {
+    const script = [
+      'URL GOTO=https://example.com/frameset',
+      'FRAME F=1',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Both messages should have been sent in order
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].type).toBe('navigate');
+    expect((sentMessages[0] as { url: string }).url).toBe('https://example.com/frameset');
+    expect(sentMessages[1].type).toBe('selectFrame');
+    expect((sentMessages[1] as { frameIndex?: number }).frameIndex).toBe(1);
+  });
+});
+
+/**
+ * TAB Command Handler Integration Tests via MacroExecutor
+ *
+ * Tests the tabHandler from navigation.ts through the MacroExecutor pipeline
+ * with a mock BrowserBridge. TAB supports switching tabs (T=n), opening new
+ * tabs (OPEN), closing the current tab (CLOSE), and closing all other tabs
+ * (CLOSEALLOTHERS).
+ */
+describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
+  let executor: MacroExecutor;
+  let mockBridge: BrowserBridge;
+  let sentMessages: BrowserOperationMessage[];
+
+  beforeEach(() => {
+    sentMessages = [];
+    mockBridge = {
+      sendMessage: vi.fn(async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        return { success: true };
+      }),
+    };
+    setBrowserBridge(mockBridge);
+    executor = createExecutor();
+    registerNavigationHandlers(executor);
+  });
+
+  afterEach(() => {
+    setBrowserBridge(null as unknown as BrowserBridge);
+  });
+
+  // --- TAB T=n (switch tab) tests ---
+
+  it('TAB T=2 sends switchTab with tabIndex 1 (0-based) and succeeds', async () => {
+    executor.loadMacro('TAB T=2');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('switchTab');
+    expect((msg as { tabIndex: number }).tabIndex).toBe(1);
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  it('TAB T=1 sends switchTab with tabIndex 0', async () => {
+    executor.loadMacro('TAB T=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('switchTab');
+    expect((msg as { tabIndex: number }).tabIndex).toBe(0);
+  });
+
+  it('TAB T with variable expansion (SET !VAR1 3, TAB T={{!VAR1}}) sends switchTab with tabIndex 2', async () => {
+    const script = [
+      'SET !VAR1 3',
+      'TAB T={{!VAR1}}',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Only the TAB command should have sent a bridge message (SET is handled internally)
+    const switchMsg = sentMessages.find(m => m.type === 'switchTab');
+    expect(switchMsg).toBeDefined();
+    expect((switchMsg as { tabIndex: number }).tabIndex).toBe(2);
+  });
+
+  // --- TAB T=n invalid parameter tests ---
+
+  it('TAB T=0 returns INVALID_PARAMETER error (tabIndex < 1)', async () => {
+    executor.loadMacro('TAB T=0');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('TAB T=-1 returns INVALID_PARAMETER error', async () => {
+    executor.loadMacro('TAB T=-1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('TAB T=abc returns INVALID_PARAMETER error (NaN)', async () => {
+    executor.loadMacro('TAB T=abc');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // --- TAB OPEN tests ---
+
+  it('TAB OPEN sends openTab message and succeeds', async () => {
+    executor.loadMacro('TAB OPEN');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('openTab');
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  it('TAB OPEN with URL param sends openTab with url', async () => {
+    executor.loadMacro('TAB OPEN URL=https://example.com/new-tab');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('openTab');
+    expect((msg as { url?: string }).url).toBe('https://example.com/new-tab');
+  });
+
+  // --- TAB CLOSE tests ---
+
+  it('TAB CLOSE sends closeTab message and succeeds', async () => {
+    executor.loadMacro('TAB CLOSE');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('closeTab');
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  // --- TAB CLOSEALLOTHERS tests ---
+
+  it('TAB CLOSEALLOTHERS sends closeOtherTabs message and succeeds', async () => {
+    executor.loadMacro('TAB CLOSEALLOTHERS');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('closeOtherTabs');
+    expect(msg.id).toBeDefined();
+    expect(msg.timestamp).toBeGreaterThan(0);
+  });
+
+  // --- Missing parameter test ---
+
+  it('TAB without params returns MISSING_PARAMETER error', async () => {
+    executor.loadMacro('TAB');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+    expect(result.errorMessage).toMatch(/T|OPEN|CLOSE|CLOSEALLOTHERS/i);
+
+    // The bridge should NOT have been called
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // --- Bridge failure tests ---
+
+  it('TAB T=2 bridge failure returns SCRIPT_ERROR', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Tab 2 does not exist',
+    });
+
+    executor.loadMacro('TAB T=2');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Tab 2 does not exist');
+  });
+
+  it('TAB OPEN bridge failure returns SCRIPT_ERROR', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Cannot open new tab',
+    });
+
+    executor.loadMacro('TAB OPEN');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Cannot open new tab');
+  });
+
+  it('TAB CLOSE bridge failure returns SCRIPT_ERROR', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      success: false,
+      error: 'Cannot close the last tab',
+    });
+
+    executor.loadMacro('TAB CLOSE');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Cannot close the last tab');
+  });
+
+  // --- Multi-command sequence test ---
+
+  it('TAB OPEN then TAB T=1 sends openTab then switchTab in order', async () => {
+    const script = [
+      'TAB OPEN',
+      'TAB T=1',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(sentMessages.length).toBe(2);
+    expect(sentMessages[0].type).toBe('openTab');
+    expect(sentMessages[1].type).toBe('switchTab');
+    expect((sentMessages[1] as { tabIndex: number }).tabIndex).toBe(0);
   });
 });

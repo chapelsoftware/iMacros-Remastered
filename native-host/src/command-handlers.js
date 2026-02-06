@@ -253,7 +253,7 @@ function createBrowserHandlers(bridge) {
         pos: posResult.pos,
         relative: posResult.relative,
         type: ctx.getParam('TYPE'),
-        attr: expandIfPresent(ctx, 'ATTR'),
+        attr: expandWithTokens(ctx, 'ATTR'),
         xpath: expandIfPresent(ctx, 'XPATH'),
         css: expandIfPresent(ctx, 'CSS'),
         content: expandIfPresent(ctx, 'CONTENT'),
@@ -544,11 +544,35 @@ function createBrowserHandlers(bridge) {
 // ===== Helper Functions =====
 
 /**
+ * Replace iMacros special tokens like <SP>, <BR>, <TAB>
+ * @param {string} str - The string to process
+ * @returns {string} - The processed string
+ */
+function expandSpecialTokens(str) {
+  if (!str) return str;
+  return str
+    .replace(/<SP>/gi, ' ')
+    .replace(/<BR>/gi, '\n')
+    .replace(/<TAB>/gi, '\t')
+    .replace(/<ENTER>/gi, '\n');
+}
+
+/**
  * Expand a parameter value if present
  */
 function expandIfPresent(ctx, key) {
   const value = ctx.getParam(key);
   return value ? ctx.expand(value) : undefined;
+}
+
+/**
+ * Expand a parameter value and replace special tokens
+ */
+function expandWithTokens(ctx, key) {
+  const value = ctx.getParam(key);
+  if (!value) return undefined;
+  const expanded = ctx.expand(value);
+  return expandSpecialTokens(expanded);
 }
 
 /**

@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const vm = require('vm');
 
 // Import shared library and local modules
 let sharedLib;
@@ -31,6 +32,16 @@ try {
 
 // Configuration
 const MACROS_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Macros');
+
+/**
+ * Strip UTF-8 BOM from string if present
+ */
+function stripBOM(content) {
+  if (content.charCodeAt(0) === 0xFEFF) {
+    return content.slice(1);
+  }
+  return content;
+}
 const DATASOURCES_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Datasources');
 const DOWNLOADS_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Downloads');
 // Ensure directories exist
@@ -139,6 +150,98 @@ function updateTrayStatus(status) {
 }
 
 /**
+ * Evaluate JavaScript expression in a sandboxed VM context.
+ * Used as fallback when expr-eval cannot handle the expression.
+ *
+ * @param {string} expression - The JavaScript expression to evaluate
+ * @returns {Promise<{success: boolean, value: number|string, error?: string, isMacroError?: boolean}>}
+ */
+async function nativeEval(expression) {
+  // Security: limit expression length
+  if (expression.length > 10000) {
+    return {
+      success: false,
+      value: 0,
+      error: 'Expression exceeds maximum length of 10000 characters'
+    };
+  }
+
+  try {
+    // Create a restricted sandbox with only safe globals
+    const sandbox = {
+      // Math functions and constants
+      Math: Math,
+      // Date
+      Date: Date,
+      // Type conversion
+      parseInt: parseInt,
+      parseFloat: parseFloat,
+      String: String,
+      Number: Number,
+      Boolean: Boolean,
+      // Arrays and objects
+      Array: Array,
+      Object: Object,
+      JSON: JSON,
+      // Type checking
+      isNaN: isNaN,
+      isFinite: isFinite,
+      // URL encoding
+      encodeURIComponent: encodeURIComponent,
+      decodeURIComponent: decodeURIComponent,
+      encodeURI: encodeURI,
+      decodeURI: decodeURI,
+      // String utilities
+      escape: escape,
+      unescape: unescape,
+      // MacroError function - throws to stop macro execution
+      MacroError: function(msg) {
+        const err = new Error(msg);
+        err.isMacroError = true;
+        throw err;
+      },
+    };
+
+    const context = vm.createContext(sandbox);
+
+    // Evaluate with timeout to prevent infinite loops
+    const result = vm.runInNewContext(expression, context, {
+      timeout: 5000, // 5 second timeout
+      displayErrors: true,
+    });
+
+    // Convert result to string or number
+    let value;
+    if (typeof result === 'string' || typeof result === 'number') {
+      value = result;
+    } else if (result === null || result === undefined) {
+      value = '';
+    } else {
+      value = String(result);
+    }
+
+    return { success: true, value: value };
+  } catch (error) {
+    // Check if this is a MacroError (intentional stop)
+    if (error.isMacroError) {
+      return {
+        success: false,
+        value: 0,
+        error: error.message,
+        isMacroError: true
+      };
+    }
+
+    log('Native eval error:', error.message);
+    return {
+      success: false,
+      value: 0,
+      error: error.message
+    };
+  }
+}
+
+/**
  * Clean up resources
  */
 function cleanup() {
@@ -150,10 +253,10 @@ function cleanup() {
 // ============================================================================
 
 /**
- * List macros in a directory
+ * List macros in a directory (includes empty folders)
  */
 function listMacros(dirPath = MACROS_DIR) {
-  const macros = [];
+  const items = [];
 
   function walkDir(currentPath, prefix = '') {
     try {
@@ -163,9 +266,16 @@ function listMacros(dirPath = MACROS_DIR) {
         const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
 
         if (entry.isDirectory()) {
+          // Add the folder itself so it appears even when empty
+          items.push({
+            name: entry.name,
+            path: relativePath,
+            fullPath: fullPath,
+            type: 'folder'
+          });
           walkDir(fullPath, relativePath);
         } else if (entry.name.endsWith('.iim') || entry.name.endsWith('.js')) {
-          macros.push({
+          items.push({
             name: entry.name,
             path: relativePath,
             fullPath: fullPath,
@@ -179,7 +289,7 @@ function listMacros(dirPath = MACROS_DIR) {
   }
 
   walkDir(dirPath);
-  return macros;
+  return items;
 }
 
 /**
@@ -223,7 +333,7 @@ async function playMacro(macroPath, tabId, loop = false) {
       return;
     }
 
-    const content = fs.readFileSync(fullPath, 'utf8');
+    const content = stripBOM(fs.readFileSync(fullPath, 'utf8'));
     log('Loaded macro content, length:', content.length);
 
     // Update status
@@ -273,6 +383,8 @@ async function playMacro(macroPath, tabId, loop = false) {
       onLog: (level, msg) => {
         log(`[${level}] ${msg}`);
       },
+      // Enable JavaScript EVAL support via Node's vm module
+      onNativeEval: nativeEval,
     });
 
     activeExecutor = executor;
@@ -286,6 +398,9 @@ async function playMacro(macroPath, tabId, loop = false) {
     const result = await executor.execute();
 
     log('Macro execution complete:', result.success ? 'SUCCESS' : 'FAILED');
+    if (!result.success) {
+      log('Error:', result.errorMessage, 'at line', result.errorLine);
+    }
 
     // Send completion message
     sendMessage({
@@ -356,7 +471,7 @@ function handleMessage(message) {
         const fullPath = path.isAbsolute(macroPath)
           ? macroPath
           : path.join(MACROS_DIR, macroPath);
-        const content = fs.readFileSync(fullPath, 'utf8');
+        const content = stripBOM(fs.readFileSync(fullPath, 'utf8'));
         sendResponse(message.id, 'macro_loaded', { content, path: macroPath });
       } catch (e) {
         sendResponse(message.id, 'error', { error: e.message });
@@ -375,6 +490,78 @@ function handleMessage(message) {
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
         fs.writeFileSync(fullPath, content, 'utf8');
         sendResponse(message.id, 'macro_saved', { path: macroPath });
+      } catch (e) {
+        sendResponse(message.id, 'error', { error: e.message });
+      }
+      break;
+
+    case 'create_folder':
+      try {
+        const folderPath = message.payload?.path;
+        const fullPath = path.isAbsolute(folderPath)
+          ? folderPath
+          : path.join(MACROS_DIR, folderPath);
+        fs.mkdirSync(fullPath, { recursive: true });
+        log('Created folder:', fullPath);
+        sendResponse(message.id, 'folder_created', { path: folderPath });
+      } catch (e) {
+        sendResponse(message.id, 'error', { error: e.message });
+      }
+      break;
+
+    case 'rename_file':
+      try {
+        const oldPath = message.payload?.oldPath;
+        const newName = message.payload?.newName;
+        const fullOldPath = path.isAbsolute(oldPath)
+          ? oldPath
+          : path.join(MACROS_DIR, oldPath);
+        const fullNewPath = path.join(path.dirname(fullOldPath), newName);
+        fs.renameSync(fullOldPath, fullNewPath);
+        log('Renamed:', fullOldPath, '->', fullNewPath);
+        sendResponse(message.id, 'file_renamed', { oldPath, newPath: path.relative(MACROS_DIR, fullNewPath) });
+      } catch (e) {
+        sendResponse(message.id, 'error', { error: e.message });
+      }
+      break;
+
+    case 'delete_file':
+      try {
+        const deletePath = message.payload?.path;
+        const fullPath = path.isAbsolute(deletePath)
+          ? deletePath
+          : path.join(MACROS_DIR, deletePath);
+        const stats = fs.statSync(fullPath);
+        if (stats.isDirectory()) {
+          fs.rmSync(fullPath, { recursive: true });
+        } else {
+          fs.unlinkSync(fullPath);
+        }
+        log('Deleted:', fullPath);
+        sendResponse(message.id, 'file_deleted', { path: deletePath });
+      } catch (e) {
+        sendResponse(message.id, 'error', { error: e.message });
+      }
+      break;
+
+    case 'move_file':
+      try {
+        const sourcePath = message.payload?.sourcePath;
+        const targetPath = message.payload?.targetPath;
+        const fullSourcePath = path.isAbsolute(sourcePath)
+          ? sourcePath
+          : path.join(MACROS_DIR, sourcePath);
+        const fullTargetDir = path.isAbsolute(targetPath)
+          ? targetPath
+          : path.join(MACROS_DIR, targetPath);
+        const fileName = path.basename(fullSourcePath);
+        const fullTargetPath = path.join(fullTargetDir, fileName);
+        fs.renameSync(fullSourcePath, fullTargetPath);
+        log('Moved:', fullSourcePath, '->', fullTargetPath);
+        sendResponse(message.id, 'file_moved', {
+          sourcePath,
+          newPath: path.relative(MACROS_DIR, fullTargetPath)
+        });
       } catch (e) {
         sendResponse(message.id, 'error', { error: e.message });
       }

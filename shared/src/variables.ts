@@ -865,6 +865,155 @@ export function createVariableContext(
   return context;
 }
 
+/**
+ * Callback type for native JavaScript evaluation (via vm.runInNewContext in Node.js)
+ * Used when expr-eval cannot handle the expression (e.g., JavaScript syntax)
+ */
+export type NativeEvalCallback = (expression: string) => Promise<{
+  success: boolean;
+  value: number | string;
+  error?: string;
+  isMacroError?: boolean;
+}>;
+
+/**
+ * Async version of evaluateExpression that falls back to native JS evaluation
+ * when expr-eval cannot handle the expression.
+ *
+ * Logic:
+ * 1. Try expr-eval first (fast path for simple math)
+ * 2. If it returns 0 (failure fallback), try nativeEval callback
+ * 3. Return result from whichever succeeds
+ */
+export async function evaluateExpressionAsync(
+  expr: string,
+  context: VariableContext,
+  nativeEval?: NativeEvalCallback
+): Promise<{ value: number | string; isMacroError?: boolean; errorMessage?: string }> {
+  // First expand any variables
+  const { expanded } = context.expand(expr);
+
+  // Clean up: strip trailing semicolons first, then wrapping quotes
+  let cleaned = expanded.trim();
+  cleaned = cleaned.replace(/;\s*$/, '');
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  // Unescape backslash-escaped quotes (common in EVAL strings)
+  cleaned = cleaned.replace(/\\"/g, '"').replace(/\\'/g, "'");
+
+  if (cleaned.trim() === '') {
+    return { value: 0 };
+  }
+
+  // Preprocess Math.* and Date.now() etc.
+  const preprocessed = preprocessMathExpressions(cleaned);
+
+  // Try expr-eval first
+  const evaluator = new ExpressionEvaluator();
+  const result = evaluator.evaluate(preprocessed);
+
+  if (result.success && result.value !== undefined) {
+    // Check if result looks like a real value (not fallback 0)
+    // If expr-eval succeeded with a non-zero value, use it
+    if (result.value !== 0 || preprocessed.trim() === '0') {
+      return { value: result.value as number | string };
+    }
+  }
+
+  // If expr-eval returned 0 (likely failure) or failed, try fallback arithmetic
+  const sanitized = preprocessed.replace(/[^0-9+\-*/().%\s]/g, '');
+  if (sanitized.trim() !== '') {
+    try {
+      // eslint-disable-next-line no-new-func
+      const numResult = new Function(`return (${sanitized})`)();
+      if (typeof numResult === 'number' && !isNaN(numResult)) {
+        if (numResult !== 0) {
+          return { value: numResult };
+        }
+      }
+    } catch {
+      // fall through to native eval
+    }
+  }
+
+  // If nativeEval callback is provided, try JavaScript evaluation
+  if (nativeEval) {
+    try {
+      const nativeResult = await nativeEval(cleaned);
+      if (nativeResult.success) {
+        return { value: nativeResult.value };
+      }
+      if (nativeResult.isMacroError) {
+        return {
+          value: 0,
+          isMacroError: true,
+          errorMessage: nativeResult.error
+        };
+      }
+    } catch (e) {
+      // Native eval failed, fall through to return 0
+    }
+  }
+
+  // All evaluation methods failed, return 0 as fallback
+  return { value: 0 };
+}
+
+/**
+ * Async version of executeSet that supports native JavaScript evaluation
+ */
+export async function executeSetAsync(
+  context: VariableContext,
+  varName: string,
+  value: string,
+  nativeEval?: NativeEvalCallback
+): Promise<SetResult & { macroError?: boolean; errorMessage?: string }> {
+  const parsed = parseSetValue(value);
+
+  switch (parsed.type) {
+    case 'eval': {
+      try {
+        const result = await evaluateExpressionAsync(parsed.value, context, nativeEval);
+        if (result.isMacroError) {
+          return {
+            success: true,
+            previousValue: context.get(varName),
+            newValue: context.get(varName),
+            macroError: true,
+            errorMessage: result.errorMessage,
+          };
+        }
+        return context.set(varName, result.value);
+      } catch (e) {
+        if ((e as any).name === 'MacroErrorSignal') {
+          return {
+            success: true,
+            previousValue: context.get(varName),
+            newValue: context.get(varName),
+            macroError: true,
+            errorMessage: (e as Error).message,
+          };
+        }
+        throw e;
+      }
+    }
+    case 'clipboard': {
+      const clipboardValue = context.getClipboard();
+      return context.set(varName, clipboardValue);
+    }
+    case 'content':
+    case 'literal': {
+      // Expand any variables in the value first
+      const { expanded } = context.expand(parsed.value);
+      return context.set(varName, expanded);
+    }
+    default:
+      return context.set(varName, value);
+  }
+}
+
 // Re-export types from parser for convenience
 export { extractVariables, SYSTEM_VARIABLES } from './parser';
 export type { VariableReference, SystemVariable } from './parser';

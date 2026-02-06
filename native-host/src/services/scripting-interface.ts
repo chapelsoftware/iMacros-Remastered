@@ -12,9 +12,21 @@
  * - iimSet: Set a variable value
  * - iimGetLastExtract: Get the last extracted data
  * - iimGetLastError: Get the last error message
+ * - iimStop: Stop the currently running macro
+ * - iimExit: Disconnect client
  */
 import * as net from 'net';
 import { EventEmitter } from 'events';
+import {
+  MacroExecutor,
+  createExecutor,
+  IMACROS_ERROR_CODES,
+  type ExecutorOptions,
+  type CommandHandler as ExecutorCommandHandler,
+  type MacroResult,
+} from '../../../shared/src/executor';
+import type { CommandType } from '../../../shared/src/parser';
+import { registerExtractionHandlers } from '../../../shared/src/commands/extraction';
 
 /**
  * Return codes for Scripting Interface commands
@@ -102,8 +114,208 @@ export interface MacroHandler {
 }
 
 /**
- * Default macro handler implementation (placeholder)
- * This should be replaced with actual implementation that connects to the extension
+ * Macro handler backed by the real MacroExecutor engine.
+ *
+ * This handler creates a MacroExecutor for each play() call, passes in
+ * variables set via iimSet, runs the macro, and captures extract data
+ * and error information for retrieval via iimGetLastExtract / iimGetLastError.
+ *
+ * External command handlers (for TAG, URL, etc.) can be registered via
+ * registerCommandHandler() or registerCommandHandlers() so that the
+ * executor can actually perform browser operations.
+ */
+export class ExecutorMacroHandler implements MacroHandler {
+  private variables: Map<string, string> = new Map();
+  private lastExtract: string = '';
+  private lastError: string = '';
+  private running: boolean = false;
+  private activeExecutor: MacroExecutor | null = null;
+  private executorOptions: ExecutorOptions;
+  private commandHandlers: Map<CommandType, ExecutorCommandHandler> = new Map();
+  private handlerRegistrar: ((executor: MacroExecutor) => void) | null = null;
+
+  constructor(options?: ExecutorOptions) {
+    this.executorOptions = options ?? {};
+  }
+
+  /**
+   * Register a single command handler that will be applied to each new executor.
+   */
+  registerCommandHandler(type: CommandType, handler: ExecutorCommandHandler): void {
+    this.commandHandlers.set(type, handler);
+  }
+
+  /**
+   * Register multiple command handlers at once.
+   */
+  registerCommandHandlers(handlers: Partial<Record<CommandType, ExecutorCommandHandler>>): void {
+    for (const [type, handler] of Object.entries(handlers)) {
+      if (handler) {
+        this.commandHandlers.set(type as CommandType, handler);
+      }
+    }
+  }
+
+  /**
+   * Set a callback that receives the executor before each play() call.
+   * This allows the caller to register navigation, interaction, and extraction
+   * handlers dynamically (e.g., registerNavigationHandlers(executor)).
+   */
+  setHandlerRegistrar(registrar: (executor: MacroExecutor) => void): void {
+    this.handlerRegistrar = registrar;
+  }
+
+  async play(macroNameOrContent: string, timeout?: number): Promise<CommandResult> {
+    this.running = true;
+    this.lastError = '';
+    this.lastExtract = '';
+
+    try {
+      // Build initial variables from iimSet calls
+      const initialVariables: Record<string, string> = {};
+      for (const [key, value] of this.variables) {
+        initialVariables[key] = value;
+      }
+
+      // Create a fresh executor for this run
+      const executor = createExecutor({
+        ...this.executorOptions,
+        initialVariables,
+        onLog: this.executorOptions.onLog,
+        onProgress: this.executorOptions.onProgress,
+      });
+
+      this.activeExecutor = executor;
+
+      // Register extraction handlers (EXTRACT, SEARCH) by default
+      // These are essential for the SI round-trip to work
+      registerExtractionHandlers(executor.registerHandler.bind(executor));
+
+      // Register any additional command handlers
+      for (const [type, handler] of this.commandHandlers) {
+        executor.registerHandler(type, handler);
+      }
+
+      // Allow the registrar to set up handlers on this executor
+      if (this.handlerRegistrar) {
+        this.handlerRegistrar(executor);
+      }
+
+      // Load macro -- could be inline content or a macro name
+      // The caller is responsible for resolving names to content if needed
+      const parsed = executor.loadMacro(macroNameOrContent);
+
+      // Check for parse errors -- if there are any, fail early
+      if (parsed.errors.length > 0) {
+        const firstError = parsed.errors[0];
+        this.lastError = `Line ${firstError.lineNumber}: ${firstError.message}`;
+        this.running = false;
+        this.activeExecutor = null;
+        return { code: ReturnCode.ERROR, data: this.lastError };
+      }
+
+      // Execute with optional timeout
+      let result: MacroResult;
+      if (timeout && timeout > 0) {
+        result = await Promise.race([
+          executor.execute(),
+          new Promise<MacroResult>((_, reject) =>
+            setTimeout(() => reject(new Error('Macro execution timeout')), timeout)
+          ),
+        ]);
+      } else {
+        result = await executor.execute();
+      }
+
+      // Capture extract data
+      if (result.extractData && result.extractData.length > 0) {
+        this.lastExtract = result.extractData.join('[EXTRACT]');
+      }
+
+      // Capture error info
+      if (!result.success) {
+        this.lastError = result.errorMessage ?? `Error code: ${result.errorCode}`;
+        this.running = false;
+        this.activeExecutor = null;
+
+        // Map iMacros error codes to SI return codes
+        return {
+          code: this.mapErrorCode(result.errorCode),
+          data: this.lastError,
+        };
+      }
+
+      this.running = false;
+      this.activeExecutor = null;
+      return { code: ReturnCode.OK };
+    } catch (error) {
+      this.running = false;
+      this.activeExecutor = null;
+      this.lastError = error instanceof Error ? error.message : String(error);
+
+      if (this.lastError.includes('timeout')) {
+        return { code: ReturnCode.TIMEOUT, data: this.lastError };
+      }
+      return { code: ReturnCode.ERROR, data: this.lastError };
+    }
+  }
+
+  setVariable(name: string, value: string): void {
+    this.variables.set(name, value);
+  }
+
+  getVariable(name: string): string | undefined {
+    return this.variables.get(name);
+  }
+
+  getLastExtract(): string {
+    return this.lastExtract;
+  }
+
+  getLastError(): string {
+    return this.lastError;
+  }
+
+  isRunning(): boolean {
+    return this.running;
+  }
+
+  stop(): void {
+    if (this.activeExecutor) {
+      this.activeExecutor.stop();
+      this.activeExecutor = null;
+    }
+    this.running = false;
+  }
+
+  /**
+   * Get the currently active executor (useful for inspection during tests).
+   */
+  getActiveExecutor(): MacroExecutor | null {
+    return this.activeExecutor;
+  }
+
+  /**
+   * Map iMacros executor error codes to Scripting Interface return codes.
+   */
+  private mapErrorCode(errorCode: number): ReturnCode {
+    if (errorCode === IMACROS_ERROR_CODES.OK) return ReturnCode.OK;
+    if (errorCode === IMACROS_ERROR_CODES.TIMEOUT ||
+        errorCode === IMACROS_ERROR_CODES.PAGE_TIMEOUT ||
+        errorCode === IMACROS_ERROR_CODES.STEP_TIMEOUT) return ReturnCode.TIMEOUT;
+    if (errorCode === IMACROS_ERROR_CODES.SYNTAX_ERROR ||
+        errorCode === IMACROS_ERROR_CODES.INVALID_COMMAND) return ReturnCode.SYNTAX_ERROR;
+    if (errorCode === IMACROS_ERROR_CODES.FILE_NOT_FOUND) return ReturnCode.MACRO_NOT_FOUND;
+    if (errorCode === IMACROS_ERROR_CODES.INVALID_PARAMETER ||
+        errorCode === IMACROS_ERROR_CODES.MISSING_PARAMETER) return ReturnCode.INVALID_PARAMETER;
+    if (errorCode === IMACROS_ERROR_CODES.USER_ABORT) return ReturnCode.CANCELLED;
+    return ReturnCode.ERROR;
+  }
+}
+
+/**
+ * Default macro handler implementation (placeholder).
+ * For backward compatibility. Use ExecutorMacroHandler for real execution.
  */
 export class DefaultMacroHandler implements MacroHandler {
   private variables: Map<string, string> = new Map();
@@ -112,19 +324,12 @@ export class DefaultMacroHandler implements MacroHandler {
   private running: boolean = false;
 
   async play(macroNameOrContent: string, timeout?: number): Promise<CommandResult> {
-    // Placeholder implementation
-    // In production, this would communicate with the browser extension
     this.running = true;
     this.lastError = '';
     this.lastExtract = '';
 
     try {
-      // Simulate macro execution
-      // TODO: Connect to browser extension for actual execution
       console.log(`[SI] Executing macro: ${macroNameOrContent}`);
-
-      // For now, return success
-      // Real implementation would await actual macro completion
       this.running = false;
       return { code: ReturnCode.OK };
     } catch (error) {

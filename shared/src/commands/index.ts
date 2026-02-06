@@ -30,3 +30,6 @@ export * from './browser';
 
 // File commands (FILEDELETE)
 export * from './files';
+
+// Unsupported commands (DS, IMAGECLICK, WINCLICK, PRINT, SIZE, etc.)
+export * from './unsupported';

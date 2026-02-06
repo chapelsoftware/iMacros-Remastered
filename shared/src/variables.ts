@@ -87,30 +87,52 @@ export const DEFAULT_VALUES: Record<string, VariableValue> = {
   '!DATASOURCE': '',
   '!DATASOURCE_LINE': 1,
   '!DATASOURCE_COLUMNS': 0,
+  '!DATASOURCE_DELIMITER': ',',
   // Extract variables
   '!EXTRACT': '',
   '!EXTRACTADD': '',
+  '!EXTRACT_TEST_POPUP': 'NO',
+  // Encryption
+  '!ENCRYPTION': '',
   // Timeout variables (in seconds)
   '!TIMEOUT': 60,
   '!TIMEOUT_STEP': 6,
   '!TIMEOUT_PAGE': 60,
+  '!TIMEOUT_TAG': 6,
+  '!TIMEOUT_MACRO': 300,
   // Error handling
   '!ERRORIGNORE': 'NO',
   '!ERRORLOOP': 'NO',
+  // Playback control
   '!SINGLESTEP': 'NO',
+  '!REPLAYSPEED': 'MEDIUM',
   // Folder paths (will be set by runtime)
   '!FOLDER_DATASOURCE': '',
   '!FOLDER_DOWNLOAD': '',
   '!FOLDER_MACROS': '',
+  '!FOLDER_STOPWATCH': '',
   // URL tracking
   '!URLSTART': '',
   '!URLCURRENT': '',
-  // Misc
-  '!CLIPBOARD': '',
+  // Stopwatch
   '!FILESTOPWATCH': '',
-  '!ENCRYPTION': '',
-  '!EXTRACT_TEST_POPUP': 'NO',
+  '!STOPWATCH': 'NO',
+  '!STOPWATCHTIME': 0,
+  '!STOPWATCH_HEADER': 'YES',
+  // Clipboard
+  '!CLIPBOARD': '',
+  // Download/PDF
   '!DOWNLOADPDF': 'NO',
+  // Browser/Page control
+  '!USERAGENT': '',
+  '!POPUP_ALLOWED': 'NO',
+  '!WAITPAGECOMPLETE': 'YES',
+  // Profiler
+  '!FILE_PROFILER': '',
+  // Image recognition
+  '!IMAGEFILTER': '',
+  // Line number adjustment
+  '!LINENUMBER_DELTA': 0,
 };
 
 /**
@@ -809,8 +831,14 @@ export function executeAdd(
   // Expand any variables in the value
   const { expanded } = context.expand(value);
 
+  // Treat empty string as 0 (iMacros compatibility)
+  const trimmed = expanded.trim();
+  if (trimmed === '') {
+    return context.add(varName, 0);
+  }
+
   // Parse as number
-  const numValue = parseFloat(expanded);
+  const numValue = parseFloat(trimmed);
   if (isNaN(numValue)) {
     return {
       success: false,

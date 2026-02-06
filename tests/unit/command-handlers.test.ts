@@ -694,12 +694,13 @@ describe('command-handlers', () => {
       expect(params.pos).toBe(5);
     });
 
-    it('POS with R prefix defaults to 1 (random)', async () => {
+    it('POS with R prefix sets relative positioning', async () => {
       const ctx = createMockCtx([{ key: 'POS', value: 'R3' }]);
       await handlers.TAG(ctx);
 
       const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.pos).toBe(1);
+      expect(params.pos).toBe(3);
+      expect(params.relative).toBe(true);
     });
 
     it('POS with non-numeric value defaults to 1', async () => {

@@ -3,731 +3,603 @@
  *
  * Tests built-in variables (!VAR0-9), custom variables, !EXTRACT, !LOOP,
  * !DATASOURCE, variable expansion in commands, ADD operations, and edge cases.
+ *
+ * Uses the real VariableContext from shared/src/variables.ts.
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-
-/**
- * Variable store class that manages iMacros variables
- * This represents the expected behavior of the iMacros variable system
- */
-class VariableStore {
-  private builtInVars: Map<string, string> = new Map();
-  private customVars: Map<string, string> = new Map();
-  private extract: string[] = [];
-  private loopCounter: number = 1;
-  private datasource: string[][] = [];
-  private datasourceRow: number = 1;
-
-  constructor() {
-    // Initialize built-in VAR0-9 with empty strings
-    for (let i = 0; i <= 9; i++) {
-      this.builtInVars.set(`!VAR${i}`, '');
-    }
-  }
-
-  /**
-   * Set a variable value
-   */
-  set(name: string, value: string): void {
-    const upperName = name.toUpperCase();
-    if (this.isBuiltIn(upperName)) {
-      this.builtInVars.set(upperName, value);
-    } else {
-      this.customVars.set(upperName, value);
-    }
-  }
-
-  /**
-   * Get a variable value
-   */
-  get(name: string): string | undefined {
-    const upperName = name.toUpperCase();
-
-    // Check special variables first
-    if (upperName === '!LOOP') {
-      return String(this.loopCounter);
-    }
-    if (upperName === '!EXTRACT') {
-      return this.extract.join('[EXTRACT]');
-    }
-    if (upperName.startsWith('!COL')) {
-      const col = parseInt(upperName.slice(4), 10);
-      if (!isNaN(col) && col >= 1 && this.datasource.length > 0) {
-        const row = this.datasource[this.datasourceRow - 1];
-        if (row && col <= row.length) {
-          return row[col - 1];
-        }
-      }
-      return undefined;
-    }
-
-    // Check built-in variables
-    if (this.builtInVars.has(upperName)) {
-      return this.builtInVars.get(upperName);
-    }
-
-    // Check custom variables
-    return this.customVars.get(upperName);
-  }
-
-  /**
-   * Check if a variable name is built-in
-   */
-  isBuiltIn(name: string): boolean {
-    return /^!VAR[0-9]$/.test(name.toUpperCase());
-  }
-
-  /**
-   * Add a numeric value to a variable
-   */
-  add(name: string, value: number): void {
-    const upperName = name.toUpperCase();
-    const currentValue = this.get(upperName);
-    const numericValue = currentValue ? parseFloat(currentValue) : 0;
-    if (!isNaN(numericValue)) {
-      this.set(upperName, String(numericValue + value));
-    }
-  }
-
-  /**
-   * Add to extract array
-   */
-  addExtract(value: string): void {
-    this.extract.push(value);
-  }
-
-  /**
-   * Clear extract array
-   */
-  clearExtract(): void {
-    this.extract = [];
-  }
-
-  /**
-   * Get extract array
-   */
-  getExtract(): string[] {
-    return [...this.extract];
-  }
-
-  /**
-   * Set loop counter
-   */
-  setLoop(value: number): void {
-    this.loopCounter = value;
-  }
-
-  /**
-   * Increment loop counter
-   */
-  incrementLoop(): void {
-    this.loopCounter++;
-  }
-
-  /**
-   * Get loop counter
-   */
-  getLoop(): number {
-    return this.loopCounter;
-  }
-
-  /**
-   * Load datasource data
-   */
-  loadDatasource(data: string[][]): void {
-    this.datasource = data;
-    this.datasourceRow = 1;
-  }
-
-  /**
-   * Set datasource row
-   */
-  setDatasourceRow(row: number): void {
-    this.datasourceRow = row;
-  }
-
-  /**
-   * Get current datasource row
-   */
-  getDatasourceRow(): number {
-    return this.datasourceRow;
-  }
-
-  /**
-   * Expand variables in a string
-   * Replaces {{varname}} with variable values
-   */
-  expand(text: string): string {
-    return text.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
-      const value = this.get(varName.trim());
-      return value !== undefined ? value : match;
-    });
-  }
-
-  /**
-   * Clear all custom variables
-   */
-  clearCustom(): void {
-    this.customVars.clear();
-  }
-
-  /**
-   * Reset all variables to initial state
-   */
-  reset(): void {
-    for (let i = 0; i <= 9; i++) {
-      this.builtInVars.set(`!VAR${i}`, '');
-    }
-    this.customVars.clear();
-    this.extract = [];
-    this.loopCounter = 1;
-    this.datasource = [];
-    this.datasourceRow = 1;
-  }
-}
+import {
+  VariableContext,
+  createVariableContext,
+  executeSet,
+  executeAdd,
+} from '@shared/variables';
 
 describe('Variable System Unit Tests', () => {
-  let store: VariableStore;
+  let ctx: VariableContext;
 
   beforeEach(() => {
-    store = new VariableStore();
+    ctx = new VariableContext();
   });
 
   describe('Built-in Variables (!VAR0-9)', () => {
     it('should initialize all built-in variables to empty strings', () => {
       for (let i = 0; i <= 9; i++) {
-        expect(store.get(`!VAR${i}`)).toBe('');
+        expect(ctx.get(`!VAR${i}`)).toBe('');
       }
     });
 
     it('should set and get !VAR0', () => {
-      store.set('!VAR0', 'test value');
-      expect(store.get('!VAR0')).toBe('test value');
+      ctx.set('!VAR0', 'test value');
+      expect(ctx.get('!VAR0')).toBe('test value');
     });
 
     it('should set and get !VAR9', () => {
-      store.set('!VAR9', 'last var');
-      expect(store.get('!VAR9')).toBe('last var');
+      ctx.set('!VAR9', 'last var');
+      expect(ctx.get('!VAR9')).toBe('last var');
     });
 
     it('should handle all built-in variables independently', () => {
       for (let i = 0; i <= 9; i++) {
-        store.set(`!VAR${i}`, `value${i}`);
+        ctx.set(`!VAR${i}`, `value${i}`);
       }
       for (let i = 0; i <= 9; i++) {
-        expect(store.get(`!VAR${i}`)).toBe(`value${i}`);
+        expect(ctx.get(`!VAR${i}`)).toBe(`value${i}`);
       }
     });
 
     it('should be case-insensitive for built-in variable names', () => {
-      store.set('!var0', 'lower');
-      expect(store.get('!VAR0')).toBe('lower');
-      expect(store.get('!var0')).toBe('lower');
-      expect(store.get('!Var0')).toBe('lower');
+      ctx.set('!var0', 'lower');
+      expect(ctx.get('!VAR0')).toBe('lower');
+      expect(ctx.get('!var0')).toBe('lower');
+      expect(ctx.get('!Var0')).toBe('lower');
     });
 
-    it('should correctly identify built-in variables', () => {
-      expect(store.isBuiltIn('!VAR0')).toBe(true);
-      expect(store.isBuiltIn('!VAR9')).toBe(true);
-      expect(store.isBuiltIn('!var5')).toBe(true);
-      expect(store.isBuiltIn('!VAR10')).toBe(false);
-      expect(store.isBuiltIn('MYVAR')).toBe(false);
-      expect(store.isBuiltIn('!LOOP')).toBe(false);
+    it('should correctly identify system variables', () => {
+      expect(ctx.isSystemVariable('!VAR0')).toBe(true);
+      expect(ctx.isSystemVariable('!VAR9')).toBe(true);
+      expect(ctx.isSystemVariable('!var5')).toBe(true);
+      // !VAR10 is NOT in the system variables list
+      expect(ctx.isSystemVariable('!VAR10')).toBe(false);
+      expect(ctx.isSystemVariable('MYVAR')).toBe(false);
+      // !LOOP IS a system variable in the real implementation
+      expect(ctx.isSystemVariable('!LOOP')).toBe(true);
     });
 
     it('should overwrite existing built-in variable values', () => {
-      store.set('!VAR0', 'first');
-      store.set('!VAR0', 'second');
-      expect(store.get('!VAR0')).toBe('second');
+      ctx.set('!VAR0', 'first');
+      ctx.set('!VAR0', 'second');
+      expect(ctx.get('!VAR0')).toBe('second');
     });
 
     it('should handle numeric string values in built-in variables', () => {
-      store.set('!VAR0', '12345');
-      expect(store.get('!VAR0')).toBe('12345');
+      ctx.set('!VAR0', '12345');
+      expect(ctx.get('!VAR0')).toBe('12345');
     });
 
     it('should handle special characters in built-in variable values', () => {
-      store.set('!VAR0', 'hello<world>&"test\'');
-      expect(store.get('!VAR0')).toBe('hello<world>&"test\'');
+      ctx.set('!VAR0', 'hello<world>&"test\'');
+      expect(ctx.get('!VAR0')).toBe('hello<world>&"test\'');
+    });
+
+    it('should return SetResult from set()', () => {
+      const result = ctx.set('!VAR0', 'new value');
+      expect(result.success).toBe(true);
+      expect(result.previousValue).toBe('');
+      expect(result.newValue).toBe('new value');
+    });
+
+    it('should return error SetResult for unknown system variable', () => {
+      const result = ctx.set('!UNKNOWN_SYS_VAR', 'value');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
     });
   });
 
   describe('Custom Variables', () => {
     it('should set and get custom variables', () => {
-      store.set('MYVAR', 'custom value');
-      expect(store.get('MYVAR')).toBe('custom value');
+      ctx.set('MYVAR', 'custom value');
+      expect(ctx.get('MYVAR')).toBe('custom value');
     });
 
-    it('should return undefined for non-existent custom variables', () => {
-      expect(store.get('NONEXISTENT')).toBeUndefined();
+    it('should return null for non-existent custom variables', () => {
+      expect(ctx.get('NONEXISTENT')).toBeNull();
     });
 
     it('should be case-insensitive for custom variable names', () => {
-      store.set('MyCustomVar', 'value');
-      expect(store.get('MYCUSTOMVAR')).toBe('value');
-      expect(store.get('mycustomvar')).toBe('value');
-      expect(store.get('MyCustomVar')).toBe('value');
+      ctx.set('MyCustomVar', 'value');
+      expect(ctx.get('MYCUSTOMVAR')).toBe('value');
+      expect(ctx.get('mycustomvar')).toBe('value');
+      expect(ctx.get('MyCustomVar')).toBe('value');
     });
 
     it('should handle multiple custom variables', () => {
-      store.set('VAR_A', 'a');
-      store.set('VAR_B', 'b');
-      store.set('VAR_C', 'c');
-      expect(store.get('VAR_A')).toBe('a');
-      expect(store.get('VAR_B')).toBe('b');
-      expect(store.get('VAR_C')).toBe('c');
+      ctx.set('VAR_A', 'a');
+      ctx.set('VAR_B', 'b');
+      ctx.set('VAR_C', 'c');
+      expect(ctx.get('VAR_A')).toBe('a');
+      expect(ctx.get('VAR_B')).toBe('b');
+      expect(ctx.get('VAR_C')).toBe('c');
     });
 
     it('should overwrite existing custom variable values', () => {
-      store.set('MYVAR', 'original');
-      store.set('MYVAR', 'updated');
-      expect(store.get('MYVAR')).toBe('updated');
+      ctx.set('MYVAR', 'original');
+      ctx.set('MYVAR', 'updated');
+      expect(ctx.get('MYVAR')).toBe('updated');
     });
 
     it('should handle long variable names', () => {
       const longName = 'THIS_IS_A_VERY_LONG_VARIABLE_NAME_THAT_EXCEEDS_NORMAL_LENGTH';
-      store.set(longName, 'value');
-      expect(store.get(longName)).toBe('value');
+      ctx.set(longName, 'value');
+      expect(ctx.get(longName)).toBe('value');
     });
 
     it('should handle variable names with underscores', () => {
-      store.set('MY_VAR_NAME', 'value');
-      expect(store.get('MY_VAR_NAME')).toBe('value');
+      ctx.set('MY_VAR_NAME', 'value');
+      expect(ctx.get('MY_VAR_NAME')).toBe('value');
     });
 
-    it('should clear custom variables', () => {
-      store.set('MYVAR', 'value');
-      store.clearCustom();
-      expect(store.get('MYVAR')).toBeUndefined();
+    it('should clear custom variables on reset', () => {
+      ctx.set('MYVAR', 'value');
+      ctx.reset();
+      expect(ctx.get('MYVAR')).toBeNull();
     });
 
-    it('should not clear built-in variables when clearing custom', () => {
-      store.set('!VAR0', 'builtin');
-      store.set('MYVAR', 'custom');
-      store.clearCustom();
-      expect(store.get('!VAR0')).toBe('builtin');
-      expect(store.get('MYVAR')).toBeUndefined();
+    it('should not clear built-in variables when resetting only vars', () => {
+      ctx.set('!VAR0', 'builtin');
+      ctx.set('MYVAR', 'custom');
+      ctx.resetVars();
+      // resetVars only resets !VAR0-9, not custom vars
+      expect(ctx.get('!VAR0')).toBe('');
+      expect(ctx.get('MYVAR')).toBe('custom');
     });
   });
 
   describe('!EXTRACT Variable', () => {
     it('should start with empty extract', () => {
-      expect(store.getExtract()).toEqual([]);
-      expect(store.get('!EXTRACT')).toBe('');
+      expect(ctx.getExtractArray()).toEqual([]);
+      expect(ctx.get('!EXTRACT')).toBe('');
     });
 
-    it('should add values to extract', () => {
-      store.addExtract('value1');
-      expect(store.getExtract()).toEqual(['value1']);
+    it('should accumulate values when setting !EXTRACT', () => {
+      ctx.set('!EXTRACT', 'value1');
+      expect(ctx.getExtractArray()).toEqual(['value1']);
     });
 
     it('should accumulate multiple extract values', () => {
-      store.addExtract('first');
-      store.addExtract('second');
-      store.addExtract('third');
-      expect(store.getExtract()).toEqual(['first', 'second', 'third']);
+      ctx.set('!EXTRACT', 'first');
+      ctx.set('!EXTRACT', 'second');
+      ctx.set('!EXTRACT', 'third');
+      expect(ctx.getExtractArray()).toEqual(['first', 'second', 'third']);
     });
 
-    it('should return extract values joined with [EXTRACT]', () => {
-      store.addExtract('one');
-      store.addExtract('two');
-      store.addExtract('three');
-      expect(store.get('!EXTRACT')).toBe('one[EXTRACT]two[EXTRACT]three');
+    it('should return extract values joined with [EXTRACT] via getExtractAdd', () => {
+      ctx.set('!EXTRACT', 'one');
+      ctx.set('!EXTRACT', 'two');
+      ctx.set('!EXTRACT', 'three');
+      expect(ctx.getExtractAdd()).toBe('one[EXTRACT]two[EXTRACT]three');
     });
 
-    it('should clear extract values', () => {
-      store.addExtract('value');
-      store.clearExtract();
-      expect(store.getExtract()).toEqual([]);
-      expect(store.get('!EXTRACT')).toBe('');
+    it('should return the latest set value via get(!EXTRACT)', () => {
+      ctx.set('!EXTRACT', 'first');
+      ctx.set('!EXTRACT', 'second');
+      // get('!EXTRACT') returns the last SET value, not the joined string
+      expect(ctx.get('!EXTRACT')).toBe('second');
+    });
+
+    it('should clear extract values on resetExtract', () => {
+      ctx.set('!EXTRACT', 'value');
+      ctx.resetExtract();
+      expect(ctx.getExtractArray()).toEqual([]);
+      expect(ctx.get('!EXTRACT')).toBe('');
     });
 
     it('should handle empty string extracts', () => {
-      store.addExtract('');
-      store.addExtract('value');
-      store.addExtract('');
-      expect(store.getExtract()).toEqual(['', 'value', '']);
+      ctx.set('!EXTRACT', '');
+      ctx.set('!EXTRACT', 'value');
+      ctx.set('!EXTRACT', '');
+      expect(ctx.getExtractArray()).toEqual(['', 'value', '']);
     });
 
     it('should handle special characters in extract values', () => {
-      store.addExtract('<html>');
-      store.addExtract('a & b');
-      store.addExtract('"quoted"');
-      expect(store.getExtract()).toEqual(['<html>', 'a & b', '"quoted"']);
+      ctx.set('!EXTRACT', '<html>');
+      ctx.set('!EXTRACT', 'a & b');
+      ctx.set('!EXTRACT', '"quoted"');
+      expect(ctx.getExtractArray()).toEqual(['<html>', 'a & b', '"quoted"']);
     });
 
     it('should handle newlines in extract values', () => {
-      store.addExtract('line1\nline2');
-      expect(store.getExtract()).toEqual(['line1\nline2']);
+      ctx.set('!EXTRACT', 'line1\nline2');
+      expect(ctx.getExtractArray()).toEqual(['line1\nline2']);
     });
 
     it('should handle unicode in extract values', () => {
-      store.addExtract('Hello \u4e16\u754c');
-      store.addExtract('\ud83d\ude00');
-      expect(store.getExtract()).toEqual(['Hello \u4e16\u754c', '\ud83d\ude00']);
+      ctx.set('!EXTRACT', 'Hello \u4e16\u754c');
+      ctx.set('!EXTRACT', '\ud83d\ude00');
+      expect(ctx.getExtractArray()).toEqual(['Hello \u4e16\u754c', '\ud83d\ude00']);
     });
   });
 
   describe('!LOOP Counter', () => {
     it('should start with loop counter at 1', () => {
-      expect(store.getLoop()).toBe(1);
-      expect(store.get('!LOOP')).toBe('1');
+      expect(ctx.getLoop()).toBe(1);
+      // get('!LOOP') returns a number, not a string
+      expect(ctx.get('!LOOP')).toBe(1);
     });
 
     it('should set loop counter', () => {
-      store.setLoop(5);
-      expect(store.getLoop()).toBe(5);
-      expect(store.get('!LOOP')).toBe('5');
+      ctx.setLoop(5);
+      expect(ctx.getLoop()).toBe(5);
+      expect(ctx.get('!LOOP')).toBe(5);
     });
 
     it('should increment loop counter', () => {
-      store.incrementLoop();
-      expect(store.getLoop()).toBe(2);
-      store.incrementLoop();
-      expect(store.getLoop()).toBe(3);
+      ctx.incrementLoop();
+      expect(ctx.getLoop()).toBe(2);
+      ctx.incrementLoop();
+      expect(ctx.getLoop()).toBe(3);
     });
 
-    it('should return loop counter as string via get', () => {
-      store.setLoop(100);
-      expect(store.get('!LOOP')).toBe('100');
+    it('should return loop counter as number via get', () => {
+      ctx.setLoop(100);
+      expect(ctx.get('!LOOP')).toBe(100);
     });
 
     it('should handle large loop values', () => {
-      store.setLoop(1000000);
-      expect(store.getLoop()).toBe(1000000);
-      expect(store.get('!LOOP')).toBe('1000000');
+      ctx.setLoop(1000000);
+      expect(ctx.getLoop()).toBe(1000000);
+      expect(ctx.get('!LOOP')).toBe(1000000);
     });
 
     it('should be case-insensitive for !LOOP', () => {
-      store.setLoop(42);
-      expect(store.get('!loop')).toBe('42');
-      expect(store.get('!LOOP')).toBe('42');
-      expect(store.get('!Loop')).toBe('42');
+      ctx.setLoop(42);
+      expect(ctx.get('!loop')).toBe(42);
+      expect(ctx.get('!LOOP')).toBe(42);
+      expect(ctx.get('!Loop')).toBe(42);
     });
 
     it('should handle zero loop value', () => {
-      store.setLoop(0);
-      expect(store.getLoop()).toBe(0);
-      expect(store.get('!LOOP')).toBe('0');
+      ctx.setLoop(0);
+      expect(ctx.getLoop()).toBe(0);
+      expect(ctx.get('!LOOP')).toBe(0);
     });
 
     it('should handle negative loop values', () => {
-      store.setLoop(-1);
-      expect(store.getLoop()).toBe(-1);
-      expect(store.get('!LOOP')).toBe('-1');
+      ctx.setLoop(-1);
+      expect(ctx.getLoop()).toBe(-1);
     });
   });
 
   describe('!DATASOURCE Variables', () => {
-    const testData = [
-      ['a1', 'b1', 'c1'],
-      ['a2', 'b2', 'c2'],
-      ['a3', 'b3', 'c3'],
-    ];
-
-    it('should load datasource data', () => {
-      store.loadDatasource(testData);
-      expect(store.getDatasourceRow()).toBe(1);
+    it('should set datasource columns', () => {
+      ctx.setDatasourceCols(['a1', 'b1', 'c1']);
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(1);
     });
 
     it('should access columns with !COL1, !COL2, etc.', () => {
-      store.loadDatasource(testData);
-      expect(store.get('!COL1')).toBe('a1');
-      expect(store.get('!COL2')).toBe('b1');
-      expect(store.get('!COL3')).toBe('c1');
+      ctx.setDatasourceCols(['a1', 'b1', 'c1']);
+      expect(ctx.get('!COL1')).toBe('a1');
+      expect(ctx.get('!COL2')).toBe('b1');
+      expect(ctx.get('!COL3')).toBe('c1');
     });
 
-    it('should change datasource row', () => {
-      store.loadDatasource(testData);
-      store.setDatasourceRow(2);
-      expect(store.get('!COL1')).toBe('a2');
-      expect(store.get('!COL2')).toBe('b2');
+    it('should change datasource line', () => {
+      ctx.setDatasourceCols(['a1', 'b1', 'c1']);
+      ctx.setDatasourceLine(2);
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(2);
     });
 
-    it('should access last row', () => {
-      store.loadDatasource(testData);
-      store.setDatasourceRow(3);
-      expect(store.get('!COL1')).toBe('a3');
+    it('should update columns when setting new datasource cols', () => {
+      ctx.setDatasourceCols(['a1', 'b1', 'c1']);
+      ctx.setDatasourceCols(['a2', 'b2']);
+      expect(ctx.get('!COL1')).toBe('a2');
+      expect(ctx.get('!COL2')).toBe('b2');
+      // COL3 should be reset to empty since new row only has 2 cols
+      expect(ctx.get('!COL3')).toBe('');
     });
 
-    it('should return undefined for out-of-range column', () => {
-      store.loadDatasource(testData);
-      expect(store.get('!COL4')).toBeUndefined();
-      expect(store.get('!COL0')).toBeUndefined();
-    });
-
-    it('should return undefined for out-of-range row', () => {
-      store.loadDatasource(testData);
-      store.setDatasourceRow(4);
-      expect(store.get('!COL1')).toBeUndefined();
-    });
-
-    it('should return undefined when no datasource loaded', () => {
-      expect(store.get('!COL1')).toBeUndefined();
+    it('should return empty string for unset columns', () => {
+      // !COL1-10 default to empty string
+      expect(ctx.get('!COL1')).toBe('');
+      expect(ctx.get('!COL10')).toBe('');
     });
 
     it('should be case-insensitive for !COL', () => {
-      store.loadDatasource(testData);
-      expect(store.get('!col1')).toBe('a1');
-      expect(store.get('!COL1')).toBe('a1');
-      expect(store.get('!Col1')).toBe('a1');
-    });
-
-    it('should handle datasource with varying row lengths', () => {
-      const unevenData = [
-        ['a', 'b', 'c'],
-        ['d', 'e'],
-        ['f'],
-      ];
-      store.loadDatasource(unevenData);
-
-      store.setDatasourceRow(1);
-      expect(store.get('!COL3')).toBe('c');
-
-      store.setDatasourceRow(2);
-      expect(store.get('!COL3')).toBeUndefined();
-
-      store.setDatasourceRow(3);
-      expect(store.get('!COL2')).toBeUndefined();
-    });
-
-    it('should handle empty datasource', () => {
-      store.loadDatasource([]);
-      expect(store.get('!COL1')).toBeUndefined();
+      ctx.setDatasourceCols(['a1', 'b1', 'c1']);
+      expect(ctx.get('!col1')).toBe('a1');
+      expect(ctx.get('!COL1')).toBe('a1');
+      expect(ctx.get('!Col1')).toBe('a1');
     });
 
     it('should handle datasource with empty strings', () => {
-      store.loadDatasource([['', 'value', '']]);
-      expect(store.get('!COL1')).toBe('');
-      expect(store.get('!COL2')).toBe('value');
-      expect(store.get('!COL3')).toBe('');
+      ctx.setDatasourceCols(['', 'value', '']);
+      expect(ctx.get('!COL1')).toBe('');
+      expect(ctx.get('!COL2')).toBe('value');
+      expect(ctx.get('!COL3')).toBe('');
+    });
+
+    it('should set datasource column count', () => {
+      ctx.setDatasourceCols(['a', 'b', 'c']);
+      expect(ctx.get('!DATASOURCE_COLUMNS')).toBe(3);
+    });
+
+    it('should set datasource path', () => {
+      ctx.setDatasource('/path/to/data.csv');
+      expect(ctx.get('!DATASOURCE')).toBe('/path/to/data.csv');
     });
   });
 
   describe('Variable Expansion in Commands', () => {
     it('should expand single variable', () => {
-      store.set('!VAR0', 'world');
-      const result = store.expand('Hello {{!VAR0}}');
-      expect(result).toBe('Hello world');
+      ctx.set('!VAR0', 'world');
+      const result = ctx.expand('Hello {{!VAR0}}');
+      expect(result.expanded).toBe('Hello world');
+      expect(result.hadVariables).toBe(true);
     });
 
     it('should expand multiple variables', () => {
-      store.set('!VAR0', 'John');
-      store.set('!VAR1', 'Doe');
-      const result = store.expand('Name: {{!VAR0}} {{!VAR1}}');
-      expect(result).toBe('Name: John Doe');
+      ctx.set('!VAR0', 'John');
+      ctx.set('!VAR1', 'Doe');
+      const result = ctx.expand('Name: {{!VAR0}} {{!VAR1}}');
+      expect(result.expanded).toBe('Name: John Doe');
     });
 
     it('should expand custom variables', () => {
-      store.set('USERNAME', 'admin');
-      const result = store.expand('User: {{USERNAME}}');
-      expect(result).toBe('User: admin');
+      ctx.set('USERNAME', 'admin');
+      const result = ctx.expand('User: {{USERNAME}}');
+      expect(result.expanded).toBe('User: admin');
     });
 
     it('should expand !LOOP variable', () => {
-      store.setLoop(5);
-      const result = store.expand('Iteration: {{!LOOP}}');
-      expect(result).toBe('Iteration: 5');
+      ctx.setLoop(5);
+      const result = ctx.expand('Iteration: {{!LOOP}}');
+      expect(result.expanded).toBe('Iteration: 5');
     });
 
     it('should expand !EXTRACT variable', () => {
-      store.addExtract('extracted data');
-      const result = store.expand('Data: {{!EXTRACT}}');
-      expect(result).toBe('Data: extracted data');
+      ctx.set('!EXTRACT', 'extracted data');
+      const result = ctx.expand('Data: {{!EXTRACT}}');
+      expect(result.expanded).toBe('Data: extracted data');
     });
 
     it('should expand !COL variables', () => {
-      store.loadDatasource([['user@example.com', 'password123']]);
-      const result = store.expand('Login: {{!COL1}} / {{!COL2}}');
-      expect(result).toBe('Login: user@example.com / password123');
+      ctx.setDatasourceCols(['user@example.com', 'password123']);
+      const result = ctx.expand('Login: {{!COL1}} / {{!COL2}}');
+      expect(result.expanded).toBe('Login: user@example.com / password123');
     });
 
-    it('should preserve unmatched variables', () => {
-      const result = store.expand('Hello {{UNDEFINED}}');
-      expect(result).toBe('Hello {{UNDEFINED}}');
+    it('should replace unresolved variables with empty string by default', () => {
+      const result = ctx.expand('Hello {{UNDEFINED}}');
+      expect(result.expanded).toBe('Hello ');
+      expect(result.unresolvedVariables).toContain('UNDEFINED');
     });
 
     it('should handle text without variables', () => {
-      const result = store.expand('No variables here');
-      expect(result).toBe('No variables here');
+      const result = ctx.expand('No variables here');
+      expect(result.expanded).toBe('No variables here');
+      expect(result.hadVariables).toBe(false);
     });
 
     it('should handle empty string', () => {
-      const result = store.expand('');
-      expect(result).toBe('');
+      const result = ctx.expand('');
+      expect(result.expanded).toBe('');
+      expect(result.hadVariables).toBe(false);
     });
 
     it('should handle adjacent variables', () => {
-      store.set('A', 'Hello');
-      store.set('B', 'World');
-      const result = store.expand('{{A}}{{B}}');
-      expect(result).toBe('HelloWorld');
+      ctx.set('A', 'Hello');
+      ctx.set('B', 'World');
+      const result = ctx.expand('{{A}}{{B}}');
+      expect(result.expanded).toBe('HelloWorld');
     });
 
     it('should be case-insensitive for variable names in expansion', () => {
-      store.set('MYVAR', 'value');
-      expect(store.expand('{{myvar}}')).toBe('value');
-      expect(store.expand('{{MYVAR}}')).toBe('value');
-      expect(store.expand('{{MyVar}}')).toBe('value');
-    });
-
-    it('should handle variables with whitespace around name', () => {
-      store.set('MYVAR', 'value');
-      const result = store.expand('{{ MYVAR }}');
-      expect(result).toBe('value');
+      ctx.set('MYVAR', 'value');
+      // The real expand does NOT trim variable names from extractVariables
+      // So {{MYVAR}} works if ctx.get('MYVAR') works (it uppercases)
+      expect(ctx.expand('{{MYVAR}}').expanded).toBe('value');
     });
 
     it('should handle nested braces correctly', () => {
-      store.set('VAR', 'test');
-      const result = store.expand('{{VAR}} and {notavar}');
-      expect(result).toBe('test and {notavar}');
+      ctx.set('VAR', 'test');
+      const result = ctx.expand('{{VAR}} and {notavar}');
+      expect(result.expanded).toBe('test and {notavar}');
     });
 
     it('should handle URLs with variables', () => {
-      store.set('DOMAIN', 'example.com');
-      store.set('PAGE', 'index.html');
-      const result = store.expand('https://{{DOMAIN}}/{{PAGE}}');
-      expect(result).toBe('https://example.com/index.html');
+      ctx.set('DOMAIN', 'example.com');
+      ctx.set('PAGE', 'index.html');
+      const result = ctx.expand('https://{{DOMAIN}}/{{PAGE}}');
+      expect(result.expanded).toBe('https://example.com/index.html');
     });
   });
 
   describe('ADD Operations on Variables', () => {
     it('should add to numeric variable', () => {
-      store.set('!VAR0', '10');
-      store.add('!VAR0', 5);
-      expect(store.get('!VAR0')).toBe('15');
+      ctx.set('!VAR0', '10');
+      ctx.add('!VAR0', 5);
+      // add() stores result as number
+      expect(ctx.get('!VAR0')).toBe(15);
     });
 
     it('should add negative number', () => {
-      store.set('!VAR0', '10');
-      store.add('!VAR0', -3);
-      expect(store.get('!VAR0')).toBe('7');
+      ctx.set('!VAR0', '10');
+      ctx.add('!VAR0', -3);
+      expect(ctx.get('!VAR0')).toBe(7);
     });
 
     it('should add to empty variable (treated as 0)', () => {
-      store.add('!VAR0', 5);
-      expect(store.get('!VAR0')).toBe('5');
+      ctx.add('!VAR0', 5);
+      expect(ctx.get('!VAR0')).toBe(5);
     });
 
     it('should add decimal numbers', () => {
-      store.set('!VAR0', '10.5');
-      store.add('!VAR0', 2.3);
-      expect(parseFloat(store.get('!VAR0') || '0')).toBeCloseTo(12.8);
+      ctx.set('!VAR0', '10.5');
+      ctx.add('!VAR0', 2.3);
+      expect(ctx.get('!VAR0')).toBeCloseTo(12.8);
     });
 
     it('should add to custom variable', () => {
-      store.set('COUNTER', '100');
-      store.add('COUNTER', 50);
-      expect(store.get('COUNTER')).toBe('150');
+      ctx.set('COUNTER', '100');
+      ctx.add('COUNTER', 50);
+      expect(ctx.get('COUNTER')).toBe(150);
     });
 
     it('should handle adding zero', () => {
-      store.set('!VAR0', '42');
-      store.add('!VAR0', 0);
-      expect(store.get('!VAR0')).toBe('42');
+      ctx.set('!VAR0', '42');
+      ctx.add('!VAR0', 0);
+      expect(ctx.get('!VAR0')).toBe(42);
     });
 
     it('should handle large numbers', () => {
-      store.set('!VAR0', '1000000000');
-      store.add('!VAR0', 1);
-      expect(store.get('!VAR0')).toBe('1000000001');
+      ctx.set('!VAR0', '1000000000');
+      ctx.add('!VAR0', 1);
+      expect(ctx.get('!VAR0')).toBe(1000000001);
     });
 
     it('should handle negative results', () => {
-      store.set('!VAR0', '5');
-      store.add('!VAR0', -10);
-      expect(store.get('!VAR0')).toBe('-5');
+      ctx.set('!VAR0', '5');
+      ctx.add('!VAR0', -10);
+      expect(ctx.get('!VAR0')).toBe(-5);
     });
 
     it('should be case-insensitive for variable name', () => {
-      store.set('!var0', '10');
-      store.add('!VAR0', 5);
-      expect(store.get('!var0')).toBe('15');
+      ctx.set('!var0', '10');
+      ctx.add('!VAR0', 5);
+      expect(ctx.get('!var0')).toBe(15);
     });
 
     it('should create new variable if not exists and add', () => {
-      store.add('NEWVAR', 10);
-      expect(store.get('NEWVAR')).toBe('10');
+      ctx.add('NEWVAR', 10);
+      expect(ctx.get('NEWVAR')).toBe(10);
+    });
+
+    it('should return AddResult with details', () => {
+      ctx.set('!VAR0', '10');
+      const result = ctx.add('!VAR0', 5);
+      expect(result.success).toBe(true);
+      expect(result.previousValue).toBe('10');
+      expect(result.addedValue).toBe(5);
+      expect(result.newValue).toBe(15);
+    });
+
+    it('should return error for non-numeric value', () => {
+      ctx.set('!VAR0', 'hello');
+      const result = ctx.add('!VAR0', 5);
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  describe('executeSet and executeAdd helpers', () => {
+    it('should execute SET with literal value', () => {
+      const result = executeSet(ctx, '!VAR0', 'hello');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('hello');
+    });
+
+    it('should execute ADD with string value', () => {
+      ctx.set('!VAR0', '10');
+      const result = executeAdd(ctx, '!VAR0', '5');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe(15);
+    });
+
+    it('should execute ADD with invalid numeric string', () => {
+      const result = executeAdd(ctx, '!VAR0', 'not_a_number');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('createVariableContext factory', () => {
+    it('should create a new context with defaults', () => {
+      const newCtx = createVariableContext();
+      expect(newCtx.get('!VAR0')).toBe('');
+      expect(newCtx.getLoop()).toBe(1);
+    });
+
+    it('should create a context with initial values', () => {
+      const newCtx = createVariableContext({ '!VAR0': 'initial', 'MYVAR': 'custom' });
+      expect(newCtx.get('!VAR0')).toBe('initial');
+      expect(newCtx.get('MYVAR')).toBe('custom');
     });
   });
 
   describe('Edge Cases', () => {
-    describe('Undefined Variables', () => {
-      it('should return undefined for undefined built-in range', () => {
-        expect(store.get('!VAR10')).toBeUndefined();
-        expect(store.get('!VAR99')).toBeUndefined();
+    describe('Missing Variables', () => {
+      it('should return null for out-of-range system variables', () => {
+        // !VAR10 is not a known system variable so get returns null
+        expect(ctx.get('!VAR10')).toBeNull();
+        expect(ctx.get('!VAR99')).toBeNull();
       });
 
-      it('should return undefined for undefined custom variable', () => {
-        expect(store.get('UNDEFINED_VAR')).toBeUndefined();
+      it('should return null for undefined custom variable', () => {
+        expect(ctx.get('UNDEFINED_VAR')).toBeNull();
       });
 
-      it('should return undefined for invalid variable format', () => {
-        expect(store.get('')).toBeUndefined();
+      it('should return null for empty variable name', () => {
+        expect(ctx.get('')).toBeNull();
       });
     });
 
     describe('Special Characters', () => {
       it('should handle special characters in variable values', () => {
-        store.set('!VAR0', '<script>alert("xss")</script>');
-        expect(store.get('!VAR0')).toBe('<script>alert("xss")</script>');
+        ctx.set('!VAR0', '<script>alert("xss")</script>');
+        expect(ctx.get('!VAR0')).toBe('<script>alert("xss")</script>');
       });
 
       it('should handle newlines in variable values', () => {
-        store.set('!VAR0', 'line1\nline2\nline3');
-        expect(store.get('!VAR0')).toBe('line1\nline2\nline3');
+        ctx.set('!VAR0', 'line1\nline2\nline3');
+        expect(ctx.get('!VAR0')).toBe('line1\nline2\nline3');
       });
 
       it('should handle tabs in variable values', () => {
-        store.set('!VAR0', 'col1\tcol2\tcol3');
-        expect(store.get('!VAR0')).toBe('col1\tcol2\tcol3');
+        ctx.set('!VAR0', 'col1\tcol2\tcol3');
+        expect(ctx.get('!VAR0')).toBe('col1\tcol2\tcol3');
       });
 
       it('should handle unicode characters', () => {
-        store.set('!VAR0', '\u4e2d\u6587');
-        expect(store.get('!VAR0')).toBe('\u4e2d\u6587');
+        ctx.set('!VAR0', '\u4e2d\u6587');
+        expect(ctx.get('!VAR0')).toBe('\u4e2d\u6587');
       });
 
       it('should handle emojis', () => {
-        store.set('!VAR0', '\ud83d\ude00\ud83d\ude01\ud83d\ude02');
-        expect(store.get('!VAR0')).toBe('\ud83d\ude00\ud83d\ude01\ud83d\ude02');
+        ctx.set('!VAR0', '\ud83d\ude00\ud83d\ude01\ud83d\ude02');
+        expect(ctx.get('!VAR0')).toBe('\ud83d\ude00\ud83d\ude01\ud83d\ude02');
       });
 
       it('should handle null byte in value', () => {
-        store.set('!VAR0', 'before\0after');
-        expect(store.get('!VAR0')).toBe('before\0after');
+        ctx.set('!VAR0', 'before\0after');
+        expect(ctx.get('!VAR0')).toBe('before\0after');
       });
 
       it('should handle very long values', () => {
         const longValue = 'x'.repeat(100000);
-        store.set('!VAR0', longValue);
-        expect(store.get('!VAR0')).toBe(longValue);
+        ctx.set('!VAR0', longValue);
+        expect(ctx.get('!VAR0')).toBe(longValue);
       });
     });
 
     describe('Reset Behavior', () => {
       it('should reset all variables to initial state', () => {
-        store.set('!VAR0', 'value');
-        store.set('CUSTOM', 'value');
-        store.addExtract('extracted');
-        store.setLoop(10);
-        store.loadDatasource([['a', 'b']]);
-        store.setDatasourceRow(1);
+        ctx.set('!VAR0', 'value');
+        ctx.set('CUSTOM', 'value');
+        ctx.set('!EXTRACT', 'extracted');
+        ctx.setLoop(10);
 
-        store.reset();
+        ctx.reset();
 
-        expect(store.get('!VAR0')).toBe('');
-        expect(store.get('CUSTOM')).toBeUndefined();
-        expect(store.get('!EXTRACT')).toBe('');
-        expect(store.get('!LOOP')).toBe('1');
-        expect(store.get('!COL1')).toBeUndefined();
+        expect(ctx.get('!VAR0')).toBe('');
+        expect(ctx.get('CUSTOM')).toBeNull();
+        expect(ctx.get('!EXTRACT')).toBe('');
+        expect(ctx.get('!LOOP')).toBe(1);
+        expect(ctx.get('!COL1')).toBe('');
       });
 
       it('should reinitialize built-in vars after reset', () => {
-        store.set('!VAR5', 'test');
-        store.reset();
+        ctx.set('!VAR5', 'test');
+        ctx.reset();
         for (let i = 0; i <= 9; i++) {
-          expect(store.get(`!VAR${i}`)).toBe('');
+          expect(ctx.get(`!VAR${i}`)).toBe('');
         }
       });
     });
@@ -735,101 +607,140 @@ describe('Variable System Unit Tests', () => {
     describe('Concurrent Variable Access', () => {
       it('should handle rapid set/get operations', () => {
         for (let i = 0; i < 1000; i++) {
-          store.set('!VAR0', `value${i}`);
-          expect(store.get('!VAR0')).toBe(`value${i}`);
+          ctx.set('!VAR0', `value${i}`);
+          expect(ctx.get('!VAR0')).toBe(`value${i}`);
         }
       });
 
       it('should handle rapid loop increments', () => {
         for (let i = 0; i < 100; i++) {
-          store.incrementLoop();
+          ctx.incrementLoop();
         }
-        expect(store.getLoop()).toBe(101);
+        expect(ctx.getLoop()).toBe(101);
       });
 
       it('should handle rapid extract additions', () => {
         for (let i = 0; i < 100; i++) {
-          store.addExtract(`item${i}`);
+          ctx.set('!EXTRACT', `item${i}`);
         }
-        expect(store.getExtract().length).toBe(100);
+        expect(ctx.getExtractArray().length).toBe(100);
       });
     });
 
-    describe('Type Coercion', () => {
-      it('should store numbers as strings', () => {
-        store.set('!VAR0', '123');
-        expect(typeof store.get('!VAR0')).toBe('string');
+    describe('Type Handling', () => {
+      it('should store string values as strings', () => {
+        ctx.set('!VAR0', '123');
+        expect(typeof ctx.get('!VAR0')).toBe('string');
+      });
+
+      it('should store numeric values as numbers', () => {
+        ctx.set('!VAR0', 123);
+        expect(typeof ctx.get('!VAR0')).toBe('number');
       });
 
       it('should handle boolean-like strings', () => {
-        store.set('!VAR0', 'true');
-        expect(store.get('!VAR0')).toBe('true');
-        store.set('!VAR0', 'false');
-        expect(store.get('!VAR0')).toBe('false');
+        ctx.set('!VAR0', 'true');
+        expect(ctx.get('!VAR0')).toBe('true');
+        ctx.set('!VAR0', 'false');
+        expect(ctx.get('!VAR0')).toBe('false');
       });
 
       it('should handle null-like strings', () => {
-        store.set('!VAR0', 'null');
-        expect(store.get('!VAR0')).toBe('null');
+        ctx.set('!VAR0', 'null');
+        expect(ctx.get('!VAR0')).toBe('null');
       });
 
       it('should handle undefined-like strings', () => {
-        store.set('!VAR0', 'undefined');
-        expect(store.get('!VAR0')).toBe('undefined');
+        ctx.set('!VAR0', 'undefined');
+        expect(ctx.get('!VAR0')).toBe('undefined');
       });
     });
 
     describe('Variable Name Edge Cases', () => {
       it('should handle variable names with numbers', () => {
-        store.set('VAR123', 'value');
-        expect(store.get('VAR123')).toBe('value');
+        ctx.set('VAR123', 'value');
+        expect(ctx.get('VAR123')).toBe('value');
       });
 
       it('should handle single character variable names', () => {
-        store.set('X', 'value');
-        expect(store.get('X')).toBe('value');
+        ctx.set('X', 'value');
+        expect(ctx.get('X')).toBe('value');
       });
 
       it('should handle variable names starting with underscore', () => {
-        store.set('_PRIVATE', 'value');
-        expect(store.get('_PRIVATE')).toBe('value');
+        ctx.set('_PRIVATE', 'value');
+        expect(ctx.get('_PRIVATE')).toBe('value');
       });
 
       it('should differentiate similar variable names', () => {
-        store.set('VAR', 'a');
-        store.set('VAR1', 'b');
-        store.set('VAR12', 'c');
-        expect(store.get('VAR')).toBe('a');
-        expect(store.get('VAR1')).toBe('b');
-        expect(store.get('VAR12')).toBe('c');
+        ctx.set('VAR', 'a');
+        ctx.set('VAR1', 'b');
+        ctx.set('VAR12', 'c');
+        expect(ctx.get('VAR')).toBe('a');
+        expect(ctx.get('VAR1')).toBe('b');
+        expect(ctx.get('VAR12')).toBe('c');
       });
     });
 
     describe('Expansion Edge Cases', () => {
       it('should handle malformed expansion syntax', () => {
-        store.set('VAR', 'value');
-        expect(store.expand('{VAR}')).toBe('{VAR}');
-        expect(store.expand('{{VAR')).toBe('{{VAR');
-        expect(store.expand('VAR}}')).toBe('VAR}}');
-        // Triple braces: the regex tries to match {{...}} but with {{{VAR}}}
-        // it matches the literal braces incorrectly, resulting in no match
-        // This is expected behavior - malformed syntax is preserved
-        expect(store.expand('{{{VAR}}}')).toBe('{{{VAR}}}');
+        ctx.set('VAR', 'value');
+        expect(ctx.expand('{VAR}').expanded).toBe('{VAR}');
+        expect(ctx.expand('{{VAR').expanded).toBe('{{VAR');
+        expect(ctx.expand('VAR}}').expanded).toBe('VAR}}');
       });
 
       it('should handle expansion with empty variable value', () => {
-        store.set('EMPTY', '');
-        expect(store.expand('before{{EMPTY}}after')).toBe('beforeafter');
+        ctx.set('EMPTY', '');
+        expect(ctx.expand('before{{EMPTY}}after').expanded).toBe('beforeafter');
       });
 
       it('should handle multiple occurrences of same variable', () => {
-        store.set('X', 'val');
-        expect(store.expand('{{X}}{{X}}{{X}}')).toBe('valvalval');
+        ctx.set('X', 'val');
+        expect(ctx.expand('{{X}}{{X}}{{X}}').expanded).toBe('valvalval');
       });
 
       it('should handle special regex characters in variable values', () => {
-        store.set('REGEX', '$1.*?+[]()');
-        expect(store.expand('Pattern: {{REGEX}}')).toBe('Pattern: $1.*?+[]()');
+        ctx.set('REGEX', '$1.*?+[]()');
+        expect(ctx.expand('Pattern: {{REGEX}}').expanded).toBe('Pattern: $1.*?+[]()');
+      });
+    });
+
+    describe('Timeout and Folder Variables', () => {
+      it('should have default timeout values', () => {
+        expect(ctx.getTimeout('default')).toBe(60);
+        expect(ctx.getTimeout('step')).toBe(6);
+        expect(ctx.getTimeout('page')).toBe(60);
+      });
+
+      it('should set and get timeout values', () => {
+        ctx.setTimeout('step', 10);
+        expect(ctx.getTimeout('step')).toBe(10);
+        expect(ctx.get('!TIMEOUT_STEP')).toBe(10);
+      });
+
+      it('should set and get folder paths', () => {
+        ctx.setFolder('datasource', '/data');
+        expect(ctx.get('!FOLDER_DATASOURCE')).toBe('/data');
+      });
+    });
+
+    describe('Clone and Import', () => {
+      it('should clone a context with all values', () => {
+        ctx.set('!VAR0', 'test');
+        ctx.set('CUSTOM', 'value');
+        ctx.setLoop(5);
+
+        const cloned = ctx.clone();
+        expect(cloned.get('!VAR0')).toBe('test');
+        expect(cloned.get('CUSTOM')).toBe('value');
+        expect(cloned.getLoop()).toBe(5);
+      });
+
+      it('should import variables from a record', () => {
+        ctx.importVariables({ '!VAR0': 'imported', 'MYVAR': 'val' });
+        expect(ctx.get('!VAR0')).toBe('imported');
+        expect(ctx.get('MYVAR')).toBe('val');
       });
     });
   });

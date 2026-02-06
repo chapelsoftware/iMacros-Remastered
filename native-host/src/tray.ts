@@ -112,24 +112,25 @@ export class TrayManager {
    * Generate a simple placeholder icon when no icon file exists
    */
   private generatePlaceholderIcon(): Electron.NativeImage {
-    // Create a 16x16 PNG with a simple "iM" design
-    // This is a minimal 16x16 transparent PNG with a blue square
     const size = 16;
-
-    // Create an empty image and use nativeImage.createEmpty as fallback
-    // Electron will show a default icon
-    const empty = nativeImage.createEmpty();
-
-    // Try to create a simple colored icon based on status
-    const colors: Record<TrayStatus, string> = {
-      idle: '#4A90D9',      // Blue
-      recording: '#E53935', // Red
-      playing: '#43A047'    // Green
+    const colors: Record<TrayStatus, { r: number; g: number; b: number }> = {
+      idle: { r: 74, g: 144, b: 217 },      // Blue (#4A90D9)
+      recording: { r: 229, g: 57, b: 53 },   // Red (#E53935)
+      playing: { r: 67, g: 160, b: 71 },     // Green (#43A047)
     };
 
-    // Since we can't easily generate PNG data without canvas,
-    // return empty and let Electron handle it
-    return empty;
+    const color = colors[this.status] || colors.idle;
+
+    // Create raw RGBA buffer for 16x16 image
+    const buffer = Buffer.alloc(size * size * 4);
+    for (let i = 0; i < size * size; i++) {
+      buffer[i * 4] = color.r;
+      buffer[i * 4 + 1] = color.g;
+      buffer[i * 4 + 2] = color.b;
+      buffer[i * 4 + 3] = 255;
+    }
+
+    return nativeImage.createFromBuffer(buffer, { width: size, height: size });
   }
 
   /**
@@ -198,9 +199,23 @@ export class TrayManager {
    * Get a status indicator icon for the menu
    */
   private getStatusIndicator(): Electron.NativeImage | undefined {
-    // Return undefined to skip icon in menu
-    // A proper implementation would return small colored dots
-    return undefined;
+    const size = 8;
+    const colors: Record<TrayStatus, { r: number; g: number; b: number }> = {
+      idle: { r: 74, g: 144, b: 217 },
+      recording: { r: 229, g: 57, b: 53 },
+      playing: { r: 67, g: 160, b: 71 },
+    };
+
+    const color = colors[this.status] || colors.idle;
+    const buffer = Buffer.alloc(size * size * 4);
+    for (let i = 0; i < size * size; i++) {
+      buffer[i * 4] = color.r;
+      buffer[i * 4 + 1] = color.g;
+      buffer[i * 4 + 2] = color.b;
+      buffer[i * 4 + 3] = 255;
+    }
+
+    return nativeImage.createFromBuffer(buffer, { width: size, height: size });
   }
 
   /**

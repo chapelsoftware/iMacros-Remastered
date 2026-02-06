@@ -26,6 +26,9 @@ if (process.platform === 'darwin') {
   }
 }
 
+const { parseMacro } = require('../../../shared/src/parser');
+const { createExecutor } = require('../../../shared/src/executor');
+
 let mainWindow = null;
 let tray = null;
 let currentStatus = 'idle';
@@ -170,11 +173,52 @@ function handleNativeMessage(message) {
       }
 
       case 'execute': {
-        // For now, acknowledge the execute request
-        // Full execution requires the macro engine integration
-        response.payload = { success: true, status: 'acknowledged' };
-        log('Execute request received (engine integration pending)');
-        break;
+        const script = message.payload && message.payload.script;
+        const macroPath = message.payload && message.payload.path;
+
+        let macroContent = script;
+        if (!macroContent && macroPath) {
+          const macrosDir = getMacrosFolder();
+          const fullPath = path.resolve(macrosDir, macroPath);
+          if (!fullPath.startsWith(macrosDir)) {
+            response.type = 'error';
+            response.error = 'Path outside macros directory';
+            break;
+          }
+          if (!fs.existsSync(fullPath)) {
+            response.type = 'error';
+            response.error = 'Macro file not found';
+            break;
+          }
+          macroContent = fs.readFileSync(fullPath, 'utf-8');
+        }
+
+        if (!macroContent) {
+          response.type = 'error';
+          response.error = 'No script or path provided';
+          break;
+        }
+
+        // Execute asynchronously
+        const executor = createExecutor();
+        executor.loadMacro(macroContent);
+        executor.execute()
+          .then(result => {
+            response.payload = {
+              success: result.success,
+              errorCode: result.errorCode,
+              errorMessage: result.errorMessage,
+              extractData: result.extractData,
+              runtime: result.runtime,
+            };
+            nativeSendMessage(response);
+          })
+          .catch(err => {
+            response.type = 'error';
+            response.error = err.message || String(err);
+            nativeSendMessage(response);
+          });
+        return; // Don't send response synchronously
       }
 
       default:

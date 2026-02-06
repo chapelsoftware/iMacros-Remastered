@@ -820,7 +820,7 @@ describe('Scripting Interface Integration Tests', () => {
       try {
         await serverWithDefault.start();
 
-        const response = await sendCommand(testPort + 1, 'iimPlay("test.iim")');
+        const response = await sendCommand(testPort + 1, 'iimPlay("VERSION BUILD=1")');
         expect(response.code).toBe(ReturnCode.OK);
       } finally {
         await serverWithDefault.stop();

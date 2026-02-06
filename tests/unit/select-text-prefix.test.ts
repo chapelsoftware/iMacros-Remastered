@@ -1,30 +1,56 @@
 import { describe, it, expect } from 'vitest';
+import { matchesSelectTextPattern } from '@extension/content/dom-executor';
+import { matchesWildcard } from '@extension/content/element-finder';
 
 describe('Select by visible text ($prefix)', () => {
-  it('$prefix concept is implemented in setElementContent', () => {
-    // This tests the concept - actual DOM testing requires browser environment
-    // The implementation adds $ prefix handling in dom-executor.ts setElementContent()
-    // $text = exact text match
-    // $*pattern* = wildcard text match
-    expect(true).toBe(true);
+  describe('matchesSelectTextPattern', () => {
+    it('matches exact text', () => {
+      expect(matchesSelectTextPattern('United States', 'United States')).toBe(true);
+      expect(matchesSelectTextPattern('United Kingdom', 'United States')).toBe(false);
+    });
+
+    it('matches wildcard at end', () => {
+      expect(matchesSelectTextPattern('United States', 'United*')).toBe(true);
+      expect(matchesSelectTextPattern('United Kingdom', 'United*')).toBe(true);
+      expect(matchesSelectTextPattern('Canada', 'United*')).toBe(false);
+    });
+
+    it('matches wildcard at start', () => {
+      expect(matchesSelectTextPattern('United States', '*States')).toBe(true);
+      expect(matchesSelectTextPattern('Confederate States', '*States')).toBe(true);
+      expect(matchesSelectTextPattern('United Kingdom', '*States')).toBe(false);
+    });
+
+    it('matches wildcard in middle', () => {
+      expect(matchesSelectTextPattern('United States', 'United*States')).toBe(true);
+      expect(matchesSelectTextPattern('United Arab States', 'United*States')).toBe(true);
+      expect(matchesSelectTextPattern('Canada', 'United*States')).toBe(false);
+    });
+
+    it('is case insensitive for wildcard patterns', () => {
+      expect(matchesSelectTextPattern('united states', 'United*')).toBe(true);
+      expect(matchesSelectTextPattern('UNITED STATES', 'united*')).toBe(true);
+    });
+
+    it('is case sensitive for exact match', () => {
+      expect(matchesSelectTextPattern('United States', 'united states')).toBe(false);
+    });
   });
 
-  it('wildcard matching works correctly', () => {
-    // Test the wildcard regex logic
-    const pattern = 'United*';
-    const regexPattern = pattern
-      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
-    const regex = new RegExp(`^${regexPattern}$`, 'i');
+  describe('matchesWildcard (from element-finder)', () => {
+    it('matches any with single asterisk', () => {
+      expect(matchesWildcard('anything', '*')).toBe(true);
+    });
 
-    expect(regex.test('United States')).toBe(true);
-    expect(regex.test('United Kingdom')).toBe(true);
-    expect(regex.test('Canada')).toBe(false);
-  });
+    it('matches wildcard patterns', () => {
+      expect(matchesWildcard('United States', 'United*')).toBe(true);
+      expect(matchesWildcard('United Kingdom', 'United*')).toBe(true);
+      expect(matchesWildcard('Canada', 'United*')).toBe(false);
+    });
 
-  it('exact match without wildcard', () => {
-    const text = 'United States';
-    expect(text === 'United States').toBe(true);
-    expect(text === 'United Kingdom').toBe(false);
+    it('matches contains pattern', () => {
+      expect(matchesWildcard('hello world', '*world*')).toBe(true);
+      expect(matchesWildcard('world hello', '*world*')).toBe(true);
+    });
   });
 });

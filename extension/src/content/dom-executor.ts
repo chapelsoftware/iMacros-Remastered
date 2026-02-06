@@ -248,7 +248,7 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
  * Parse multi-select value string like %"val1":%"val2":%"val3"
  * Returns array of values
  */
-function parseMultiSelectValues(content: string): string[] {
+export function parseMultiSelectValues(content: string): string[] {
   const values: string[] = [];
   // Split on :% to separate each value token
   const tokens = content.split(':%');
@@ -268,6 +268,20 @@ function parseMultiSelectValues(content: string): string[] {
     }
   }
   return values;
+}
+
+/**
+ * Check if an option text matches a select text pattern (used with $ prefix)
+ * Supports wildcard (*) matching and exact matching
+ */
+export function matchesSelectTextPattern(optionText: string, pattern: string): boolean {
+  if (pattern.includes('*')) {
+    const regexPattern = pattern
+      .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*/g, '.*');
+    return new RegExp(`^${regexPattern}$`, 'i').test(optionText);
+  }
+  return optionText === pattern;
 }
 
 /**
@@ -395,23 +409,10 @@ function setElementContent(element: Element, content: string): boolean {
       let found = false;
       for (let i = 0; i < element.options.length; i++) {
         const optionText = element.options[i].text;
-        if (textPattern.includes('*')) {
-          // Wildcard matching
-          const regexPattern = textPattern
-            .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-            .replace(/\*/g, '.*');
-          if (new RegExp(`^${regexPattern}$`, 'i').test(optionText)) {
-            element.selectedIndex = i;
-            found = true;
-            break;
-          }
-        } else {
-          // Exact text match
-          if (optionText === textPattern) {
-            element.selectedIndex = i;
-            found = true;
-            break;
-          }
+        if (matchesSelectTextPattern(optionText, textPattern)) {
+          element.selectedIndex = i;
+          found = true;
+          break;
         }
       }
       if (!found) {

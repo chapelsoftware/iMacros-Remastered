@@ -12,11 +12,11 @@
   "scripts": {
     "build": "npm run build:extension && npm run build:native-host",
     "build:extension": "vite build --config extension/vite.config.ts",
-    "build:native-host": "vite build --config native-host/vite.config.ts",
+    "build:native-host": "cd native-host && npm run build:tsc",
     "build:tsc": "tsc --build",
     "build:clean": "tsc --build --clean && rm -rf extension/dist native-host/dist",
     "dev:extension": "vite build --config extension/vite.config.ts --watch",
-    "dev:native-host": "vite build --config native-host/vite.config.ts --watch",
+    "dev:native-host": "cd native-host && tsc --build --watch",
     "typecheck": "tsc --build",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -47,8 +47,6 @@
     "ts-jest": "^29.1.2",
     "typescript": "^5.3.3",
     "vite": "^7.3.1",
-    "vite-plugin-electron": "^0.29.0",
-    "vite-plugin-electron-renderer": "^0.14.6",
     "vite-plugin-static-copy": "^3.2.0",
     "vitest": "^4.0.18"
   },

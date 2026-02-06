@@ -1,23 +1,14 @@
 /**
  * Credential Storage Service for iMacros Native Host
  *
- * Provides secure credential storage using Electron's safeStorage API.
- * Supports master password, session keys, and encrypted variable storage
- * for the !ENCRYPTION commands in iMacros.
+ * Provides secure credential storage using AES-256-GCM encryption with
+ * PBKDF2 key derivation. Supports master password, session keys, and
+ * encrypted variable storage for the !ENCRYPTION commands in iMacros.
  */
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
-
-// Try to import safeStorage from electron
-let safeStorage: typeof import('electron').safeStorage | null = null;
-try {
-  const electron = require('electron');
-  safeStorage = electron.safeStorage;
-} catch {
-  // Not running in Electron context
-}
+import * as os from 'os';
 
 /**
  * Encryption algorithm constants
@@ -99,8 +90,6 @@ export interface CredentialStorageConfig {
   storagePath?: string;
   /** Default session timeout in milliseconds (default: 30 minutes) */
   sessionTimeout?: number;
-  /** Whether to use Electron safeStorage when available (default: true) */
-  useSafeStorage?: boolean;
 }
 
 /**
@@ -186,7 +175,6 @@ function decrypt(
  * Credential Storage Service
  *
  * Provides secure storage for passwords and sensitive data using
- * Electron's safeStorage API when available, with fallback to
  * AES-256-GCM encryption with PBKDF2 key derivation.
  */
 export class CredentialStorageService {
@@ -205,7 +193,6 @@ export class CredentialStorageService {
     this.config = {
       storagePath: config.storagePath ?? this.getDefaultStoragePath(),
       sessionTimeout: config.sessionTimeout ?? 30 * 60 * 1000, // 30 minutes
-      useSafeStorage: config.useSafeStorage ?? true,
     };
 
     this.store = this.loadStore();
@@ -215,14 +202,7 @@ export class CredentialStorageService {
    * Get the default storage path
    */
   private getDefaultStoragePath(): string {
-    try {
-      const userDataPath = app.getPath('userData');
-      return path.join(userDataPath, 'credentials.enc');
-    } catch {
-      // Fallback if app is not available
-      const homeDir = process.env.HOME || process.env.USERPROFILE || '.';
-      return path.join(homeDir, '.imacros', 'credentials.enc');
-    }
+    return path.join(os.homedir(), '.imacros', 'credentials.enc');
   }
 
   /**
@@ -263,17 +243,6 @@ export class CredentialStorageService {
     } catch (error) {
       console.error('[CredentialStorage] Failed to save store:', error);
     }
-  }
-
-  /**
-   * Check if Electron safeStorage is available and encryption is supported
-   */
-  isSafeStorageAvailable(): boolean {
-    return (
-      this.config.useSafeStorage &&
-      safeStorage !== null &&
-      safeStorage.isEncryptionAvailable()
-    );
   }
 
   /**
@@ -472,32 +441,6 @@ export class CredentialStorageService {
     value: string,
     expiresIn: number = 0
   ): CredentialResult {
-    // Use Electron safeStorage if available
-    if (this.isSafeStorageAvailable() && safeStorage) {
-      try {
-        const encrypted = safeStorage.encryptString(value);
-        const now = Date.now();
-
-        this.store.credentials[name] = {
-          encryptedData: encrypted.toString('base64'),
-          salt: '',
-          iv: '',
-          authTag: '',
-          createdAt: now,
-          expiresAt: expiresIn > 0 ? now + expiresIn : 0,
-        };
-
-        this.saveStore();
-        return { success: true };
-      } catch (error) {
-        return {
-          success: false,
-          error: `Failed to encrypt with safeStorage: ${error}`,
-        };
-      }
-    }
-
-    // Fallback to master password encryption
     if (!this.unlocked || !this.masterKey) {
       return {
         success: false,
@@ -559,21 +502,6 @@ export class CredentialStorageService {
       };
     }
 
-    // Use Electron safeStorage if available
-    if (this.isSafeStorageAvailable() && safeStorage && !credential.salt) {
-      try {
-        const encrypted = Buffer.from(credential.encryptedData, 'base64');
-        const decrypted = safeStorage.decryptString(encrypted);
-        return { success: true, data: decrypted };
-      } catch (error) {
-        return {
-          success: false,
-          error: `Failed to decrypt with safeStorage: ${error}`,
-        };
-      }
-    }
-
-    // Fallback to master password decryption
     if (!this.unlocked || !this.masterKey) {
       return {
         success: false,

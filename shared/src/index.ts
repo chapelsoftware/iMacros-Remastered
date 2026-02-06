@@ -26,6 +26,12 @@ export * from './executor';
 // Re-export command handlers
 export * from './commands';
 
+// Re-export settings module
+export * from './settings';
+
+// Re-export security module
+export * from './security';
+
 /**
  * Message types for native messaging protocol
  */

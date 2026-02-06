@@ -34,5 +34,8 @@ export * from './files';
 // Datasource commands (DS)
 export * from './datasource-handler';
 
-// Unsupported commands (IMAGECLICK, WINCLICK, PRINT, SIZE, etc.)
+// Print commands (PRINT)
+export * from './print';
+
+// Unsupported commands (IMAGECLICK, WINCLICK, SIZE, etc.)
 export * from './unsupported';

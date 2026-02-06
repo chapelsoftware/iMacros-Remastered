@@ -26,9 +26,25 @@ export interface FileTreeSelectionEvent {
  */
 export interface FileTreeContextMenuEvent {
   node: FileTreeNode;
-  action: 'play' | 'edit' | 'delete' | 'rename';
+  action: 'play' | 'edit' | 'delete' | 'rename' | 'newFolder';
   x: number;
   y: number;
+}
+
+/**
+ * File tree move event (for drag & drop)
+ */
+export interface FileTreeMoveEvent {
+  sourceNode: FileTreeNode;
+  targetNode: FileTreeNode;
+}
+
+/**
+ * Persisted file tree state
+ */
+export interface FileTreeState {
+  expandedPaths: string[];
+  selectedPath: string | null;
 }
 
 /**
@@ -37,7 +53,9 @@ export interface FileTreeContextMenuEvent {
 export interface FileTreeOptions {
   onSelect?: (event: FileTreeSelectionEvent) => void;
   onContextMenu?: (event: FileTreeContextMenuEvent) => void;
+  onMove?: (event: FileTreeMoveEvent) => void;
   onRefresh?: () => void;
+  storageKey?: string;
 }
 
 /**
@@ -50,11 +68,17 @@ export class FileTree {
   private options: FileTreeOptions;
   private contextMenu: HTMLElement | null = null;
   private contextMenuNode: FileTreeNode | null = null;
+  private draggedNode: FileTreeNode | null = null;
+  private dragOverElement: HTMLElement | null = null;
+  private storageKey: string;
+  private pendingStateRestore: FileTreeState | null = null;
 
   constructor(container: HTMLElement, options: FileTreeOptions = {}) {
     this.container = container;
     this.options = options;
+    this.storageKey = options.storageKey || 'fileTree';
     this.init();
+    this.loadState();
   }
 
   /**
@@ -95,6 +119,7 @@ export class FileTree {
    */
   setData(root: FileTreeNode): void {
     this.root = root;
+    this.applyPendingState();
     this.render();
   }
 
@@ -204,6 +229,78 @@ export class FileTree {
       this.showContextMenu(node, e.clientX, e.clientY);
     });
 
+    // Drag & drop support
+    row.setAttribute('draggable', 'true');
+
+    row.addEventListener('dragstart', (e) => {
+      this.draggedNode = node;
+      row.classList.add('dragging');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', node.path);
+      }
+    });
+
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      this.draggedNode = null;
+      if (this.dragOverElement) {
+        this.dragOverElement.classList.remove('drag-over');
+        this.dragOverElement = null;
+      }
+    });
+
+    row.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (!this.draggedNode || this.draggedNode === node) return;
+
+      // Only allow dropping on directories
+      if (!node.isDirectory) return;
+
+      // Prevent dropping a folder into itself or its children
+      if (this.isDescendant(this.draggedNode, node)) return;
+
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+
+      // Update visual feedback
+      if (this.dragOverElement && this.dragOverElement !== row) {
+        this.dragOverElement.classList.remove('drag-over');
+      }
+      row.classList.add('drag-over');
+      this.dragOverElement = row;
+    });
+
+    row.addEventListener('dragleave', (e) => {
+      // Only remove if we're actually leaving the element
+      const relatedTarget = e.relatedTarget as HTMLElement | null;
+      if (!row.contains(relatedTarget)) {
+        row.classList.remove('drag-over');
+        if (this.dragOverElement === row) {
+          this.dragOverElement = null;
+        }
+      }
+    });
+
+    row.addEventListener('drop', (e) => {
+      e.preventDefault();
+      row.classList.remove('drag-over');
+
+      if (!this.draggedNode || this.draggedNode === node) return;
+      if (!node.isDirectory) return;
+      if (this.isDescendant(this.draggedNode, node)) return;
+
+      // Fire move event
+      this.options.onMove?.({
+        sourceNode: this.draggedNode,
+        targetNode: node,
+      });
+
+      this.draggedNode = null;
+      this.dragOverElement = null;
+    });
+
     li.appendChild(row);
 
     // Children for expanded folders
@@ -223,6 +320,7 @@ export class FileTree {
   private selectNode(node: FileTreeNode): void {
     this.selectedNode = node;
     this.render();
+    this.saveState();
     this.options.onSelect?.({
       node,
       action: 'select'
@@ -236,6 +334,7 @@ export class FileTree {
     if (!node.isDirectory) return;
     node.expanded = !node.expanded;
     this.render();
+    this.saveState();
   }
 
   /**
@@ -252,6 +351,9 @@ export class FileTree {
 
     const items = node.isDirectory
       ? [
+          { label: 'New Folder', action: 'newFolder' as const },
+          { label: 'Rename', action: 'rename' as const },
+          { label: 'Delete', action: 'delete' as const },
           { label: 'Refresh', action: 'refresh' as const },
         ]
       : [
@@ -313,6 +415,7 @@ export class FileTree {
     if (node && node.isDirectory) {
       node.expanded = true;
       this.render();
+      this.saveState();
     }
   }
 
@@ -324,6 +427,7 @@ export class FileTree {
     if (node && node.isDirectory) {
       node.expanded = false;
       this.render();
+      this.saveState();
     }
   }
 
@@ -334,6 +438,7 @@ export class FileTree {
     if (this.root) {
       this.expandNodeRecursive(this.root);
       this.render();
+      this.saveState();
     }
   }
 
@@ -344,6 +449,7 @@ export class FileTree {
     if (this.root) {
       this.collapseNodeRecursive(this.root);
       this.render();
+      this.saveState();
     }
   }
 
@@ -388,6 +494,20 @@ export class FileTree {
     }
 
     return null;
+  }
+
+  /**
+   * Check if a node is a descendant of another (prevents dropping folder into itself)
+   */
+  private isDescendant(parent: FileTreeNode, potentialChild: FileTreeNode): boolean {
+    if (!parent.isDirectory || !parent.children) return false;
+
+    for (const child of parent.children) {
+      if (child.path === potentialChild.path) return true;
+      if (child.isDirectory && this.isDescendant(child, potentialChild)) return true;
+    }
+
+    return false;
   }
 
   /**
@@ -440,6 +560,98 @@ export class FileTree {
   destroy(): void {
     this.hideContextMenu();
     this.container.innerHTML = '';
+  }
+
+  /**
+   * Load state from chrome.storage
+   */
+  private async loadState(): Promise<void> {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const result = await chrome.storage.local.get(this.storageKey);
+        const state = result[this.storageKey] as FileTreeState | undefined;
+        if (state) {
+          this.pendingStateRestore = state;
+        }
+      }
+    } catch (error) {
+      console.warn('[FileTree] Failed to load state:', error);
+    }
+  }
+
+  /**
+   * Save current state to chrome.storage
+   */
+  private async saveState(): Promise<void> {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const state = this.getState();
+        await chrome.storage.local.set({ [this.storageKey]: state });
+      }
+    } catch (error) {
+      console.warn('[FileTree] Failed to save state:', error);
+    }
+  }
+
+  /**
+   * Get the current tree state
+   */
+  getState(): FileTreeState {
+    const expandedPaths: string[] = [];
+
+    if (this.root) {
+      this.collectExpandedPaths(this.root, expandedPaths);
+    }
+
+    return {
+      expandedPaths,
+      selectedPath: this.selectedNode?.path || null,
+    };
+  }
+
+  /**
+   * Recursively collect expanded folder paths
+   */
+  private collectExpandedPaths(node: FileTreeNode, paths: string[]): void {
+    if (node.isDirectory && node.expanded) {
+      paths.push(node.path);
+    }
+    if (node.children) {
+      for (const child of node.children) {
+        this.collectExpandedPaths(child, paths);
+      }
+    }
+  }
+
+  /**
+   * Apply pending state to the tree
+   */
+  private applyPendingState(): void {
+    if (!this.pendingStateRestore || !this.root) return;
+
+    const state = this.pendingStateRestore;
+    this.pendingStateRestore = null;
+
+    // Apply expanded paths
+    for (const path of state.expandedPaths) {
+      const node = this.findNodeByPath(path);
+      if (node && node.isDirectory) {
+        node.expanded = true;
+      }
+    }
+
+    // Apply selection
+    if (state.selectedPath) {
+      const node = this.findNodeByPath(state.selectedPath);
+      if (node) {
+        this.selectedNode = node;
+        // Scroll into view after render
+        setTimeout(() => {
+          const selectedRow = this.container.querySelector(`[data-path="${state.selectedPath}"] .file-tree-row.selected`);
+          selectedRow?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 0);
+      }
+    }
   }
 }
 

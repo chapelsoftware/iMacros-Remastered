@@ -245,9 +245,13 @@ function createBrowserHandlers(bridge) {
       const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
       const timeout = typeof timeoutStep === 'number' ? timeoutStep * 1000 : 30000;
 
+      // Parse position (may be relative)
+      const posResult = parsePos(ctx.getParam('POS'));
+
       // Build selector params
       const params = {
-        pos: parsePos(ctx.getParam('POS')),
+        pos: posResult.pos,
+        relative: posResult.relative,
         type: ctx.getParam('TYPE'),
         attr: expandIfPresent(ctx, 'ATTR'),
         xpath: expandIfPresent(ctx, 'XPATH'),
@@ -548,16 +552,29 @@ function expandIfPresent(ctx, key) {
 }
 
 /**
- * Parse POS parameter (supports negative values and R prefix)
+ * Parse POS parameter - supports absolute (1, 2, -1) and relative (R1, R3, R-2)
+ * @param {string} posStr - The POS parameter value
+ * @returns {{ pos: number, relative: boolean }} - Position and relative flag
  */
 function parsePos(posStr) {
-  if (!posStr) return 1;
+  if (!posStr) return { pos: 1, relative: false };
+
   const trimmed = posStr.trim().toUpperCase();
+
+  // Check for relative prefix (R followed by number)
   if (trimmed.startsWith('R')) {
-    return 1; // Random position defaults to 1 for now
+    const numPart = trimmed.substring(1);
+    const num = parseInt(numPart, 10);
+    if (!isNaN(num) && num !== 0) {
+      return { pos: num, relative: true };
+    }
+    // Invalid relative position (R0 or non-numeric), treat as absolute position 1
+    return { pos: 1, relative: false };
   }
+
+  // Absolute position
   const num = parseInt(trimmed, 10);
-  return isNaN(num) ? 1 : num;
+  return { pos: isNaN(num) ? 1 : num, relative: false };
 }
 
 /**

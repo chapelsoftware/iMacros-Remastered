@@ -239,6 +239,7 @@ function createBrowserBridge(sendMessage, createMessageId) {
         attr: params.attr,
         xpath: params.xpath,
         css: params.css,
+        relative: params.relative || false,
       },
       action: {
         content: params.content,

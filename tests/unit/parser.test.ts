@@ -1550,4 +1550,169 @@ WAIT SECONDS={{!VAR1}}`;
       expect(error?.message).toContain('Unknown command');
     });
   });
+
+  // ============================================================
+  // SECTION: Advanced Parsing Edge Cases
+  // ============================================================
+  describe('Advanced Parsing Edge Cases', () => {
+    it('should parse deeply nested quoted strings with escaped quotes in ATTR', () => {
+      const result = parseMacro('TAG POS=1 TYPE=INPUT:TEXT ATTR=TXT:"value with \\"escaped\\" quotes"');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('TAG');
+      const attrParam = result.commands[0].parameters.find(p => p.key === 'ATTR');
+      // The value part after ATTR= is an unquoted partial value containing embedded quotes
+      expect(attrParam).toBeDefined();
+      expect(attrParam!.value).toContain('TXT:');
+    });
+
+    it('should parse SET with empty quoted string value', () => {
+      const result = parseMacro('SET !VAR0 ""');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('SET');
+      expect(result.commands[0].parameters).toHaveLength(2);
+      // The second parameter is the quoted empty string, parsed as a positional arg
+      expect(result.commands[0].parameters[1].key).toBe('');
+    });
+
+    it('should parse Unicode values in SET command', () => {
+      const result = parseMacro('SET !VAR0 "\u65E5\u672C\u8A9E\u30C6\u30B9\u30C8"');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('SET');
+      // The quoted value should be unquoted to the raw Unicode string
+      expect(result.commands[0].parameters[1].key).toBe('\u65E5\u672C\u8A9E\u30C6\u30B9\u30C8');
+    });
+
+    it('should parse emoji values in SET command', () => {
+      const result = parseMacro('SET !VAR0 "\u00E9mojis \uD83C\uDF89"');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('SET');
+      expect(result.commands[0].parameters[1].key).toContain('\u00E9mojis');
+    });
+
+    it('should parse macro with only comments and no commands', () => {
+      const script = "' This is a comment\n' Another comment";
+      const result = parseMacro(script);
+      expect(result.commands).toHaveLength(0);
+      expect(result.comments).toHaveLength(2);
+      expect(result.comments[0].text).toBe('This is a comment');
+      expect(result.comments[1].text).toBe('Another comment');
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it('should parse commands with many parameters and preserve all', () => {
+      const result = parseMacro('TAG POS=1 TYPE=INPUT:TEXT FORM=ID:myform ATTR=ID:field1&&NAME:myfield CONTENT="test value" EXTRACT=TXT');
+      expect(result.commands[0].parameters).toHaveLength(6);
+      expect(result.commands[0].parameters.map(p => p.key)).toEqual([
+        'POS', 'TYPE', 'FORM', 'ATTR', 'CONTENT', 'EXTRACT',
+      ]);
+    });
+
+    it('should handle lines with leading and trailing whitespace', () => {
+      const result = parseMacro('  SET !VAR0 hello  ');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('SET');
+      expect(result.commands[0].parameters[0].key).toBe('!VAR0');
+      expect(result.commands[0].parameters[1].key).toBe('hello');
+    });
+
+    it('should handle empty lines mixed with commands', () => {
+      const script = '\nSET !VAR0 a\n\n\nSET !VAR1 b\n';
+      const result = parseMacro(script);
+      expect(result.commands).toHaveLength(2);
+      expect(result.commands[0].type).toBe('SET');
+      expect(result.commands[1].type).toBe('SET');
+      // Should have 6 lines total (empty, cmd, empty, empty, cmd, empty)
+      expect(result.lines).toHaveLength(6);
+      expect(result.lines[0].type).toBe('empty');
+      expect(result.lines[1].type).toBe('command');
+      expect(result.lines[2].type).toBe('empty');
+      expect(result.lines[3].type).toBe('empty');
+      expect(result.lines[4].type).toBe('command');
+      expect(result.lines[5].type).toBe('empty');
+    });
+
+    it('should handle tab-separated parameters', () => {
+      const result = parseMacro('SET\t!VAR0\thello');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('SET');
+      expect(result.commands[0].parameters[0].key).toBe('!VAR0');
+      expect(result.commands[0].parameters[1].key).toBe('hello');
+    });
+
+    it('should parse parameters separated by tabs in TAG command', () => {
+      const result = parseMacro('TAG\tPOS=1\tTYPE=INPUT\tATTR=NAME:test');
+      expect(result.commands).toHaveLength(1);
+      expect(result.commands[0].type).toBe('TAG');
+      expect(result.commands[0].parameters).toHaveLength(3);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Serialization Roundtrip
+  // ============================================================
+  describe('Serialization Roundtrip', () => {
+    it('should roundtrip a simple URL command', () => {
+      const original = 'URL GOTO=http://example.com';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe(parsed.commands[0].type);
+      expect(reparsed.commands[0].parameters.length).toBe(parsed.commands[0].parameters.length);
+      const origGoto = parsed.commands[0].parameters.find(p => p.key === 'GOTO');
+      const reGoto = reparsed.commands[0].parameters.find(p => p.key === 'GOTO');
+      expect(reGoto?.value).toBe(origGoto?.value);
+    });
+
+    it('should roundtrip a TAG command with quoted CONTENT', () => {
+      const original = 'TAG POS=1 TYPE=INPUT:TEXT ATTR=NAME:test CONTENT="Hello World"';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe('TAG');
+      expect(reparsed.commands[0].parameters.length).toBe(parsed.commands[0].parameters.length);
+      const reContent = reparsed.commands[0].parameters.find(p => p.key === 'CONTENT');
+      expect(reContent?.value).toBe('Hello World');
+    });
+
+    it('should roundtrip a WAIT command', () => {
+      const original = 'WAIT SECONDS=5';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe('WAIT');
+      const reSec = reparsed.commands[0].parameters.find(p => p.key === 'SECONDS');
+      expect(reSec?.value).toBe('5');
+    });
+
+    it('should roundtrip a full macro via serializeMacro', () => {
+      const script = "' Header comment\nURL GOTO=http://example.com\nWAIT SECONDS=2\n' Footer comment";
+      const parsed = parseMacro(script);
+      const serialized = serializeMacro(parsed);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands.length).toBe(parsed.commands.length);
+      expect(reparsed.comments.length).toBe(parsed.comments.length);
+      expect(reparsed.commands[0].type).toBe('URL');
+      expect(reparsed.commands[1].type).toBe('WAIT');
+    });
+
+    it('should roundtrip a command with variable references', () => {
+      const original = 'URL GOTO={{!URLSTART}}';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      const reGoto = reparsed.commands[0].parameters.find(p => p.key === 'GOTO');
+      expect(reGoto?.variables).toHaveLength(1);
+      expect(reGoto?.variables[0].name).toBe('!URLSTART');
+    });
+
+    it('should roundtrip a command with no parameters', () => {
+      const original = 'BACK';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      expect(serialized).toBe('BACK');
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe('BACK');
+      expect(reparsed.commands[0].parameters).toHaveLength(0);
+    });
+  });
 });

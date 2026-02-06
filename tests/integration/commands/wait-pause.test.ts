@@ -445,4 +445,50 @@ describe('WAIT and PAUSE in multi-command macros', () => {
     expect(result.success).toBe(true);
     expect(mockUI.showPause).toHaveBeenCalledTimes(1);
   });
+
+  it('should handle a macro with three consecutive WAIT commands', async () => {
+    const executor = createExecutor();
+    executor.loadMacro('WAIT SECONDS=1\nWAIT SECONDS=1\nWAIT SECONDS=1');
+
+    const resultPromise = executor.execute();
+
+    // Advance past all three WAITs (3 seconds total)
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await resultPromise;
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  it('should handle WAIT with very small decimal value (0.1)', async () => {
+    const executor = createExecutor();
+    executor.loadMacro('WAIT SECONDS=0.1');
+
+    const resultPromise = executor.execute();
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    const result = await resultPromise;
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  it('should set variable before and after WAIT', async () => {
+    const executor = createExecutor();
+    executor.loadMacro(
+      'SET !VAR1 before\nSET !VAR2 also-before\nWAIT SECONDS=1\nSET !VAR3 after'
+    );
+
+    const resultPromise = executor.execute();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await resultPromise;
+    expect(result.success).toBe(true);
+    expect(result.variables['!VAR1']).toBe('before');
+    expect(result.variables['!VAR2']).toBe('also-before');
+    expect(result.variables['!VAR3']).toBe('after');
+  });
 });

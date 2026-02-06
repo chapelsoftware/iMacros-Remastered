@@ -258,9 +258,9 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
       };
     }
 
-    // Store in !URLCURRENT variable
+    // Store in !URLCURRENT variable (use setUrl to bypass read-only check)
     const url = response.data?.url || '';
-    ctx.state.setVariable('!URLCURRENT', url);
+    ctx.variables.setUrl('current', url);
     ctx.log('info', `Current URL: ${url}`);
 
     return {
@@ -285,8 +285,8 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
       };
     }
 
-    // Update !URLCURRENT after navigation
-    ctx.state.setVariable('!URLCURRENT', url);
+    // Update !URLCURRENT after navigation (use setUrl to bypass read-only check)
+    ctx.variables.setUrl('current', url);
 
     return {
       success: true,

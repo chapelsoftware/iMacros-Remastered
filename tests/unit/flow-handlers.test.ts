@@ -608,11 +608,12 @@ describe('Flow Control Handlers', () => {
   // ===== 5. getTimeoutRetryConfig =====
 
   describe('getTimeoutRetryConfig', () => {
-    it('should return default 10s config when no !TIMEOUT_TAG is set', () => {
+    it('should return default 6s config when no !TIMEOUT_TAG is set', () => {
+      // Default !TIMEOUT_TAG is 6 (defined in shared/src/variables.ts)
       const ctx = buildCtx(executor, { type: 'TAG', raw: 'TAG' });
 
       const config = getTimeoutRetryConfig(ctx);
-      expect(config.maxRetries).toBe(10);
+      expect(config.maxRetries).toBe(6);
       expect(config.retryDelayMs).toBe(1000);
       expect(config.currentRetry).toBe(0);
     });

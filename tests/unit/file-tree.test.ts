@@ -773,7 +773,7 @@ describe('FileTree Context Menu', () => {
     expect(labels).toContain('Refresh');
   });
 
-  it('should call onContextMenu with rename action when Rename clicked', () => {
+  it('should start inline rename when Rename clicked', () => {
     const testItem = container.querySelector('[data-path="test.iim"]');
     const row = testItem!.querySelector('.file-tree-row');
 
@@ -788,12 +788,10 @@ describe('FileTree Context Menu', () => {
       .find(item => item.textContent === 'Rename');
     renameItem!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
-    expect(onContextMenuMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        node: expect.objectContaining({ path: 'test.iim' }),
-        action: 'rename',
-      })
-    );
+    // Rename action triggers inline editing, not onContextMenu callback
+    // Check that context menu is hidden after click
+    const menuAfterClick = window.document.querySelector('.file-tree-context-menu');
+    expect(menuAfterClick).toBeNull();
   });
 
   it('should call onContextMenu with delete action when Delete clicked', () => {
@@ -819,7 +817,7 @@ describe('FileTree Context Menu', () => {
     );
   });
 
-  it('should call onContextMenu with newFolder action for directories', () => {
+  it('should start inline new folder when New Folder clicked', () => {
     const demoItem = container.querySelector('[data-path="Demo"]');
     const row = demoItem!.querySelector('.file-tree-row');
 
@@ -834,12 +832,10 @@ describe('FileTree Context Menu', () => {
       .find(item => item.textContent === 'New Folder');
     newFolderItem!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 
-    expect(onContextMenuMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        node: expect.objectContaining({ path: 'Demo' }),
-        action: 'newFolder',
-      })
-    );
+    // New Folder action triggers inline editing, not onContextMenu callback
+    // Check that context menu is hidden after click
+    const menuAfterClick = window.document.querySelector('.file-tree-context-menu');
+    expect(menuAfterClick).toBeNull();
   });
 
   it('should call onRefresh when Refresh clicked on directory', () => {

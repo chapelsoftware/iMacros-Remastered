@@ -536,9 +536,9 @@ describe('Security Module', () => {
       const settings = { ...DEFAULT_SECURITY_SETTINGS };
       settings.trustedSites = [{ domain: 'example.com', trustedAt: Date.now() }];
 
-      // Local path has no domain (extractDomain returns null for non-URL)
+      // Local path has no domain (extractDomain returns null, domain field is undefined)
       const result = validateMacroSource('/local/macro.iim', settings);
-      expect(result.source.domain).toBeNull();
+      expect(result.source.domain).toBeUndefined();
     });
   });
 });

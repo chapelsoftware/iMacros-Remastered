@@ -79,6 +79,7 @@ export function findByCssSelector(selector: string, contextNode: Element | Docum
 /**
  * Check if a value matches a pattern with wildcard support
  * Supports * for any characters
+ * Matches iMacros behavior: spaces match any whitespace, allows leading/trailing whitespace
  */
 export function matchesWildcard(value: string, pattern: string): boolean {
   if (pattern === '*') {
@@ -86,11 +87,15 @@ export function matchesWildcard(value: string, pattern: string): boolean {
   }
 
   // Escape regex special characters except *
-  const regexPattern = pattern
+  let regexPattern = pattern
     .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
     .replace(/\*/g, '.*');
 
-  const regex = new RegExp(`^${regexPattern}$`, 'i');
+  // Replace spaces with \s+ to match any whitespace (like original iMacros)
+  regexPattern = regexPattern.replace(/ /g, '\\s+');
+
+  // Allow leading/trailing whitespace (like original iMacros)
+  const regex = new RegExp(`^\\s*${regexPattern}\\s*$`, 'i');
   return regex.test(value);
 }
 

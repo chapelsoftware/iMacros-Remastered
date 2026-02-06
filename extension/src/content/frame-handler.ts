@@ -262,16 +262,34 @@ export class FrameHandler {
 
   /**
    * Select a frame by name attribute
-   * @param name Frame name to match
+   * @param name Frame name to match. Supports "regexp:" prefix for regex matching.
    */
   public selectFrameByName(name: string): FrameOperationResult {
     const frames = this.enumerateFrames();
 
-    // Find frame with matching name (case-insensitive)
-    const lowerName = name.toLowerCase();
-    const frame = frames.find(f =>
-      f.name && f.name.toLowerCase() === lowerName
-    );
+    let frame: FrameInfo | undefined;
+
+    // Check for regexp: prefix for regex matching
+    if (name.toLowerCase().startsWith('regexp:')) {
+      const pattern = name.substring(7); // Remove "regexp:" prefix
+      let regex: RegExp;
+      try {
+        regex = new RegExp(pattern, 'i'); // Case-insensitive
+      } catch (e) {
+        return {
+          success: false,
+          errorMessage: `Invalid regex pattern: ${pattern}`,
+        };
+      }
+
+      frame = frames.find(f => f.name && regex.test(f.name));
+    } else {
+      // Find frame with matching name (case-insensitive exact match)
+      const lowerName = name.toLowerCase();
+      frame = frames.find(f =>
+        f.name && f.name.toLowerCase() === lowerName
+      );
+    }
 
     if (!frame) {
       const availableNames = frames

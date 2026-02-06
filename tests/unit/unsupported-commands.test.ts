@@ -26,7 +26,6 @@ import {
   onPrintUnsupportedHandler,
   onSecurityDialogUnsupportedHandler,
   onWebPageDialogUnsupportedHandler,
-  printHandler,
   sizeHandler,
   winClickHandler,
   disconnectUnsupportedHandler,
@@ -97,14 +96,14 @@ describe('Unsupported Command Handlers', () => {
   });
 
   describe('unsupportedHandlers registry', () => {
-    it('should contain all 12 unsupported commands', () => {
+    it('should contain all 11 unsupported commands', () => {
+      // Note: PRINT was moved to supported commands (shared/src/commands/print.ts)
       const expectedCommands = [
         'IMAGECLICK',
         'ONCERTIFICATEDIALOG',
         'ONPRINT',
         'ONSECURITYDIALOG',
         'ONWEBPAGEDIALOG',
-        'PRINT',
         'SIZE',
         'WINCLICK',
         'DISCONNECT',
@@ -129,9 +128,10 @@ describe('Unsupported Command Handlers', () => {
 
       registerUnsupportedHandlers(mockRegisterFn as any);
 
+      // Note: PRINT was moved to supported commands (shared/src/commands/print.ts)
       const expectedCommands = [
         'IMAGECLICK', 'ONCERTIFICATEDIALOG', 'ONPRINT',
-        'ONSECURITYDIALOG', 'ONWEBPAGEDIALOG', 'PRINT', 'SIZE',
+        'ONSECURITYDIALOG', 'ONWEBPAGEDIALOG', 'SIZE',
         'WINCLICK', 'DISCONNECT', 'REDIAL', 'EXTRACT', 'IMAGESEARCH',
       ];
 
@@ -204,17 +204,8 @@ describe('Unsupported Command Handlers', () => {
     });
   });
 
-  describe('PRINT command', () => {
-    it('should return UNSUPPORTED_COMMAND error', async () => {
-      const { executor } = createTestExecutor();
-      executor.loadMacro('PRINT');
-      const result = await executor.execute();
-
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.UNSUPPORTED_COMMAND);
-      expect(result.errorMessage).toContain('PRINT');
-    });
-  });
+  // Note: PRINT command tests moved to tests/unit/commands/print.test.ts
+  // PRINT is now a supported command (shared/src/commands/print.ts)
 
   describe('SIZE command', () => {
     it('should return UNSUPPORTED_COMMAND error', async () => {
@@ -296,13 +287,13 @@ describe('Unsupported Command Handlers', () => {
       executor.setErrorIgnore(true);
 
       const macro = [
-        'PRINT',
+        'SIZE X=800 Y=600',
         'WAIT SECONDS=0',
       ].join('\n');
       executor.loadMacro(macro);
       const result = await executor.execute();
 
-      // Should succeed because ERRORIGNORE skips the PRINT error
+      // Should succeed because ERRORIGNORE skips the SIZE error
       // and WAIT executes fine
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
@@ -312,13 +303,13 @@ describe('Unsupported Command Handlers', () => {
       const { executor } = createTestExecutor();
 
       const macro = [
-        'PRINT',
+        'SIZE X=800 Y=600',
         'WAIT SECONDS=0',
       ].join('\n');
       executor.loadMacro(macro);
       const result = await executor.execute();
 
-      // Should fail on PRINT and not reach WAIT
+      // Should fail on SIZE and not reach WAIT
       expect(result.success).toBe(false);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.UNSUPPORTED_COMMAND);
       expect(result.errorLine).toBe(1);
@@ -328,13 +319,13 @@ describe('Unsupported Command Handlers', () => {
   // ===== Bulk Verification =====
 
   describe('All unsupported handlers return correct error code', () => {
+    // Note: PRINT was moved to supported commands (shared/src/commands/print.ts)
     const handlers = [
       { name: 'IMAGECLICK', handler: imageClickHandler },
       { name: 'ONCERTIFICATEDIALOG', handler: onCertificateDialogUnsupportedHandler },
       { name: 'ONPRINT', handler: onPrintUnsupportedHandler },
       { name: 'ONSECURITYDIALOG', handler: onSecurityDialogUnsupportedHandler },
       { name: 'ONWEBPAGEDIALOG', handler: onWebPageDialogUnsupportedHandler },
-      { name: 'PRINT', handler: printHandler },
       { name: 'SIZE', handler: sizeHandler },
       { name: 'WINCLICK', handler: winClickHandler },
       { name: 'DISCONNECT', handler: disconnectUnsupportedHandler },

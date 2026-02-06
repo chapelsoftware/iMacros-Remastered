@@ -456,26 +456,39 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
   const { selector, action, timeout, waitVisible } = message.payload;
 
   try {
-    // Find the element
-    const result = await resolveSelector(selector, timeout, waitVisible);
+    // Find the element, retrying until a visible one is found (if waitVisible)
+    let element: Element | null = null;
+    const timeoutMs = timeout || 5000;
+    const startTime = Date.now();
 
-    if (!result.element) {
+    while (true) {
+      const result = await resolveSelector(selector, waitVisible ? 0 : timeoutMs, false);
+
+      if (result.element) {
+        if (!waitVisible) {
+          element = result.element;
+          break;
+        }
+        // waitVisible: pick the first visible match (like real iMacros)
+        for (const el of result.elements) {
+          if (isElementVisible(el)) {
+            element = el;
+            break;
+          }
+        }
+        if (element) break;
+      }
+
+      // Check timeout
+      if (Date.now() - startTime >= timeoutMs) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+
+    if (!element) {
       return {
         success: false,
         errorCode: DOM_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: `Element not found: ${JSON.stringify(selector)}`,
-      };
-    }
-
-    const element = result.element;
-
-    // Check visibility if required
-    if (waitVisible && !isElementVisible(element)) {
-      return {
-        success: false,
-        errorCode: DOM_ERROR_CODES.ELEMENT_NOT_VISIBLE,
-        errorMessage: 'Element is not visible',
-        elementInfo: getElementInfo(element),
+        errorMessage: `Element not found (or not visible): ${JSON.stringify(selector)}`,
       };
     }
 
@@ -535,9 +548,28 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
       }
     }
 
+    // Press Enter if requested (from <ENTER> in CONTENT)
+    if ((action as { pressEnter?: boolean }).pressEnter) {
+      // Dispatch keyboard events first (some sites listen for these)
+      dispatchKeyboardEvent(element, 'keydown', { key: 'Enter', code: 'Enter' });
+      dispatchKeyboardEvent(element, 'keypress', { key: 'Enter', code: 'Enter' });
+      dispatchKeyboardEvent(element, 'keyup', { key: 'Enter', code: 'Enter' });
+      // Submit the enclosing form (mimics native browser Enter behavior)
+      const form = (element as Element).closest('form');
+      if (form) {
+        form.requestSubmit();
+      }
+    }
+
     // If no action specified, just click the element
-    if (!action.extract && !action.form && action.content === undefined) {
-      dispatchClick(element);
+    if (!action.extract && !action.form && action.content === undefined && !(action as { pressEnter?: boolean }).pressEnter) {
+      // Use the DOM .click() method for anchors — synthetic dispatchEvent
+      // clicks are untrusted and won't trigger <a href> navigation
+      if (element instanceof HTMLElement) {
+        element.click();
+      } else {
+        dispatchClick(element);
+      }
     }
 
     return {

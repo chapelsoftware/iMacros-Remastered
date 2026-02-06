@@ -424,6 +424,12 @@ function handleMessage(message) {
 
     case 'browser_command_response':
       // Handle response from browser for pending commands
+      if (message.error) {
+        log('Browser command error:', message.error);
+      }
+      if (message.payload && !message.payload.success) {
+        log('Browser command failed:', message.payload.error || JSON.stringify(message.payload));
+      }
       if (browserBridge) {
         browserBridge.handleResponse(message);
       }

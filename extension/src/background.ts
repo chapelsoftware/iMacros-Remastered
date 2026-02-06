@@ -2,7 +2,15 @@
  * Extension background service worker
  * Handles native messaging, content script relay, and tab management
  */
-import { RequestMessage, ResponseMessage, createMessageId, createTimestamp } from '@shared/index';
+import type { RequestMessage, ResponseMessage } from '@shared/index';
+
+// Inlined to avoid @shared chunk import — MV3 service workers can't use ESM chunk imports
+function createMessageId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+function createTimestamp(): number {
+  return Date.now();
+}
 import {
   initWebRequestHandlers,
   handleLoginConfig,
@@ -375,6 +383,22 @@ async function handleNativeCommand(message: ResponseMessage): Promise<void> {
 }
 
 /**
+ * Ping the content script on a tab until it responds, confirming it's ready.
+ * Resolves once the content script is reachable or after timeout.
+ */
+async function waitForContentScript(tabId: number, timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { type: 'PING' });
+      return; // Content script responded
+    } catch {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+}
+
+/**
  * Handle browser commands from native host
  * Routes commands to tabs/content scripts and sends responses back
  */
@@ -409,8 +433,24 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
       case 'navigate': {
         const { url } = params as { url: string };
         await chrome.tabs.update(targetTabId, { url });
-        // Wait a bit for navigation to start
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Wait for the page to finish loading
+        await new Promise<void>((resolve) => {
+          const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+            if (updatedTabId === targetTabId && changeInfo.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(onUpdated);
+              resolve();
+            }
+          };
+          chrome.tabs.onUpdated.addListener(onUpdated);
+          // Safety timeout so we don't hang forever
+          setTimeout(() => {
+            chrome.tabs.onUpdated.removeListener(onUpdated);
+            resolve();
+          }, 30000);
+        });
+        // Wait for content script to be ready (it injects at document_idle
+        // but its listeners may not be registered by the time status is 'complete')
+        await waitForContentScript(targetTabId);
         result = { success: true };
         break;
       }

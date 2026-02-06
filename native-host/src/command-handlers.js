@@ -257,7 +257,11 @@ function createBrowserHandlers(bridge) {
 
       // Process special CONTENT values
       if (params.content) {
-        params.content = processContent(params.content);
+        // Check for <ENTER> before processContent (it's a key action, not text)
+        const hasEnter = /<ENTER>/i.test(params.content);
+        // Strip <ENTER> tokens, then process remaining text
+        const stripped = params.content.replace(/<ENTER>/gi, '');
+        params.content = stripped ? processContent(stripped) : undefined;
 
         // Handle form actions
         if (params.content === '<SUBMIT>') {
@@ -266,6 +270,11 @@ function createBrowserHandlers(bridge) {
         } else if (params.content === '<RESET>') {
           params.form = 'RESET';
           params.content = undefined;
+        }
+
+        // <ENTER> triggers an Enter keypress after setting content
+        if (hasEnter) {
+          params.pressEnter = true;
         }
       }
 
@@ -513,8 +522,7 @@ function processContent(content) {
   return content
     .replace(/<SP>/gi, ' ')
     .replace(/<BR>/gi, '\n')
-    .replace(/<TAB>/gi, '\t')
-    .replace(/<ENTER>/gi, '\n');
+    .replace(/<TAB>/gi, '\t');
 }
 
 module.exports = { createBrowserHandlers, ERROR_CODES };

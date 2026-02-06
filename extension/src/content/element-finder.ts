@@ -232,13 +232,21 @@ export function parseTagSelector(selectorString: string): TagSelector | null {
         selector.tag = selector.type;
       }
     } else if (upperToken.startsWith('ATTR:')) {
-      // Parse ATTR:name=value
+      // Parse ATTR:name=value or ATTR:name:value (iMacros uses : as separator)
       const attrPart = token.substring(5);
       const eqIndex = attrPart.indexOf('=');
       if (eqIndex > 0) {
         const attrName = attrPart.substring(0, eqIndex);
         const attrValue = attrPart.substring(eqIndex + 1);
         selector.attrs[attrName] = attrValue;
+      } else {
+        // iMacros format: ATTR:NAME:value (colon-separated)
+        const colonIndex = attrPart.indexOf(':');
+        if (colonIndex > 0) {
+          const attrName = attrPart.substring(0, colonIndex);
+          const attrValue = attrPart.substring(colonIndex + 1);
+          selector.attrs[attrName] = attrValue;
+        }
       }
     }
   }

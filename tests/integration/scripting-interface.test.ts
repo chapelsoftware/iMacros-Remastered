@@ -404,11 +404,11 @@ describe('Scripting Interface Integration Tests', () => {
     });
 
     it('should handle special characters in value', async () => {
-      // Note: Parser removes backslash but doesn't convert escape sequences
-      // So \\n becomes 'n' not newline character
+      // Parser preserves backslashes for non-quote-escape characters
+      // So \\n stays as \\n (literal backslash + n)
       await sendCommand(testPort, 'iimSet("special", "hello\\nworld")');
 
-      expect(mockHandler.getVariable('special')).toBe('hellonworld');
+      expect(mockHandler.getVariable('special')).toBe('hello\\nworld');
     });
 
     it('should emit set event', async () => {
@@ -877,7 +877,7 @@ describe('Scripting Interface Integration Tests', () => {
 
     it('should handle escaped characters in arguments', async () => {
       await sendCommand(testPort, 'iimSet("path", "C:\\\\Users\\\\test")');
-      expect(mockHandler.getVariable('path')).toBe('C:\\Users\\test');
+      expect(mockHandler.getVariable('path')).toBe('C:\\\\Users\\\\test');
     });
 
     it('should handle arguments with commas inside quotes', async () => {

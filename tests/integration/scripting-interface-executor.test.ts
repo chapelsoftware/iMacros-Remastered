@@ -15,6 +15,7 @@ import {
   ReturnCode,
   ExecutorMacroHandler,
 } from '@native-host/services/scripting-interface';
+import { registerSystemHandlers } from '@shared/commands/system';
 
 // ===== TCP Client Helpers =====
 
@@ -126,6 +127,10 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
 
   beforeEach(async () => {
     handler = new ExecutorMacroHandler();
+    // Register system handlers (VERSION, STOPWATCH, etc.) so macros can use them
+    handler.setHandlerRegistrar((executor) => {
+      registerSystemHandlers(executor.registerHandler.bind(executor));
+    });
     server = new ScriptingInterfaceServer({ port: testPort }, handler);
     await server.start();
   });
@@ -526,7 +531,7 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
       const client = await createClient(testPort);
 
       try {
-        const play = await sendOnClient(client, 'iimPlay("VERSION BUILD=1234")');
+        const play = await sendOnClient(client, 'iimPlay("VERSION BUILD=1.0.0")');
         expect(play.code).toBe(ReturnCode.OK);
       } finally {
         client.destroy();
@@ -694,6 +699,133 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
       // Second play with no extract should clear it
       await h.play('SET !VAR1 noextract');
       expect(h.getLastExtract()).toBe('');
+    });
+  });
+
+  // ===== Section 12: CODE: protocol =====
+
+  describe('CODE: protocol for inline macros', () => {
+    it('executes inline macro with CODE: prefix', async () => {
+      const client = await createClient(testPort);
+      try {
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 hello")');
+        expect(response.code).toBe(ReturnCode.OK);
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('handles multi-line CODE: macros with \\n', async () => {
+      const client = await createClient(testPort);
+      try {
+        await sendOnClient(client, 'iimSet("!VAR1", "codetest")');
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 codeval\\nEXTRACT {{!VAR1}}")');
+        expect(response.code).toBe(ReturnCode.OK);
+
+        const extract = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(extract.data).toBe('codeval');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('CODE: prefix is case-insensitive', async () => {
+      const client = await createClient(testPort);
+      try {
+        const response = await sendOnClient(client, 'iimPlay("code:SET !VAR1 test")');
+        expect(response.code).toBe(ReturnCode.OK);
+      } finally {
+        client.destroy();
+      }
+    });
+  });
+
+  // ===== Section 13: iimDisplay =====
+
+  describe('iimDisplay command', () => {
+    it('returns OK for iimDisplay', async () => {
+      const response = await sendCommand(testPort, 'iimDisplay("Hello World")');
+      expect(response.code).toBe(ReturnCode.OK);
+    });
+
+    it('emits display event', async () => {
+      let displayMessage = '';
+      server.on('display', (msg: string) => {
+        displayMessage = msg;
+      });
+
+      await sendCommand(testPort, 'iimDisplay("Test Message")');
+      expect(displayMessage).toBe('Test Message');
+    });
+
+    it('handles empty message', async () => {
+      const response = await sendCommand(testPort, 'iimDisplay()');
+      expect(response.code).toBe(ReturnCode.OK);
+    });
+  });
+
+  // ===== Section 14: iimGetLastExtract(n) =====
+
+  describe('iimGetLastExtract with index', () => {
+    it('returns nth extract value (1-based)', async () => {
+      const client = await createClient(testPort);
+      try {
+        // Create multiple extracts by running a macro
+        const h = handler;
+        h.setVariable('!VAR1', 'first');
+        await sendOnClient(client, 'iimPlay("EXTRACT {{!VAR1}}")');
+
+        // Get all extracts
+        const allResp = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(allResp.code).toBe(ReturnCode.OK);
+        expect(allResp.data).toBe('first');
+
+        // Get first extract by index
+        const resp1 = await sendOnClient(client, 'iimGetLastExtract(1)');
+        expect(resp1.code).toBe(ReturnCode.OK);
+        expect(resp1.data).toBe('first');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('returns no arg = all extract data', async () => {
+      const response = await sendCommand(testPort, 'iimGetLastExtract()');
+      expect(response.code).toBe(ReturnCode.OK);
+    });
+  });
+
+  // ===== Section 15: iimGetStopwatch =====
+
+  describe('iimGetStopwatch command', () => {
+    it('returns 0 for non-existent stopwatch', async () => {
+      const response = await sendCommand(testPort, 'iimGetStopwatch("nonexistent")');
+      expect(response.code).toBe(ReturnCode.OK);
+      expect(response.data).toBe('0');
+    });
+
+    it('returns elapsed time after stopwatch start', async () => {
+      const client = await createClient(testPort);
+      try {
+        // Start a stopwatch via macro
+        await sendOnClient(client, 'iimPlay("STOPWATCH ID=test1 ACTION=START")');
+
+        // Wait a bit
+        await new Promise(r => setTimeout(r, 50));
+
+        // Get stopwatch value
+        const resp = await sendOnClient(client, 'iimGetStopwatch("test1")');
+        expect(resp.code).toBe(ReturnCode.OK);
+        const elapsed = parseInt(resp.data!, 10);
+        expect(elapsed).toBeGreaterThanOrEqual(0);
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('returns default stopwatch with no arg', async () => {
+      const response = await sendCommand(testPort, 'iimGetStopwatch()');
+      expect(response.code).toBe(ReturnCode.OK);
     });
   });
 });

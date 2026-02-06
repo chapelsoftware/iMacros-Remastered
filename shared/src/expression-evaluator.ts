@@ -16,6 +16,17 @@
 import { Parser, Expression } from 'expr-eval';
 
 /**
+ * Error signal thrown by the MacroError() function in expressions.
+ * When caught, it indicates the macro should stop execution gracefully.
+ */
+export class MacroErrorSignal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MacroErrorSignal';
+  }
+}
+
+/**
  * Variable provider interface for resolving variable values
  */
 export interface VariableProvider {
@@ -178,6 +189,58 @@ function createParser(): Parser {
     return condition ? trueValue : falseValue;
   };
 
+  // MacroError() function - throws MacroErrorSignal to stop execution
+  parser.functions.MacroError = function (msg: unknown) {
+    throw new MacroErrorSignal(String(msg));
+  };
+
+  // Math functions
+  parser.functions.random = function () {
+    return Math.random();
+  };
+  parser.functions.pow = function (base: unknown, exp: unknown) {
+    return Math.pow(Number(base), Number(exp));
+  };
+  parser.functions.log = function (val: unknown) {
+    return Math.log(Number(val));
+  };
+  parser.functions.exp = function (val: unknown) {
+    return Math.exp(Number(val));
+  };
+  parser.functions.sin = function (val: unknown) {
+    return Math.sin(Number(val));
+  };
+  parser.functions.cos = function (val: unknown) {
+    return Math.cos(Number(val));
+  };
+  parser.functions.tan = function (val: unknown) {
+    return Math.tan(Number(val));
+  };
+  parser.functions.sqrt = function (val: unknown) {
+    return Math.sqrt(Number(val));
+  };
+  parser.functions.date_now = function () {
+    return Date.now();
+  };
+  parser.functions.parse_int = function (val: unknown, radix?: unknown) {
+    return parseInt(String(val), radix ? Number(radix) : 10);
+  };
+  parser.functions.parse_float = function (val: unknown) {
+    return parseFloat(String(val));
+  };
+  parser.functions.char_at = function (s: unknown, index: unknown) {
+    return String(s).charAt(Number(index));
+  };
+  parser.functions.split_get = function (s: unknown, delimiter: unknown, index: unknown) {
+    const parts = String(s).split(String(delimiter));
+    const i = Number(index);
+    return i >= 0 && i < parts.length ? parts[i] : '';
+  };
+
+  // Constants
+  parser.consts.PI = Math.PI;
+  parser.consts.E = Math.E;
+
   return parser;
 }
 
@@ -287,6 +350,10 @@ export class ExpressionEvaluator {
         value: result,
       };
     } catch (error) {
+      // Re-throw MacroErrorSignal so callers can handle it
+      if (error instanceof MacroErrorSignal) {
+        throw error;
+      }
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -419,4 +486,35 @@ export function evaluate(
   variables?: VariableProvider | Record<string, string | number | boolean>
 ): EvaluationResult {
   return defaultEvaluator.evaluate(expression, variables);
+}
+
+/**
+ * Preprocess JavaScript-style Math.*, Date.now(), parseInt/parseFloat
+ * expressions into forms compatible with the expr-eval parser.
+ */
+export function preprocessMathExpressions(expr: string): string {
+  let result = expr;
+  // Math.* methods -> custom functions
+  result = result.replace(/Math\.floor\s*\(/g, 'floor(');
+  result = result.replace(/Math\.ceil\s*\(/g, 'ceil(');
+  result = result.replace(/Math\.round\s*\(/g, 'round(');
+  result = result.replace(/Math\.abs\s*\(/g, 'abs(');
+  result = result.replace(/Math\.min\s*\(/g, 'min(');
+  result = result.replace(/Math\.max\s*\(/g, 'max(');
+  result = result.replace(/Math\.random\s*\(\s*\)/g, 'random()');
+  result = result.replace(/Math\.pow\s*\(/g, 'pow(');
+  result = result.replace(/Math\.log\s*\(/g, 'log(');
+  result = result.replace(/Math\.exp\s*\(/g, 'exp(');
+  result = result.replace(/Math\.sin\s*\(/g, 'sin(');
+  result = result.replace(/Math\.cos\s*\(/g, 'cos(');
+  result = result.replace(/Math\.tan\s*\(/g, 'tan(');
+  result = result.replace(/Math\.sqrt\s*\(/g, 'sqrt(');
+  result = result.replace(/Math\.PI/g, 'PI');
+  result = result.replace(/Math\.E/g, 'E');
+  // Date.now()
+  result = result.replace(/Date\.now\s*\(\s*\)/g, 'date_now()');
+  // parseInt/parseFloat
+  result = result.replace(/parseInt\s*\(/g, 'parse_int(');
+  result = result.replace(/parseFloat\s*\(/g, 'parse_float(');
+  return result;
 }

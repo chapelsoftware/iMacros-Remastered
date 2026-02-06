@@ -168,7 +168,7 @@ async function resolveSelector(
     // Build TAG selector
     const parts: string[] = ['TAG'];
     if (selector.pos !== undefined) {
-      parts.push(`POS=${selector.pos}`);
+      parts.push(`POS=${selector.pos === 'random' ? 'R1' : selector.pos}`);
     } else {
       parts.push('POS=1');
     }
@@ -245,9 +245,85 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
 }
 
 /**
+ * Parse multi-select value string like %"val1":%"val2":%"val3"
+ * Returns array of values
+ */
+function parseMultiSelectValues(content: string): string[] {
+  const values: string[] = [];
+  // Split on :% to separate each value token
+  const tokens = content.split(':%');
+  for (const token of tokens) {
+    let val = token.trim();
+    // Strip leading % if present
+    if (val.startsWith('%')) {
+      val = val.substring(1);
+    }
+    // Strip surrounding quotes
+    if ((val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))) {
+      val = val.slice(1, -1);
+    }
+    if (val) {
+      values.push(val);
+    }
+  }
+  return values;
+}
+
+/**
  * Set content on a form element
  */
 function setElementContent(element: Element, content: string): boolean {
+  // Handle EVENT: prefix commands
+  if (content.toUpperCase().startsWith('EVENT:')) {
+    const eventCommand = content.substring(6).toUpperCase();
+
+    if (eventCommand.startsWith('SAVETARGETAS')) {
+      // Get the download URL from the element
+      const url = element.getAttribute('href') || element.getAttribute('src') || '';
+      if (!url) {
+        console.warn('[iMacros] EVENT:SAVETARGETAS - no href or src on element');
+        return false;
+      }
+
+      // Try to download via temporary anchor click
+      try {
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = '';
+        // Extract filename from SAVETARGETAS if provided (e.g., EVENT:SAVETARGETAS=filename.pdf)
+        const eqIndex = eventCommand.indexOf('=');
+        if (eqIndex > 0) {
+          anchor.download = eventCommand.substring(eqIndex + 1);
+        }
+        anchor.style.display = 'none';
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+      } catch (e) {
+        console.warn('[iMacros] EVENT:SAVETARGETAS fallback to message', e);
+      }
+
+      // Also send message to background for cross-origin downloads
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        const filename = eventCommand.indexOf('=') > 0
+          ? eventCommand.substring(eventCommand.indexOf('=') + 1)
+          : '';
+        chrome.runtime.sendMessage({
+          type: 'DOWNLOAD_URL',
+          url: url.startsWith('http') ? url : new URL(url, window.location.href).href,
+          filename,
+        });
+      }
+
+      return true;
+    }
+
+    // Unknown EVENT: command
+    console.warn(`[iMacros] Unknown EVENT command: ${eventCommand}`);
+    return false;
+  }
+
   // Handle input elements
   if (element instanceof HTMLInputElement) {
     const inputType = element.type.toLowerCase();
@@ -290,7 +366,20 @@ function setElementContent(element: Element, content: string): boolean {
   // Handle select
   if (element instanceof HTMLSelectElement) {
     // Check for special prefixes
-    if (content.startsWith('%')) {
+    if (content.includes(':%') && element.multiple) {
+      // Multi-select: %"val1":%"val2":%"val3"
+      const values = parseMultiSelectValues(content);
+      // Deselect all first
+      for (let i = 0; i < element.options.length; i++) {
+        element.options[i].selected = false;
+      }
+      // Select matching options
+      for (let i = 0; i < element.options.length; i++) {
+        if (values.includes(element.options[i].value)) {
+          element.options[i].selected = true;
+        }
+      }
+    } else if (content.startsWith('%')) {
       // Select by value
       const value = content.substring(1);
       element.value = value;
@@ -300,8 +389,36 @@ function setElementContent(element: Element, content: string): boolean {
       if (index >= 0 && index < element.options.length) {
         element.selectedIndex = index;
       }
+    } else if (content.startsWith('$')) {
+      // Select by visible text with optional wildcard
+      const textPattern = content.substring(1);
+      let found = false;
+      for (let i = 0; i < element.options.length; i++) {
+        const optionText = element.options[i].text;
+        if (textPattern.includes('*')) {
+          // Wildcard matching
+          const regexPattern = textPattern
+            .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*/g, '.*');
+          if (new RegExp(`^${regexPattern}$`, 'i').test(optionText)) {
+            element.selectedIndex = i;
+            found = true;
+            break;
+          }
+        } else {
+          // Exact text match
+          if (optionText === textPattern) {
+            element.selectedIndex = i;
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) {
+        console.warn(`[iMacros] No option matching text pattern: ${textPattern}`);
+      }
     } else {
-      // Select by visible text
+      // Select by visible text (plain)
       for (let i = 0; i < element.options.length; i++) {
         if (element.options[i].text === content || element.options[i].value === content) {
           element.selectedIndex = i;

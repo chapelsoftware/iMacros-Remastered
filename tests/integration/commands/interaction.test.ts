@@ -965,12 +965,12 @@ describe('TAG Command Helper Functions', () => {
       expect(parsePosParam('-2')).toBe(-2);
     });
 
-    it('should parse R (random) position and default to 1', () => {
-      expect(parsePosParam('R')).toBe(1);
+    it('should parse R (random) position and return random', () => {
+      expect(parsePosParam('R')).toBe('random');
     });
 
-    it('should parse R1 (random) and default to 1', () => {
-      expect(parsePosParam('R1')).toBe(1);
+    it('should parse R1 (random) and return random', () => {
+      expect(parsePosParam('R1')).toBe('random');
     });
 
     it('should handle whitespace around position', () => {
@@ -982,7 +982,7 @@ describe('TAG Command Helper Functions', () => {
     });
 
     it('should be case-insensitive for R prefix', () => {
-      expect(parsePosParam('r')).toBe(1);
+      expect(parsePosParam('r')).toBe('random');
     });
   });
 

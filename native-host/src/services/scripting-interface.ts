@@ -27,6 +27,7 @@ import {
 } from '../../../shared/src/executor';
 import type { CommandType } from '../../../shared/src/parser';
 import { registerExtractionHandlers } from '../../../shared/src/commands/extraction';
+import { getStopwatchElapsed } from '../../../shared/src/commands/system';
 
 /**
  * Return codes for Scripting Interface commands
@@ -574,6 +575,10 @@ export class ScriptingInterfaceServer extends EventEmitter {
       const char = argsString[i];
 
       if (escaped) {
+        // Only consume the backslash for quote escapes; preserve it otherwise
+        if (char !== '"' && char !== "'") {
+          current += '\\';
+        }
         current += char;
         escaped = false;
         continue;
@@ -629,7 +634,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
         return this.handleIimSet(args);
 
       case 'iimgetlastextract':
-        return this.handleIimGetLastExtract();
+        return this.handleIimGetLastExtract(args);
 
       case 'iimgetlasterror':
         return this.handleIimGetLastError();
@@ -639,6 +644,12 @@ export class ScriptingInterfaceServer extends EventEmitter {
 
       case 'iimexit':
         return this.handleIimExit();
+
+      case 'iimdisplay':
+        return this.handleIimDisplay(args);
+
+      case 'iimgetstopwatch':
+        return this.handleIimGetStopwatch(args);
 
       default:
         return {
@@ -661,7 +672,15 @@ export class ScriptingInterfaceServer extends EventEmitter {
       };
     }
 
-    const macroNameOrContent = args[0];
+    let macroNameOrContent = args[0];
+
+    // Handle CODE: protocol - inline macro content
+    if (macroNameOrContent.toUpperCase().startsWith('CODE:')) {
+      macroNameOrContent = macroNameOrContent.substring(5);
+      // Convert literal \n sequences to actual newlines
+      macroNameOrContent = macroNameOrContent.replace(/\\n/g, '\n');
+    }
+
     const timeout = args[1] ? parseInt(args[1], 10) : this.config.timeout;
 
     if (this.handler.isRunning()) {
@@ -697,13 +716,25 @@ export class ScriptingInterfaceServer extends EventEmitter {
 
   /**
    * Handle iimGetLastExtract command - Get the last extracted data
+   *
+   * @param args - [n?] optional 1-based index to return nth value split on [EXTRACT]
    */
-  private handleIimGetLastExtract(): CommandResult {
+  private handleIimGetLastExtract(args: string[]): CommandResult {
     const extract = this.handler.getLastExtract();
-    return {
-      code: ReturnCode.OK,
-      data: extract,
-    };
+
+    // If numeric arg provided, return nth value (1-based)
+    if (args.length > 0) {
+      const n = parseInt(args[0], 10);
+      if (!isNaN(n) && n > 0) {
+        const parts = extract.split('[EXTRACT]');
+        if (n <= parts.length) {
+          return { code: ReturnCode.OK, data: parts[n - 1] };
+        }
+        return { code: ReturnCode.INVALID_PARAMETER, data: `Extract index ${n} out of range (${parts.length} values)` };
+      }
+    }
+
+    return { code: ReturnCode.OK, data: extract };
   }
 
   /**
@@ -738,6 +769,28 @@ export class ScriptingInterfaceServer extends EventEmitter {
    */
   private handleIimExit(): CommandResult {
     return { code: ReturnCode.OK };
+  }
+
+  /**
+   * Handle iimDisplay command - Display a message
+   *
+   * @param args - [message, options?]
+   */
+  private handleIimDisplay(args: string[]): CommandResult {
+    const message = args.length > 0 ? args[0] : '';
+    this.emit('display', message);
+    return { code: ReturnCode.OK };
+  }
+
+  /**
+   * Handle iimGetStopwatch command - Get elapsed time of a stopwatch
+   *
+   * @param args - [stopwatchId?]
+   */
+  private handleIimGetStopwatch(args: string[]): CommandResult {
+    const id = args.length > 0 ? args[0] : undefined;
+    const elapsed = getStopwatchElapsed(id);
+    return { code: ReturnCode.OK, data: String(elapsed) };
   }
 
   /**

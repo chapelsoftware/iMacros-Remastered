@@ -19,7 +19,7 @@ export interface ElementFinderResult {
 
 export interface TagSelector {
   tag: string;
-  pos: number;
+  pos: number | 'random';
   type?: string;
   attrs: Record<string, string>;
 }
@@ -213,10 +213,14 @@ export function parseTagSelector(selectorString: string): TagSelector | null {
     const upperToken = token.toUpperCase();
 
     if (upperToken.startsWith('POS=')) {
-      const posValue = token.substring(4);
-      selector.pos = parseInt(posValue, 10);
-      if (isNaN(selector.pos)) {
-        selector.pos = 1;
+      const posValue = token.substring(4).trim().toUpperCase();
+      if (posValue.startsWith('R')) {
+        selector.pos = 'random';
+      } else {
+        selector.pos = parseInt(posValue, 10);
+        if (isNaN(selector.pos)) {
+          selector.pos = 1;
+        }
       }
     } else if (upperToken.startsWith('TYPE=')) {
       selector.type = token.substring(5);
@@ -355,7 +359,11 @@ export function findByTagSelector(
   let selectedElement: Element | null = null;
 
   if (matchingElements.length > 0) {
-    if (pos > 0) {
+    if (pos === 'random' || (typeof pos === 'string' && pos === 'random')) {
+      // Random position: select a random element from matches
+      const index = Math.floor(Math.random() * matchingElements.length);
+      selectedElement = matchingElements[index];
+    } else if (pos > 0) {
       // Positive position: 1-indexed from start
       const index = pos - 1;
       if (index < matchingElements.length) {

@@ -10,6 +10,7 @@
  */
 
 import { SYSTEM_VARIABLES, SystemVariable, extractVariables } from './parser';
+import { ExpressionEvaluator, preprocessMathExpressions, MacroErrorSignal } from './expression-evaluator';
 
 /**
  * Variable value types
@@ -704,32 +705,54 @@ export function parseSetValue(value: string): { type: 'literal' | 'eval' | 'cont
 }
 
 /**
- * Evaluate a simple arithmetic expression
- * Supports: +, -, *, /, (), numbers, and variable references
+ * Evaluate an expression using the safe ExpressionEvaluator.
+ * Supports arithmetic, string operations, Math.* preprocessing,
+ * Date.now(), parseInt/parseFloat, and variable references.
  */
-export function evaluateExpression(expr: string, context: VariableContext): number {
+export function evaluateExpression(expr: string, context: VariableContext): number | string {
   // First expand any variables
   const { expanded } = context.expand(expr);
 
-  // Simple expression evaluator (basic arithmetic only for safety)
-  // This is a restricted eval that only allows numbers and basic math operators
-  const sanitized = expanded.replace(/[^0-9+\-*/().%\s]/g, '');
+  // Clean up: strip trailing semicolons first, then wrapping quotes
+  let cleaned = expanded.trim();
+  cleaned = cleaned.replace(/;\s*$/, '');
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+      (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  // Unescape backslash-escaped quotes (common in EVAL strings)
+  cleaned = cleaned.replace(/\\"/g, '"').replace(/\\'/g, "'");
 
-  if (sanitized.trim() === '') {
+  if (cleaned.trim() === '') {
     return 0;
   }
 
-  try {
-    // Use Function constructor for safer evaluation than eval()
-    // eslint-disable-next-line no-new-func
-    const result = new Function(`return (${sanitized})`)();
-    if (typeof result !== 'number' || isNaN(result)) {
-      return 0;
+  // Preprocess Math.* and Date.now() etc.
+  const preprocessed = preprocessMathExpressions(cleaned);
+
+  // Evaluate using safe expression evaluator
+  const evaluator = new ExpressionEvaluator();
+  const result = evaluator.evaluate(preprocessed);
+
+  if (result.success && result.value !== undefined) {
+    return result.value as number | string;
+  }
+
+  // Fallback: try as simple arithmetic
+  const sanitized = preprocessed.replace(/[^0-9+\-*/().%\s]/g, '');
+  if (sanitized.trim() !== '') {
+    try {
+      // eslint-disable-next-line no-new-func
+      const numResult = new Function(`return (${sanitized})`)();
+      if (typeof numResult === 'number' && !isNaN(numResult)) {
+        return numResult;
+      }
+    } catch {
+      // fall through
     }
-    return result;
-  } catch {
-    return 0;
   }
+
+  return 0;
 }
 
 /**
@@ -744,8 +767,21 @@ export function executeSet(
 
   switch (parsed.type) {
     case 'eval': {
-      const result = evaluateExpression(parsed.value, context);
-      return context.set(varName, result);
+      try {
+        const result = evaluateExpression(parsed.value, context);
+        return context.set(varName, result);
+      } catch (e) {
+        if ((e as any).name === 'MacroErrorSignal') {
+          return {
+            success: true,
+            previousValue: context.get(varName),
+            newValue: context.get(varName),
+            macroError: true,
+            errorMessage: (e as Error).message,
+          } as SetResult & { macroError: boolean; errorMessage: string };
+        }
+        throw e;
+      }
     }
     case 'clipboard': {
       const clipboardValue = context.getClipboard();

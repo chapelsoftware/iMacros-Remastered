@@ -1,0 +1,17 @@
+VERSION BUILD=1
+' Test macro for navigation commands
+' Verifies the execution pipeline is working
+
+' Navigate to example.com
+URL GOTO=https://example.com
+
+' Wait 2 seconds
+WAIT SECONDS=2
+
+' Get current URL
+URL CURRENT
+
+' Navigate back would fail since there's no history
+' BACK
+
+' End of test

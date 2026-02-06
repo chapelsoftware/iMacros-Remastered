@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Forms - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group label { display: inline-block; width: 160px; font-weight: bold; }
+    fieldset { border: 1px solid #ccc; border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+    legend { font-weight: bold; color: #007bff; }
+    #result { background: #f0f8ff; border: 1px solid #b3d9ff; padding: 16px; border-radius: 6px; margin-top: 20px; white-space: pre-wrap; font-family: monospace; min-height: 40px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Form Elements Test Page</h1>
+
+  <!-- FORM 1: Main form -->
+  <form id="form1" name="mainForm" onsubmit="return handleSubmit(event, 'form1')">
+    <fieldset>
+      <legend>Text Inputs</legend>
+
+      <div class="form-group">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" placeholder="Enter username">
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email:</label>
+        <input type="text" id="email" name="email" placeholder="user@example.com">
+      </div>
+
+      <div class="form-group">
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password">
+      </div>
+
+      <div class="form-group">
+        <label for="hidden-field">Hidden Field:</label>
+        <input type="hidden" id="hidden-field" name="hiddenField" value="secret123">
+        <span style="color:#999">(hidden input with value "secret123")</span>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Textarea</legend>
+      <div class="form-group">
+        <label for="message">Message:</label>
+        <textarea id="message" name="message" rows="4" cols="50" placeholder="Enter message here"></textarea>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Contenteditable</legend>
+      <div class="form-group">
+        <label>Editable Div:</label>
+        <div id="editable" contenteditable="true" style="border:1px solid #ccc; padding:8px; min-height:40px; border-radius:4px;">Click to edit this text</div>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Select Dropdowns</legend>
+
+      <div class="form-group">
+        <label for="country">Country (single):</label>
+        <select id="country" name="country">
+          <option value="">-- Select --</option>
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+          <option value="de">Germany</option>
+          <option value="jp">Japan</option>
+          <option value="fr">France</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="languages">Languages (multi):</label>
+        <select id="languages" name="languages" multiple size="5">
+          <option value="en">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="ja">Japanese</option>
+        </select>
+        <br><small>Hold Ctrl/Cmd to select multiple</small>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Checkboxes</legend>
+      <div class="form-group">
+        <label>Interests:</label>
+        <label><input type="checkbox" name="interest" value="sports"> Sports</label>
+        <label><input type="checkbox" name="interest" value="music"> Music</label>
+        <label><input type="checkbox" name="interest" value="travel"> Travel</label>
+        <label><input type="checkbox" name="interest" value="coding"> Coding</label>
+      </div>
+      <div class="form-group">
+        <label for="agree">Agreement:</label>
+        <label><input type="checkbox" id="agree" name="agree" value="yes"> I agree to the terms</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Radio Buttons</legend>
+      <div class="form-group">
+        <label>Gender:</label>
+        <label><input type="radio" name="gender" value="male"> Male</label>
+        <label><input type="radio" name="gender" value="female"> Female</label>
+        <label><input type="radio" name="gender" value="other"> Other</label>
+      </div>
+      <div class="form-group">
+        <label>Plan:</label>
+        <label><input type="radio" name="plan" value="free"> Free</label>
+        <label><input type="radio" name="plan" value="pro"> Pro</label>
+        <label><input type="radio" name="plan" value="enterprise"> Enterprise</label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>File Input</legend>
+      <div class="form-group">
+        <label for="upload">Upload File:</label>
+        <input type="file" id="upload" name="upload">
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Buttons</legend>
+      <div class="form-group">
+        <button type="submit" id="submit-btn" name="submitBtn">Submit Form</button>
+        <button type="reset" id="reset-btn" name="resetBtn">Reset Form</button>
+        <button type="button" id="custom-btn" name="customBtn" onclick="document.getElementById('result').textContent='Custom button clicked!'">Custom Button</button>
+      </div>
+    </fieldset>
+  </form>
+
+  <!-- FORM 2: Secondary form (tests FORM=name: and FORM=2 selectors) -->
+  <h2>Second Form (for FORM attribute testing)</h2>
+  <form id="form2" name="secondForm" onsubmit="return handleSubmit(event, 'form2')">
+    <fieldset>
+      <legend>Secondary Fields</legend>
+      <div class="form-group">
+        <label for="nickname">Nickname:</label>
+        <input type="text" id="nickname" name="nickname" placeholder="Enter nickname">
+      </div>
+      <div class="form-group">
+        <label for="color">Favorite Color:</label>
+        <select id="color" name="color">
+          <option value="red">Red</option>
+          <option value="blue">Blue</option>
+          <option value="green">Green</option>
+          <option value="yellow">Yellow</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <button type="submit">Submit Second Form</button>
+      </div>
+    </fieldset>
+  </form>
+
+  <!-- Special content testing section -->
+  <h2>Special Content Values</h2>
+  <div id="special-content-result" style="background:#f8f8f8; padding:12px; border-radius:6px; font-family:monospace; min-height:30px;"></div>
+  <p><small>The result area above captures special character input tests.</small></p>
+
+  <h2>Submission Result</h2>
+  <div id="result">No form submitted yet.</div>
+
+  <script>
+    function handleSubmit(e, formId) {
+      e.preventDefault();
+      const form = document.getElementById(formId);
+      const data = new FormData(form);
+      const entries = [];
+      for (const [key, value] of data.entries()) {
+        entries.push(key + '=' + value);
+      }
+      document.getElementById('result').textContent =
+        'Form ' + formId + ' submitted:\n' + entries.join('\n');
+      return false;
+    }
+  </script>
+</body>
+</html>

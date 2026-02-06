@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Downloads - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    button { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; background: #007bff; color: white; margin: 4px; }
+    button:hover { opacity: 0.85; }
+    .download-list { list-style: none; padding: 0; }
+    .download-list li { margin-bottom: 10px; padding: 10px; background: #f8f8f8; border-radius: 4px; }
+    .download-list a { color: #007bff; font-weight: bold; text-decoration: none; }
+    .download-list a:hover { text-decoration: underline; }
+    .download-list small { color: #888; display: block; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Downloads Test Page</h1>
+  <p>This page tests ONDOWNLOAD, SAVEITEM, and download-related functionality.</p>
+
+  <section>
+    <h2>Direct File Downloads</h2>
+    <ul class="download-list">
+      <li>
+        <a id="download-text" href="data:text/plain;charset=utf-8,Hello%20from%20iMacros%20demo%20site!%0ALine%202%0ALine%203" download="sample.txt">Download Text File (sample.txt)</a>
+        <small>Plain text file via data: URL with download attribute.</small>
+      </li>
+      <li>
+        <a id="download-csv" href="sample-data.csv" download="sample-data.csv">Download CSV File (sample-data.csv)</a>
+        <small>CSV datasource file.</small>
+      </li>
+      <li>
+        <a id="download-json" href="data:application/json;charset=utf-8,%7B%22name%22%3A%22test%22%2C%22value%22%3A42%7D" download="data.json">Download JSON File (data.json)</a>
+        <small>JSON file via data: URL.</small>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>JS-Triggered Downloads</h2>
+    <button id="js-download-btn" onclick="triggerJsDownload()">Download via JavaScript</button>
+    <button id="js-download-blob-btn" onclick="triggerBlobDownload()">Download Blob</button>
+    <p id="download-status" style="color:#888; font-size:14px;">No download triggered yet.</p>
+  </section>
+
+  <section>
+    <h2>Images for SAVEITEM Testing</h2>
+    <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div>
+        <img id="save-img-1"
+             src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Crect fill='%23007bff' width='150' height='150' rx='10'/%3E%3Ctext x='75' y='80' text-anchor='middle' fill='white' font-size='16'%3ESave Me 1%3C/text%3E%3C/svg%3E"
+             alt="Blue image for saving"
+             title="Save Image 1"
+             width="150" height="150">
+        <br><small>Image 1 (SVG/Blue)</small>
+      </div>
+      <div>
+        <img id="save-img-2"
+             src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Crect fill='%2328a745' width='150' height='150' rx='10'/%3E%3Ctext x='75' y='80' text-anchor='middle' fill='white' font-size='16'%3ESave Me 2%3C/text%3E%3C/svg%3E"
+             alt="Green image for saving"
+             title="Save Image 2"
+             width="150" height="150">
+        <br><small>Image 2 (SVG/Green)</small>
+      </div>
+      <div>
+        <img id="save-img-3"
+             src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='150'%3E%3Crect fill='%23dc3545' width='150' height='150' rx='10'/%3E%3Ctext x='75' y='80' text-anchor='middle' fill='white' font-size='16'%3ESave Me 3%3C/text%3E%3C/svg%3E"
+             alt="Red image for saving"
+             title="Save Image 3"
+             width="150" height="150">
+        <br><small>Image 3 (SVG/Red)</small>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Links with Content-Disposition (simulated)</h2>
+    <ul class="download-list">
+      <li>
+        <a id="download-forced" href="data:application/octet-stream;charset=utf-8,Binary%20content%20here" download="binary-file.bin">Forced Download (binary-file.bin)</a>
+        <small>Simulates Content-Disposition: attachment via download attribute.</small>
+      </li>
+    </ul>
+  </section>
+
+  <script>
+    function triggerJsDownload() {
+      const content = 'This file was downloaded via JavaScript.\nTimestamp: ' + new Date().toISOString();
+      const a = document.createElement('a');
+      a.href = 'data:text/plain;charset=utf-8,' + encodeURIComponent(content);
+      a.download = 'js-download.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      document.getElementById('download-status').textContent = 'JS download triggered at ' + new Date().toLocaleTimeString();
+    }
+
+    function triggerBlobDownload() {
+      const blob = new Blob(['Blob content: Hello from Blob download!\n'], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'blob-download.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      document.getElementById('download-status').textContent = 'Blob download triggered at ' + new Date().toLocaleTimeString();
+    }
+  </script>
+</body>
+</html>

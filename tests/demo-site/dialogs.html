@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dialogs - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+    section { margin-bottom: 30px; }
+    button { padding: 10px 20px; margin: 6px; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; color: white; }
+    .btn-alert { background: #007bff; }
+    .btn-confirm { background: #28a745; }
+    .btn-prompt { background: #ffc107; color: #333; }
+    .btn-unload { background: #dc3545; }
+    button:hover { opacity: 0.85; }
+    #result { background: #f0f8ff; border: 1px solid #b3d9ff; padding: 16px; border-radius: 6px; margin-top: 20px; font-family: monospace; min-height: 40px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    .result-entry { margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">&larr; Back to Hub</a>
+  <h1>Dialog Test Page</h1>
+  <p>Click buttons to trigger browser dialogs. Results are captured below.</p>
+
+  <section>
+    <h2>Alert Dialogs</h2>
+    <button class="btn-alert" id="alert-simple" onclick="triggerAlert('Hello from iMacros!')">
+      Simple Alert
+    </button>
+    <button class="btn-alert" id="alert-multiline" onclick="triggerAlert('Line 1\nLine 2\nLine 3')">
+      Multi-line Alert
+    </button>
+    <button class="btn-alert" id="alert-special" onclick="triggerAlert('Special chars: &lt;&gt;&amp;&quot;')">
+      Special Chars Alert
+    </button>
+  </section>
+
+  <section>
+    <h2>Confirm Dialogs</h2>
+    <button class="btn-confirm" id="confirm-simple" onclick="triggerConfirm('Do you want to proceed?')">
+      Simple Confirm
+    </button>
+    <button class="btn-confirm" id="confirm-delete" onclick="triggerConfirm('Are you sure you want to delete this item?')">
+      Delete Confirm
+    </button>
+  </section>
+
+  <section>
+    <h2>Prompt Dialogs</h2>
+    <button class="btn-prompt" id="prompt-simple" onclick="triggerPrompt('Enter your name:', '')">
+      Simple Prompt
+    </button>
+    <button class="btn-prompt" id="prompt-default" onclick="triggerPrompt('Enter your city:', 'New York')">
+      Prompt with Default
+    </button>
+    <button class="btn-prompt" id="prompt-number" onclick="triggerPrompt('Enter a number:', '42')">
+      Number Prompt
+    </button>
+  </section>
+
+  <section>
+    <h2>Beforeunload</h2>
+    <button class="btn-unload" id="setup-unload" onclick="setupBeforeUnload()">
+      Enable Beforeunload Handler
+    </button>
+    <button class="btn-unload" id="remove-unload" onclick="removeBeforeUnload()" style="background:#6c757d;">
+      Disable Beforeunload Handler
+    </button>
+    <span id="unload-status" style="margin-left:12px; color:#888;">(not active)</span>
+  </section>
+
+  <h2>Dialog Results</h2>
+  <div id="result">No dialog triggered yet.</div>
+  <button onclick="document.getElementById('result').innerHTML=''" style="background:#6c757d; margin-top:8px;">Clear Results</button>
+
+  <script>
+    let resultDiv = document.getElementById('result');
+    let entryCount = 0;
+
+    function addResult(text) {
+      entryCount++;
+      if (entryCount === 1) resultDiv.innerHTML = '';
+      const entry = document.createElement('div');
+      entry.className = 'result-entry';
+      entry.textContent = '[' + entryCount + '] ' + text;
+      resultDiv.appendChild(entry);
+    }
+
+    function triggerAlert(msg) {
+      alert(msg);
+      addResult('Alert shown: "' + msg + '"');
+    }
+
+    function triggerConfirm(msg) {
+      const result = confirm(msg);
+      addResult('Confirm "' + msg + '" → ' + (result ? 'OK (true)' : 'Cancel (false)'));
+    }
+
+    function triggerPrompt(msg, defaultVal) {
+      const result = prompt(msg, defaultVal);
+      if (result === null) {
+        addResult('Prompt "' + msg + '" → Cancelled (null)');
+      } else {
+        addResult('Prompt "' + msg + '" → "' + result + '"');
+      }
+    }
+
+    let unloadHandler = null;
+    function setupBeforeUnload() {
+      unloadHandler = function(e) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes.';
+        return e.returnValue;
+      };
+      window.addEventListener('beforeunload', unloadHandler);
+      document.getElementById('unload-status').textContent = '(active)';
+      document.getElementById('unload-status').style.color = '#dc3545';
+      addResult('Beforeunload handler activated.');
+    }
+
+    function removeBeforeUnload() {
+      if (unloadHandler) {
+        window.removeEventListener('beforeunload', unloadHandler);
+        unloadHandler = null;
+      }
+      document.getElementById('unload-status').textContent = '(not active)';
+      document.getElementById('unload-status').style.color = '#888';
+      addResult('Beforeunload handler removed.');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Navigation Target - iMacros Demo</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
+    h1 { color: #333; }
+    h2 { color: #555; }
+    section { margin-bottom: 30px; padding: 16px; background: #f8f8f8; border-radius: 6px; }
+    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
+    code { background: #eee; padding: 2px 6px; border-radius: 3px; }
+    #page-info { font-family: monospace; background: #f0f8ff; padding: 12px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <a class="back" href="navigation.html">&larr; Back to Navigation</a>
+  <h1 id="target-title">Navigation Target Page</h1>
+
+  <section id="section1">
+    <h2>Section 1 - Landing</h2>
+    <p id="landing-text">You have arrived at the navigation target page.</p>
+    <p>This page is used to verify URL GOTO, BACK, and URL CURRENT commands.</p>
+  </section>
+
+  <section id="section2">
+    <h2>Section 2 - Anchor Target</h2>
+    <p id="anchor-text">This is the anchor target section (#section2).</p>
+  </section>
+
+  <section>
+    <h2>Page Information</h2>
+    <div id="page-info">
+      <div>URL: <span id="current-url"></span></div>
+      <div>Title: <span id="current-title"></span></div>
+      <div>Query String: <span id="query-string"></span></div>
+      <div>Hash: <span id="hash-value"></span></div>
+      <div>Referrer: <span id="referrer"></span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Query Parameters</h2>
+    <div id="query-params" style="font-family:monospace;"></div>
+  </section>
+
+  <script>
+    document.getElementById('current-url').textContent = window.location.href;
+    document.getElementById('current-title').textContent = document.title;
+    document.getElementById('query-string').textContent = window.location.search || '(none)';
+    document.getElementById('hash-value').textContent = window.location.hash || '(none)';
+    document.getElementById('referrer').textContent = document.referrer || '(none)';
+
+    const params = new URLSearchParams(window.location.search);
+    const paramsDiv = document.getElementById('query-params');
+    if (params.toString()) {
+      params.forEach((value, key) => {
+        const div = document.createElement('div');
+        div.textContent = key + ' = ' + value;
+        paramsDiv.appendChild(div);
+      });
+    } else {
+      paramsDiv.textContent = 'No query parameters.';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+' test-navigation.iim - Exercise URL, BACK, TAB commands
+' Requires: http://localhost:8080/navigation.html
+
+' === URL GOTO ===
+URL GOTO=http://localhost:8080/navigation.html
+
+' Store current URL
+SET !EXTRACT NULL
+SET !VAR0 {{!URLCURRENT}}
+
+' === Internal Navigation + BACK ===
+' Navigate to forms page
+TAG POS=1 TYPE=A ATTR=ID:nav-forms
+
+' Wait for page load
+WAIT SECONDS=1
+
+' Go back
+BACK
+
+' Wait for page load
+WAIT SECONDS=1
+
+' === Navigate to Target Page ===
+URL GOTO=http://localhost:8080/navigation-target.html?source=nav&id=42
+
+' Verify we landed on the target
+WAIT SECONDS=0.5
+
+' Check current URL
+SET !VAR1 {{!URLCURRENT}}
+
+' Go back to navigation page
+BACK
+WAIT SECONDS=1
+
+' === Navigate with Query Parameters ===
+TAG POS=1 TYPE=A ATTR=ID:nav-target-multi-query
+WAIT SECONDS=1
+
+' Extract the query params displayed on target page
+TAG POS=1 TYPE=DIV ATTR=ID:query-params EXTRACT=TXT
+SET !VAR2 {{!EXTRACT}}
+
+' Return to navigation
+BACK
+WAIT SECONDS=1
+
+' === Anchor Navigation ===
+TAG POS=1 TYPE=A ATTR=ID:nav-anchor
+
+' Wait a moment for scroll
+WAIT SECONDS=0.5
+
+' Verify anchor section is visible
+TAG POS=1 TYPE=DIV ATTR=ID:anchor-section EXTRACT=TXT
+
+' === Navigate to Target with Anchor ===
+TAG POS=1 TYPE=A ATTR=ID:nav-target-anchor
+WAIT SECONDS=1
+
+' Should be at navigation-target.html#section2
+SET !VAR3 {{!URLCURRENT}}
+
+' Final: return to hub
+URL GOTO=http://localhost:8080/index.html

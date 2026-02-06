@@ -1,0 +1,68 @@
+' test-forms.iim - Exercise all form element types on forms.html
+' Requires: http://localhost:8080/forms.html
+
+URL GOTO=http://localhost:8080/forms.html
+
+' === Text Inputs ===
+' Fill username by name attribute
+TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT=testuser
+
+' Fill email by id attribute
+TAG POS=1 TYPE=INPUT ATTR=ID:email CONTENT=test@example.com
+
+' Fill password
+TAG POS=1 TYPE=INPUT ATTR=NAME:password CONTENT=secret123
+
+' === Textarea ===
+TAG POS=1 TYPE=TEXTAREA ATTR=NAME:message CONTENT=Hello<BR>This is line 2<BR>Line 3 with<SP>spaces
+
+' === Select Dropdowns ===
+' Single select by value prefix (%)
+TAG POS=1 TYPE=SELECT ATTR=NAME:country CONTENT=%uk
+
+' Single select by text prefix ($)
+TAG POS=1 TYPE=SELECT ATTR=NAME:country CONTENT=$Germany
+
+' Single select by index prefix (#)
+TAG POS=1 TYPE=SELECT ATTR=NAME:country CONTENT=#4
+
+' Multi-select: select multiple options by value
+TAG POS=1 TYPE=SELECT ATTR=NAME:languages CONTENT=%en:%fr:%ja
+
+' === Checkboxes ===
+' Check a checkbox (YES = check)
+TAG POS=1 TYPE=INPUT ATTR=NAME:interest&&VALUE:sports CONTENT=YES
+TAG POS=1 TYPE=INPUT ATTR=NAME:interest&&VALUE:coding CONTENT=YES
+
+' Check agreement checkbox
+TAG POS=1 TYPE=INPUT ATTR=ID:agree CONTENT=YES
+
+' Uncheck a checkbox (NO = uncheck)
+TAG POS=1 TYPE=INPUT ATTR=NAME:interest&&VALUE:sports CONTENT=NO
+
+' === Radio Buttons ===
+TAG POS=1 TYPE=INPUT ATTR=NAME:gender&&VALUE:other CONTENT=YES
+TAG POS=1 TYPE=INPUT ATTR=NAME:plan&&VALUE:pro CONTENT=YES
+
+' === Submit Form 1 ===
+TAG POS=1 TYPE=BUTTON ATTR=ID:submit-btn CONTENT=<SUBMIT>
+
+' Verify result area has content
+TAG POS=1 TYPE=DIV ATTR=ID:result EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' === Second Form (FORM attribute testing) ===
+' Fill nickname in second form by targeting form name
+TAG POS=1 TYPE=INPUT ATTR=NAME:nickname CONTENT=coolnick
+
+' Select color in second form
+TAG POS=1 TYPE=SELECT ATTR=NAME:color CONTENT=$Green
+
+' Submit second form
+TAG POS=2 TYPE=BUTTON ATTR=TXT:Submit* CONTENT=<SUBMIT>
+
+' === Custom Button Click ===
+TAG POS=1 TYPE=BUTTON ATTR=ID:custom-btn
+
+' === Reset Form ===
+TAG POS=1 TYPE=BUTTON ATTR=ID:reset-btn CONTENT=<RESET>

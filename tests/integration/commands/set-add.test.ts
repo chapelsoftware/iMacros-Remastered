@@ -499,3 +499,115 @@ describe('SET and ADD combined workflows', () => {
     expect(result.variables['!LOOP']).toBe(1);
   });
 });
+
+describe('SET and ADD edge cases', () => {
+  describe('SET with special values', () => {
+    it('should handle setting a variable to a very long string', async () => {
+      const longValue = 'x'.repeat(5000);
+      const result = await executeMacro(`SET !VAR1 ${longValue}`);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe(longValue);
+    });
+
+    it('should handle setting a variable to a value containing special characters', async () => {
+      const result = await executeMacro('SET !VAR1 hello-world_test.value');
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe('hello-world_test.value');
+    });
+
+    it('should handle overwriting a variable multiple times in sequence', async () => {
+      const script = [
+        'SET !VAR1 first',
+        'SET !VAR1 second',
+        'SET !VAR1 third',
+        'SET !VAR1 fourth',
+        'SET !VAR1 fifth',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe('fifth');
+    });
+
+    it('should handle setting !EXTRACT to NULL to reset it', async () => {
+      const script = [
+        'SET !EXTRACT somedata',
+        'SET !EXTRACT NULL',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!EXTRACT']).toBe('NULL');
+    });
+
+    it('should handle setting !LOOP to a specific starting value', async () => {
+      const result = await executeMacro('SET !LOOP 10');
+      expect(result.success).toBe(true);
+      expect(result.variables['!LOOP']).toBe('10');
+    });
+  });
+
+  describe('EVAL edge cases', () => {
+    it('should evaluate string concatenation with concat()', async () => {
+      const result = await executeMacro('SET !VAR1 EVAL("concat(\\"hello\\", \\" \\", \\"world\\")")');
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe('hello world');
+    });
+
+    it('should evaluate nested arithmetic expressions', async () => {
+      const result = await executeMacro('SET !VAR1 EVAL("((10+5)*2-8)/2")');
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe(11);
+    });
+
+    it('should evaluate exponentiation', async () => {
+      const result = await executeMacro('SET !VAR1 EVAL("2^8")');
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe(256);
+    });
+
+    it('should handle chained variable references in EVAL', async () => {
+      const script = [
+        'SET !VAR1 2',
+        'SET !VAR2 3',
+        'SET !VAR3 EVAL("{{!VAR1}} * {{!VAR2}}")',
+        'SET !VAR4 EVAL("{{!VAR3}} + 1")',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR3']).toBe(6);
+      expect(result.variables['!VAR4']).toBe(7);
+    });
+  });
+
+  describe('ADD edge cases', () => {
+    it('should handle adding very large numbers', async () => {
+      const script = [
+        'SET !VAR1 999999',
+        'ADD !VAR1 1',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe(1000000);
+    });
+
+    it('should handle adding very small decimals', async () => {
+      const script = [
+        'SET !VAR1 0',
+        'ADD !VAR1 0.001',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBeCloseTo(0.001);
+    });
+
+    it('should handle multiple ADD operations resulting in zero', async () => {
+      const script = [
+        'SET !VAR1 100',
+        'ADD !VAR1 -50',
+        'ADD !VAR1 -50',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe(0);
+    });
+  });
+});

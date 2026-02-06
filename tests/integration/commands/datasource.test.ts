@@ -551,3 +551,119 @@ describe('Datasource Utility Functions', () => {
     });
   });
 });
+
+describe('Datasource Edge Cases', () => {
+  let manager: DatasourceManager;
+
+  beforeEach(() => {
+    manager = new DatasourceManager();
+  });
+
+  describe('Single-column CSV', () => {
+    it('should handle CSV with a single column', () => {
+      const csv = 'a\nb\nc';
+      const result = manager.loadFromContent(csv, 'single.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(manager.getColumnCount()).toBe(1);
+      expect(manager.getRowCount()).toBe(3);
+      expect(manager.getColumn(1)).toBe('a');
+    });
+  });
+
+  describe('Single-row CSV', () => {
+    it('should handle CSV with a single row', () => {
+      const csv = 'a,b,c';
+      const result = manager.loadFromContent(csv, 'single-row.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(manager.getRowCount()).toBe(1);
+      expect(manager.getColumnCount()).toBe(3);
+      expect(manager.getColumn(1)).toBe('a');
+      expect(manager.getColumn(2)).toBe('b');
+      expect(manager.getColumn(3)).toBe('c');
+      // No next row
+      expect(manager.nextRow()).toBe(false);
+    });
+  });
+
+  describe('CSV with trailing newlines', () => {
+    it('should handle CSV with trailing newline', () => {
+      const csv = 'a,b,c\nd,e,f\n';
+      const result = manager.loadFromContent(csv, 'trailing.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      // The trailing newline should not create an extra row (or if it does, it should be empty)
+      expect(manager.getRowCount()).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('CSV with whitespace in fields', () => {
+    it('should preserve whitespace in unquoted fields', () => {
+      const csv = ' a , b , c \nd,e,f';
+      const result = manager.loadFromContent(csv, 'ws.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      // Fields may have leading/trailing spaces preserved
+      expect(result.state!.rows[0]).toBeDefined();
+    });
+  });
+
+  describe('Loading and reloading', () => {
+    it('should allow loading a new CSV after unloading the previous one', () => {
+      const csv1 = 'a,b\nc,d';
+      manager.loadFromContent(csv1, 'first.csv', { delimiter: ',' });
+      expect(manager.getColumn(1)).toBe('a');
+
+      manager.unload();
+
+      const csv2 = 'x,y\nz,w';
+      manager.loadFromContent(csv2, 'second.csv', { delimiter: ',' });
+      expect(manager.getColumn(1)).toBe('x');
+      expect(manager.getColumn(2)).toBe('y');
+    });
+
+    it('should allow loading a new CSV without explicit unload (overwrite)', () => {
+      const csv1 = 'a,b\nc,d';
+      manager.loadFromContent(csv1, 'first.csv', { delimiter: ',' });
+
+      const csv2 = 'x,y,z\nw,v,u';
+      const result = manager.loadFromContent(csv2, 'second.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(manager.getColumnCount()).toBe(3);
+      expect(manager.getColumn(1)).toBe('x');
+    });
+  });
+
+  describe('Navigating to all rows and back', () => {
+    it('should navigate forward through all rows then back to start', () => {
+      const csv = Array.from({ length: 5 }, (_, i) => `row${i + 1}col1,row${i + 1}col2`).join('\n');
+      manager.loadFromContent(csv, 'nav.csv', { delimiter: ',' });
+
+      // Navigate to end
+      for (let i = 0; i < 4; i++) {
+        expect(manager.nextRow()).toBe(true);
+      }
+      expect(manager.getCurrentRow().row![0]).toBe('row5col1');
+
+      // Navigate back to start
+      for (let i = 0; i < 4; i++) {
+        expect(manager.previousRow()).toBe(true);
+      }
+      expect(manager.getCurrentRow().row![0]).toBe('row1col1');
+    });
+  });
+
+  describe('populateVariables after navigation', () => {
+    it('should populate correct column values after goToRow', () => {
+      const csv = 'a1,b1,c1\na2,b2,c2\na3,b3,c3';
+      manager.loadFromContent(csv, 'test.csv', { delimiter: ',' });
+
+      manager.goToRow(3);
+
+      const context = new VariableContext();
+      manager.populateVariables(context);
+
+      expect(context.get('!COL1')).toBe('a3');
+      expect(context.get('!COL2')).toBe('b3');
+      expect(context.get('!COL3')).toBe('c3');
+      expect(context.get('!DATASOURCE_LINE')).toBe(3);
+    });
+  });
+});

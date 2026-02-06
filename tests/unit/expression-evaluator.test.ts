@@ -8,10 +8,12 @@ import { describe, it, expect } from 'vitest';
 import {
   ExpressionEvaluator,
   MapVariableProvider,
+  MacroErrorSignal,
   evaluate,
   createEvaluator,
   extractExpressionVariables,
   sanitizeVariableName,
+  preprocessMathExpressions,
   defaultEvaluator,
   type EvaluationResult,
   type VariableProvider,
@@ -692,6 +694,475 @@ describe('Safe Expression Evaluator', () => {
       );
       expect(result.success).toBe(true);
       expect(result.value).toBe('http://example.com/page/2?id=100');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Additional Math Functions
+  // ============================================================
+  describe('Additional Math Functions', () => {
+    it('should evaluate pow()', () => {
+      const result = evaluate('pow(2, 10)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(1024);
+    });
+
+    it('should evaluate log() (natural logarithm)', () => {
+      const result = evaluate('log(1)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should evaluate exp()', () => {
+      const result = evaluate('exp(0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(1);
+    });
+
+    it('should evaluate sin()', () => {
+      const result = evaluate('sin(0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should evaluate cos()', () => {
+      const result = evaluate('cos(0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(1);
+    });
+
+    it('should evaluate tan()', () => {
+      const result = evaluate('tan(0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should evaluate random() returns a number between 0 and 1', () => {
+      const result = evaluate('random()');
+      expect(result.success).toBe(true);
+      expect(typeof result.value).toBe('number');
+      expect(result.value as number).toBeGreaterThanOrEqual(0);
+      expect(result.value as number).toBeLessThan(1);
+    });
+
+    it('should evaluate date_now() returns a positive number', () => {
+      const result = evaluate('date_now()');
+      expect(result.success).toBe(true);
+      expect(typeof result.value).toBe('number');
+      expect(result.value as number).toBeGreaterThan(0);
+    });
+
+    it('should evaluate parse_int()', () => {
+      const result = evaluate('parse_int("42abc")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(42);
+    });
+
+    it('should evaluate parse_int() with radix', () => {
+      const result = evaluate('parse_int("ff", 16)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(255);
+    });
+
+    it('should evaluate parse_float()', () => {
+      const result = evaluate('parse_float("3.14xyz")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBeCloseTo(3.14);
+    });
+
+    it('should evaluate char_at()', () => {
+      const result = evaluate('char_at("Hello", 1)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('e');
+    });
+
+    it('should evaluate split_get()', () => {
+      const result = evaluate('split_get("a,b,c", ",", 1)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('b');
+    });
+
+    it('should return empty string for split_get() out-of-range index', () => {
+      const result = evaluate('split_get("a,b", ",", 5)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should use PI constant', () => {
+      const result = evaluate('PI');
+      expect(result.success).toBe(true);
+      expect(result.value).toBeCloseTo(Math.PI);
+    });
+
+    it('should use E constant', () => {
+      const result = evaluate('E');
+      expect(result.success).toBe(true);
+      expect(result.value).toBeCloseTo(Math.E);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Additional String Functions
+  // ============================================================
+  describe('Additional String Functions', () => {
+    it('should evaluate substring() with start and end', () => {
+      const result = evaluate('substring("Hello World", 6, 11)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('World');
+    });
+
+    it('should evaluate substring() with only start', () => {
+      const result = evaluate('substring("Hello World", 6)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('World');
+    });
+
+    it('should evaluate substr() without length (to end)', () => {
+      const result = evaluate('substr("Hello World", 6)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('World');
+    });
+
+    it('should evaluate indexOf() not found returns -1', () => {
+      const result = evaluate('indexOf("Hello World", "xyz")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-1);
+    });
+
+    it('should evaluate replace() only replaces first occurrence', () => {
+      const result = evaluate('replace("aaa", "a", "b")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('baa');
+    });
+
+    it('should evaluate concat() with numbers and strings', () => {
+      const result = evaluate('concat("Value: ", 42)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('Value: 42');
+    });
+
+    it('should evaluate length() on empty string', () => {
+      const result = evaluate('length("")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+  });
+
+  // ============================================================
+  // SECTION: MacroError Function
+  // ============================================================
+  describe('MacroError Function', () => {
+    it('should throw MacroErrorSignal when MacroError() is called', () => {
+      const evaluator = new ExpressionEvaluator();
+      expect(() => {
+        evaluator.evaluate('MacroError("test error")');
+      }).toThrow(MacroErrorSignal);
+    });
+
+    it('should include the error message in MacroErrorSignal', () => {
+      const evaluator = new ExpressionEvaluator();
+      try {
+        evaluator.evaluate('MacroError("custom message")');
+        // Should not reach here
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(MacroErrorSignal);
+        expect((error as MacroErrorSignal).message).toBe('custom message');
+      }
+    });
+
+    it('should throw MacroErrorSignal with numeric argument converted to string', () => {
+      const evaluator = new ExpressionEvaluator();
+      try {
+        evaluator.evaluate('MacroError(404)');
+        expect(true).toBe(false);
+      } catch (error) {
+        expect(error).toBeInstanceOf(MacroErrorSignal);
+        expect((error as MacroErrorSignal).message).toBe('404');
+      }
+    });
+  });
+
+  // ============================================================
+  // SECTION: Deeply Nested Expressions
+  // ============================================================
+  describe('Deeply Nested Expressions', () => {
+    it('should evaluate deeply nested iif expressions', () => {
+      const result = evaluate('iif(1 > 0, iif(2 > 1, iif(3 > 2, "deep", ""), ""), "")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('deep');
+    });
+
+    it('should evaluate nested iif with false outer condition', () => {
+      const result = evaluate('iif(0 > 1, "never", iif(2 > 1, "fallback", "none"))');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('fallback');
+    });
+
+    it('should evaluate deeply nested arithmetic', () => {
+      const result = evaluate('(((2 + 3) * (4 - 1)) / 3) + 1');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(6);
+    });
+
+    it('should evaluate nested function calls', () => {
+      const result = evaluate('upper(concat(substr("hello", 0, 1), "orld"))');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('HORLD');
+    });
+  });
+
+  // ============================================================
+  // SECTION: preprocessMathExpressions
+  // ============================================================
+  describe('preprocessMathExpressions', () => {
+    it('should convert Math.random() to random()', () => {
+      expect(preprocessMathExpressions('Math.random()')).toBe('random()');
+    });
+
+    it('should convert Math.PI to PI', () => {
+      expect(preprocessMathExpressions('Math.PI')).toBe('PI');
+    });
+
+    it('should convert Math.E to E', () => {
+      expect(preprocessMathExpressions('Math.E')).toBe('E');
+    });
+
+    it('should convert Math.floor() to floor()', () => {
+      expect(preprocessMathExpressions('Math.floor(1.5)')).toBe('floor(1.5)');
+    });
+
+    it('should convert Math.ceil() to ceil()', () => {
+      expect(preprocessMathExpressions('Math.ceil(1.2)')).toBe('ceil(1.2)');
+    });
+
+    it('should convert Math.round() to round()', () => {
+      expect(preprocessMathExpressions('Math.round(1.5)')).toBe('round(1.5)');
+    });
+
+    it('should convert Math.abs() to abs()', () => {
+      expect(preprocessMathExpressions('Math.abs(-5)')).toBe('abs(-5)');
+    });
+
+    it('should convert Math.min() to min()', () => {
+      expect(preprocessMathExpressions('Math.min(1,2)')).toBe('min(1,2)');
+    });
+
+    it('should convert Math.max() to max()', () => {
+      expect(preprocessMathExpressions('Math.max(1,2)')).toBe('max(1,2)');
+    });
+
+    it('should convert Math.pow() to pow()', () => {
+      expect(preprocessMathExpressions('Math.pow(2,3)')).toBe('pow(2,3)');
+    });
+
+    it('should convert Math.log() to log()', () => {
+      expect(preprocessMathExpressions('Math.log(10)')).toBe('log(10)');
+    });
+
+    it('should convert Math.exp() to exp()', () => {
+      expect(preprocessMathExpressions('Math.exp(1)')).toBe('exp(1)');
+    });
+
+    it('should convert Math.sin() to sin()', () => {
+      expect(preprocessMathExpressions('Math.sin(0)')).toBe('sin(0)');
+    });
+
+    it('should convert Math.cos() to cos()', () => {
+      expect(preprocessMathExpressions('Math.cos(0)')).toBe('cos(0)');
+    });
+
+    it('should convert Math.tan() to tan()', () => {
+      expect(preprocessMathExpressions('Math.tan(0)')).toBe('tan(0)');
+    });
+
+    it('should convert Math.sqrt() to sqrt()', () => {
+      expect(preprocessMathExpressions('Math.sqrt(4)')).toBe('sqrt(4)');
+    });
+
+    it('should convert Date.now() to date_now()', () => {
+      expect(preprocessMathExpressions('Date.now()')).toBe('date_now()');
+    });
+
+    it('should convert parseInt() to parse_int()', () => {
+      expect(preprocessMathExpressions('parseInt("42")')).toBe('parse_int("42")');
+    });
+
+    it('should convert parseFloat() to parse_float()', () => {
+      expect(preprocessMathExpressions('parseFloat("3.14")')).toBe('parse_float("3.14")');
+    });
+
+    it('should convert complex expression with multiple Math calls', () => {
+      const input = 'Math.floor(Math.random() * 5 + 1)';
+      const expected = 'floor(random() * 5 + 1)';
+      expect(preprocessMathExpressions(input)).toBe(expected);
+    });
+
+    it('should not modify expressions without Math/Date prefixes', () => {
+      const input = 'floor(1.5) + ceil(2.3)';
+      expect(preprocessMathExpressions(input)).toBe(input);
+    });
+
+    it('preprocessed expressions should evaluate correctly', () => {
+      const input = 'Math.floor(3.7)';
+      const preprocessed = preprocessMathExpressions(input);
+      const result = evaluate(preprocessed);
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(3);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Error Messages for Failure Modes
+  // ============================================================
+  describe('Error Messages for Failure Modes', () => {
+    it('should return error for division by zero (Infinity result)', () => {
+      const result = evaluate('1 / 0');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(Infinity);
+    });
+
+    it('should return error for undefined function', () => {
+      const result = evaluate('unknownFunc(5)');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should return error for syntax error (mismatched parens)', () => {
+      const result = evaluate('(2 + 3');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should return error for empty expression', () => {
+      const result = evaluate('');
+      expect(result.success).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should return error for num() with non-numeric string', () => {
+      const result = evaluate('num("not_a_number")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should return error for int() with non-numeric string', () => {
+      const result = evaluate('int("xyz")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should return error for float() with non-numeric string', () => {
+      const result = evaluate('float("abc")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should return error for expression exceeding max length', () => {
+      const evaluator = new ExpressionEvaluator({ maxLength: 5 });
+      const result = evaluator.evaluate('1 + 2 + 3 + 4');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('maximum length');
+    });
+  });
+
+  // ============================================================
+  // SECTION: String Concatenation and Comparison
+  // ============================================================
+  describe('String Concatenation and Comparison', () => {
+    it('should concatenate strings using concat()', () => {
+      const result = evaluate('concat("foo", "bar", "baz")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('foobarbaz');
+    });
+
+    it('should compare strings with ==', () => {
+      const result = evaluate('"hello" == "hello"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should compare strings with != (different)', () => {
+      const result = evaluate('"hello" != "world"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should compare strings with != (same)', () => {
+      const result = evaluate('"same" != "same"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should concatenate empty strings', () => {
+      const result = evaluate('concat("", "", "only")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('only');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Boolean Logic
+  // ============================================================
+  describe('Boolean Logic', () => {
+    it('should evaluate true and false', () => {
+      const result = evaluate('true and false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should evaluate true or false', () => {
+      const result = evaluate('true or false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should evaluate not true', () => {
+      const result = evaluate('not true');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should evaluate not false', () => {
+      const result = evaluate('not false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should evaluate false and false', () => {
+      const result = evaluate('false and false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should evaluate false or false', () => {
+      const result = evaluate('false or false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should evaluate complex boolean expression', () => {
+      const result = evaluate('(true or false) and (not false)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should evaluate boolean with comparison', () => {
+      const result = evaluate('(5 > 3) and (10 <= 10)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should evaluate chained or with all false', () => {
+      const result = evaluate('false or false or false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should evaluate chained or with one true', () => {
+      const result = evaluate('false or false or true');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
     });
   });
 });

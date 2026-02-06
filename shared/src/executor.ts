@@ -43,6 +43,7 @@ export const IMACROS_ERROR_CODES = {
   INVALID_COMMAND: -911,
   INVALID_PARAMETER: -912,
   MISSING_PARAMETER: -913,
+  UNSUPPORTED_COMMAND: -915,
   // Element errors (-92x)
   ELEMENT_NOT_FOUND: -920,
   ELEMENT_NOT_VISIBLE: -921,
@@ -261,6 +262,8 @@ export class MacroExecutor {
   private resumeResolver: (() => void) | null = null;
   /** Step promise resolver for single-step mode */
   private stepResolver: (() => void) | null = null;
+  /** Saved initial variables for re-application after reset */
+  private initialVariables: Record<string, VariableValue> | undefined;
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -268,6 +271,7 @@ export class MacroExecutor {
       maxLoops: options.maxLoops ?? 1,
       initialVariables: options.initialVariables,
     });
+    this.initialVariables = options.initialVariables;
     this.onProgress = options.onProgress;
     this.onLog = options.onLog;
     this.commandDelayMs = options.commandDelayMs ?? 0;
@@ -448,6 +452,14 @@ export class MacroExecutor {
     this.state.resetForExecution();
     this.abortFlag = false;
     this.pauseFlag = false;
+
+    // Re-apply initial variables after reset (reset wipes all variables)
+    if (this.initialVariables) {
+      const vars = this.state.getVariables();
+      for (const [name, value] of Object.entries(this.initialVariables)) {
+        vars.set(name, value);
+      }
+    }
 
     // Start execution
     this.state.start();
@@ -721,12 +733,20 @@ export class MacroExecutor {
   }
 
   /**
-   * Delay execution
+   * Delay execution (interruptible via abort flag)
+   *
+   * Splits long delays into small chunks so that stop() can
+   * interrupt a WAIT command without waiting for the full duration.
    */
-  private delay(ms: number): Promise<void> {
-    return new Promise<void>((resolve) => {
-      setTimeout(resolve, ms);
-    });
+  private async delay(ms: number): Promise<void> {
+    const chunkSize = 100; // Check abort every 100ms
+    let remaining = ms;
+
+    while (remaining > 0 && !this.abortFlag) {
+      const wait = Math.min(remaining, chunkSize);
+      await new Promise<void>((resolve) => setTimeout(resolve, wait));
+      remaining -= wait;
+    }
   }
 
   /**
@@ -828,6 +848,7 @@ export function getErrorMessage(code: IMacrosErrorCode): string {
     [IMACROS_ERROR_CODES.INVALID_COMMAND]: 'Invalid command',
     [IMACROS_ERROR_CODES.INVALID_PARAMETER]: 'Invalid parameter',
     [IMACROS_ERROR_CODES.MISSING_PARAMETER]: 'Missing required parameter',
+    [IMACROS_ERROR_CODES.UNSUPPORTED_COMMAND]: 'Unsupported command',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND]: 'Element not found',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE]: 'Element not visible',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_ENABLED]: 'Element not enabled',

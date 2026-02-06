@@ -18,6 +18,7 @@ let sharedLib;
 let createBrowserBridge;
 let createBrowserHandlers;
 
+let sharedLibLoadError = null;
 try {
   // Try to load the built shared library
   sharedLib = require('../shared/dist');
@@ -25,9 +26,8 @@ try {
   const commandHandlers = require('./src/command-handlers');
   createBrowserBridge = browserBridge.createBrowserBridge;
   createBrowserHandlers = commandHandlers.createBrowserHandlers;
-  console.log('Loaded shared library and command handlers');
 } catch (e) {
-  console.log('Could not load shared library:', e.message);
+  sharedLibLoadError = e.message;
   sharedLib = null;
 }
 
@@ -57,6 +57,11 @@ log('='.repeat(60));
 log('Native host starting...');
 log('Macros dir:', MACROS_DIR);
 log('Platform:', process.platform);
+if (sharedLibLoadError) {
+  log('Could not load shared library:', sharedLibLoadError);
+} else if (sharedLib) {
+  log('Loaded shared library and command handlers');
+}
 
 const stdin = process.stdin;
 const stdout = process.stdout;
@@ -676,8 +681,13 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Start IPC server and spawn Electron
-startIPCServer();
+// Optionally start IPC server and spawn Electron (only if Electron binary exists)
+const electronPath = path.join(__dirname, 'dist-electron', 'win-unpacked', 'iMacros Native Host.exe');
+if (fs.existsSync(electronPath)) {
+  startIPCServer();
+} else {
+  log('Electron app not found, running in stdio-only mode');
+}
 
 // Send ready message to extension
 sendMessage({

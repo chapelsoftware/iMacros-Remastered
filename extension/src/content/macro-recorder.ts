@@ -22,7 +22,10 @@ export type RecordedEventType =
   | 'submit'
   | 'select'
   | 'focus'
-  | 'keydown';
+  | 'keydown'
+  | 'download'
+  | 'tab'
+  | 'frame';
 
 /**
  * Recorded event data
@@ -48,6 +51,18 @@ export interface RecordedEvent {
       shift?: boolean;
       meta?: boolean;
     };
+    downloadFolder?: string;
+    downloadFilename?: string;
+    downloadUrl?: string;
+    // Tab event metadata
+    tabAction?: 'open' | 'close' | 'switch';
+    tabIndex?: number;
+    tabId?: number;
+    tabUrl?: string;
+    // Frame event metadata
+    frameAction?: 'select';
+    frameIndex?: number;
+    frameName?: string;
   };
 }
 
@@ -220,6 +235,44 @@ export class MacroRecorder {
    */
   clearEvents(): void {
     this.events = [];
+  }
+
+  /**
+   * Record a download event
+   */
+  recordDownloadEvent(folder: string, filename: string, url?: string): void {
+    if (!this.recording) {
+      return;
+    }
+
+    const folderPart = folder === '*' || !folder ? '*' : this.escapeDownloadPath(folder);
+    const filePart = filename === '+' || !filename
+      ? '+_{{!NOW:yyyymmdd_hhnnss}}'
+      : this.escapeDownloadPath(filename);
+
+    const command = `ONDOWNLOAD FOLDER=${folderPart} FILE=${filePart} WAIT=YES`;
+
+    this.recordEvent('download', command, {
+      downloadFolder: folder,
+      downloadFilename: filename,
+      downloadUrl: url,
+    });
+  }
+
+  /**
+   * Escape download path for iMacros command
+   */
+  private escapeDownloadPath(path: string): string {
+    // Check if path needs quoting (contains spaces or special characters)
+    const needsQuotes = /[\s"]/.test(path);
+
+    if (needsQuotes) {
+      // Escape quotes and wrap in quotes
+      const escaped = path.replace(/"/g, '\\"');
+      return `"${escaped}"`;
+    }
+
+    return path;
   }
 
   /**
@@ -843,6 +896,21 @@ export function setupRecordingMessageListener(): void {
         const recorder = getMacroRecorder();
         const macro = recorder.generateMacro();
         sendResponse({ success: true, macro });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
+    if (message.type === 'RECORD_DOWNLOAD') {
+      try {
+        const recorder = getMacroRecorder();
+        const { folder = '*', filename = '+', url } = message.payload || {};
+        recorder.recordDownloadEvent(folder, filename, url);
+        sendResponse({ success: true });
       } catch (error) {
         sendResponse({
           success: false,

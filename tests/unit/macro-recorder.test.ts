@@ -527,4 +527,188 @@ describe('MacroRecorder', () => {
       expect(callArg.payload.command).toContain('TAG');
     });
   });
+
+  // ===== Download Recording =====
+
+  describe('download recording', () => {
+    it('should record download event with ONDOWNLOAD command', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', 'report.pdf', 'https://example.com/report.pdf');
+
+      const events = recorder.getEvents();
+      expect(events.length).toBe(1);
+      expect(events[0].type).toBe('download');
+      expect(events[0].command).toBe('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=YES');
+    });
+
+    it('should use * for empty folder', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('', 'file.txt');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toContain('FOLDER=*');
+    });
+
+    it('should use * for folder marked as default', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('*', 'file.txt');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toContain('FOLDER=*');
+    });
+
+    it('should use timestamp pattern for empty filename', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', '');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toContain('FILE=+_{{!NOW:yyyymmdd_hhnnss}}');
+    });
+
+    it('should use timestamp pattern for filename marked as auto', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', '+');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toContain('FILE=+_{{!NOW:yyyymmdd_hhnnss}}');
+    });
+
+    it('should quote paths with spaces', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/my downloads', 'my file.pdf');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toBe('ONDOWNLOAD FOLDER="/my downloads" FILE="my file.pdf" WAIT=YES');
+    });
+
+    it('should escape quotes in paths', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', 'file "quoted".pdf');
+
+      const events = recorder.getEvents();
+      expect(events[0].command).toContain('FILE="file \\"quoted\\".pdf"');
+    });
+
+    it('should include download metadata', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', 'report.pdf', 'https://example.com/report.pdf');
+
+      const events = recorder.getEvents();
+      expect(events[0].metadata?.downloadFolder).toBe('/downloads');
+      expect(events[0].metadata?.downloadFilename).toBe('report.pdf');
+      expect(events[0].metadata?.downloadUrl).toBe('https://example.com/report.pdf');
+    });
+
+    it('should not record download when not recording', () => {
+      // Don't start recording
+      recorder.recordDownloadEvent('/downloads', 'report.pdf');
+
+      const events = recorder.getEvents();
+      expect(events.length).toBe(0);
+    });
+
+    it('should include download in generated macro', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', 'report.pdf');
+      recorder.stop();
+
+      const macro = recorder.generateMacro();
+      expect(macro).toContain('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=YES');
+    });
+
+    it('should send download event to background script', () => {
+      recorder.start();
+      recorder.recordDownloadEvent('/downloads', 'report.pdf');
+
+      expect((globalThis as any).chrome.runtime.sendMessage).toHaveBeenCalled();
+      const callArg = (globalThis as any).chrome.runtime.sendMessage.mock.calls[0][0];
+      expect(callArg.type).toBe('RECORD_EVENT');
+      expect(callArg.payload.type).toBe('download');
+      expect(callArg.payload.command).toContain('ONDOWNLOAD');
+    });
+  });
+
+  // ===== RECORD_DOWNLOAD Message Handler =====
+
+  describe('RECORD_DOWNLOAD message handler', () => {
+    let messageListeners: Array<(message: any, sender: any, sendResponse: any) => boolean | void>;
+
+    beforeEach(() => {
+      messageListeners = [];
+      (globalThis as any).chrome.runtime.onMessage = {
+        addListener: vi.fn((listener: any) => {
+          messageListeners.push(listener);
+        }),
+      };
+    });
+
+    it('should handle RECORD_DOWNLOAD message and record download event', async () => {
+      const { setupRecordingMessageListener, getMacroRecorder } = await import('../../extension/src/content/macro-recorder');
+      setupRecordingMessageListener();
+
+      const recorderInstance = getMacroRecorder();
+      recorderInstance.start();
+
+      // Get the listener
+      const listener = messageListeners[messageListeners.length - 1];
+      const sendResponse = vi.fn();
+
+      // Send RECORD_DOWNLOAD message
+      const result = listener(
+        {
+          type: 'RECORD_DOWNLOAD',
+          payload: {
+            folder: '/downloads',
+            filename: 'test.pdf',
+            url: 'https://example.com/test.pdf',
+          },
+        },
+        {},
+        sendResponse
+      );
+
+      expect(result).toBe(true);
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+
+      const events = recorderInstance.getEvents();
+      expect(events.length).toBeGreaterThan(0);
+      const downloadEvent = events.find(e => e.type === 'download');
+      expect(downloadEvent).toBeDefined();
+      expect(downloadEvent?.command).toContain('ONDOWNLOAD');
+
+      recorderInstance.stop();
+    });
+
+    it('should use default values when payload is incomplete', async () => {
+      const { setupRecordingMessageListener, getMacroRecorder } = await import('../../extension/src/content/macro-recorder');
+      setupRecordingMessageListener();
+
+      const recorderInstance = getMacroRecorder();
+      recorderInstance.start();
+      recorderInstance.clearEvents();
+
+      const listener = messageListeners[messageListeners.length - 1];
+      const sendResponse = vi.fn();
+
+      // Send RECORD_DOWNLOAD with no payload
+      listener(
+        {
+          type: 'RECORD_DOWNLOAD',
+          payload: {},
+        },
+        {},
+        sendResponse
+      );
+
+      expect(sendResponse).toHaveBeenCalledWith({ success: true });
+
+      const events = recorderInstance.getEvents();
+      const downloadEvent = events.find(e => e.type === 'download');
+      expect(downloadEvent?.command).toContain('FOLDER=*');
+      expect(downloadEvent?.command).toContain('FILE=+_{{!NOW:yyyymmdd_hhnnss}}');
+
+      recorderInstance.stop();
+    });
+  });
+
 });

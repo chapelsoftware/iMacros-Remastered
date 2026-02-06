@@ -118,6 +118,21 @@ export function clearAllStopwatches(): void {
   stopwatches.clear();
 }
 
+/**
+ * Get the elapsed time of a stopwatch in milliseconds
+ * Returns the elapsed time, or 0 if the stopwatch doesn't exist
+ */
+export function getStopwatchElapsed(id: string = DEFAULT_STOPWATCH_ID): number {
+  const sw = stopwatches.get(id);
+  if (!sw) {
+    return 0;
+  }
+  if (sw.running) {
+    return Date.now() - sw.startTime + sw.accumulated;
+  }
+  return sw.accumulated;
+}
+
 // ===== Command Line Execution Interface =====
 
 /**

@@ -223,6 +223,8 @@ export interface ExecutorOptions {
   commandDelayMs?: number;
   /** Whether to run in single-step mode */
   singleStep?: boolean;
+  /** Callback to load datasource content when !DATASOURCE is set via SET command */
+  onDatasourceLoad?: (path: string) => Promise<string> | string;
 }
 
 // ===== Macro Executor Class =====
@@ -264,6 +266,8 @@ export class MacroExecutor {
   private stepResolver: (() => void) | null = null;
   /** Saved initial variables for re-application after reset */
   private initialVariables: Record<string, VariableValue> | undefined;
+  /** Callback to load datasource content when !DATASOURCE is set */
+  private onDatasourceLoad?: (path: string) => Promise<string> | string;
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -277,6 +281,7 @@ export class MacroExecutor {
     this.commandDelayMs = options.commandDelayMs ?? 0;
     this.singleStep = options.singleStep ?? false;
     this.errorIgnore = options.errorIgnore ?? false;
+    this.onDatasourceLoad = options.onDatasourceLoad;
 
     // Register built-in command handlers
     this.registerBuiltinHandlers();
@@ -328,12 +333,42 @@ export class MacroExecutor {
       const value = ctx.expand(params[1].rawValue || params[1].value);
 
       const result = executeSet(ctx.variables, varName, value);
+      if ((result as any).macroError) {
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+          stopExecution: true,
+          errorMessage: (result as any).errorMessage,
+        };
+      }
       if (!result.success) {
         return {
           success: false,
           errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
           errorMessage: result.error,
         };
+      }
+
+      // If !DATASOURCE was set, try to load content via callback
+      if (
+        varName.toUpperCase() === '!DATASOURCE' &&
+        result.newValue &&
+        this.onDatasourceLoad
+      ) {
+        try {
+          const content = await this.onDatasourceLoad(String(result.newValue));
+          if (content) {
+            const { loadDatasourceFromContent } = await import(
+              './commands/datasource-handler'
+            );
+            loadDatasourceFromContent(content, String(result.newValue));
+          }
+        } catch (e) {
+          ctx.log(
+            'warn',
+            `Failed to load datasource: ${(e as Error).message}`
+          );
+        }
       }
 
       ctx.log('debug', `SET ${varName} = ${result.newValue}`);

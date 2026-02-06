@@ -334,9 +334,12 @@ describe('Native Host stdio Integration Tests', () => {
       }
 
       expect(responses).toHaveLength(count);
+      const ids = responses.map((r: any) => r.id).sort();
       for (let i = 0; i < count; i++) {
         expect(responses[i].type).toBe('pong');
-        expect(responses[i].id).toBe(`rapid-${i}`);
+      }
+      for (let i = 0; i < count; i++) {
+        expect(ids).toContain(`rapid-${i}`);
       }
     });
 

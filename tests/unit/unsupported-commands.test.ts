@@ -21,7 +21,6 @@ import {
   createUnsupportedHandler,
   unsupportedHandlers,
   registerUnsupportedHandlers,
-  dsHandler,
   imageClickHandler,
   onCertificateDialogUnsupportedHandler,
   onPrintUnsupportedHandler,
@@ -98,9 +97,8 @@ describe('Unsupported Command Handlers', () => {
   });
 
   describe('unsupportedHandlers registry', () => {
-    it('should contain all 13 unsupported commands', () => {
+    it('should contain all 12 unsupported commands', () => {
       const expectedCommands = [
-        'DS',
         'IMAGECLICK',
         'ONCERTIFICATEDIALOG',
         'ONPRINT',
@@ -132,7 +130,7 @@ describe('Unsupported Command Handlers', () => {
       registerUnsupportedHandlers(mockRegisterFn as any);
 
       const expectedCommands = [
-        'DS', 'IMAGECLICK', 'ONCERTIFICATEDIALOG', 'ONPRINT',
+        'IMAGECLICK', 'ONCERTIFICATEDIALOG', 'ONPRINT',
         'ONSECURITYDIALOG', 'ONWEBPAGEDIALOG', 'PRINT', 'SIZE',
         'WINCLICK', 'DISCONNECT', 'REDIAL', 'EXTRACT', 'IMAGESEARCH',
       ];
@@ -145,18 +143,6 @@ describe('Unsupported Command Handlers', () => {
 
   // ===== Individual Command Tests =====
   // Each test verifies the command returns UNSUPPORTED_COMMAND (-915)
-
-  describe('DS command', () => {
-    it('should return UNSUPPORTED_COMMAND error', async () => {
-      const { executor } = createTestExecutor();
-      executor.loadMacro('DS CMD=test');
-      const result = await executor.execute();
-
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.UNSUPPORTED_COMMAND);
-      expect(result.errorMessage).toContain('DS');
-    });
-  });
 
   describe('IMAGECLICK command', () => {
     it('should return UNSUPPORTED_COMMAND error', async () => {
@@ -343,7 +329,6 @@ describe('Unsupported Command Handlers', () => {
 
   describe('All unsupported handlers return correct error code', () => {
     const handlers = [
-      { name: 'DS', handler: dsHandler },
       { name: 'IMAGECLICK', handler: imageClickHandler },
       { name: 'ONCERTIFICATEDIALOG', handler: onCertificateDialogUnsupportedHandler },
       { name: 'ONPRINT', handler: onPrintUnsupportedHandler },

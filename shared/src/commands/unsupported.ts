@@ -7,7 +7,6 @@
  * than silently failing or crashing.
  *
  * Commands handled:
- * - DS: Data source command (legacy, replaced by SET !DATASOURCE)
  * - IMAGECLICK: Image-based click (Windows-only, requires native host)
  * - ONCERTIFICATEDIALOG: Certificate dialog handling (not available in extensions)
  * - ONPRINT: Print dialog handling (not available in extensions)
@@ -55,17 +54,6 @@ export function createUnsupportedHandler(
 }
 
 // ===== Individual Unsupported Command Handlers =====
-
-/**
- * DS command handler (unsupported)
- *
- * The DS command was a legacy data source command. In modern iMacros,
- * data source functionality is handled through SET !DATASOURCE.
- */
-export const dsHandler: CommandHandler = createUnsupportedHandler(
-  'DS',
-  'Use SET !DATASOURCE instead for data source operations'
-);
 
 /**
  * IMAGECLICK command handler (unsupported)
@@ -218,7 +206,6 @@ export const imageSearchHandler: CommandHandler = createUnsupportedHandler(
  * types cannot actually be intercepted by browser extensions.
  */
 export const unsupportedHandlers: Partial<Record<CommandType, CommandHandler>> = {
-  DS: dsHandler,
   IMAGECLICK: imageClickHandler,
   ONCERTIFICATEDIALOG: onCertificateDialogUnsupportedHandler,
   ONPRINT: onPrintUnsupportedHandler,

@@ -43,8 +43,8 @@ export type ContentScriptMessageType =
  * Element selector specification for TAG command
  */
 export interface ElementSelector {
-  /** Position (1-based index, or negative for reverse) */
-  pos?: number;
+  /** Position (1-based index, negative for reverse, or 'random') */
+  pos?: number | 'random';
   /** Element type/tag name (e.g., INPUT, A, DIV, *) */
   type?: string;
   /** Attribute selectors (e.g., "NAME:username" or "TXT:Submit") */
@@ -301,12 +301,12 @@ export function parseExtractParam(extractStr: string): ExtractType {
  * Parse POS parameter value
  * Supports: 1, 2, -1 (last), -2 (second to last), R1 (random)
  */
-export function parsePosParam(posStr: string): number {
+export function parsePosParam(posStr: string): number | 'random' {
   const trimmed = posStr.trim().toUpperCase();
 
-  // Random position (not fully supported, defaults to 1)
+  // Random position
   if (trimmed.startsWith('R')) {
-    return 1; // Will be handled specially by content script
+    return 'random';
   }
 
   const num = parseInt(trimmed, 10);

@@ -1058,6 +1058,32 @@ async function handleMessage(
       }
     }
 
+    // Handle download URL requests from content scripts (EVENT:SAVETARGETAS)
+    case 'DOWNLOAD_URL': {
+      const downloadPayload = message.payload as { url: string; filename?: string } | undefined;
+      const downloadUrl = downloadPayload?.url || (message as { url?: string }).url || '';
+      const downloadFilename = downloadPayload?.filename || (message as { filename?: string }).filename || '';
+      try {
+        const downloadOptions: chrome.downloads.DownloadOptions = { url: downloadUrl };
+        if (downloadFilename) {
+          downloadOptions.filename = downloadFilename;
+        }
+        const downloadId = await new Promise<number>((resolve, reject) => {
+          chrome.downloads.download(downloadOptions, (id) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(id);
+            }
+          });
+        });
+        return { success: true, downloadId };
+      } catch (error) {
+        console.error('[iMacros] Download error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
     default:
       console.warn('[iMacros] Unknown message type:', message.type);
       return { success: false, error: `Unknown message type: ${message.type}` };

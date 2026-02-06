@@ -142,10 +142,13 @@ describe('ExecutorMacroHandler', () => {
       await handler.play('SET !VAR0 "first"');
       const perf1 = handler.getLastPerformance();
 
+      // Small delay to ensure different timestamp
+      await new Promise(resolve => setTimeout(resolve, 5));
+
       await handler.play('SET !VAR0 "second"');
       const perf2 = handler.getLastPerformance();
 
-      // Should be different performance objects
+      // Should be different performance objects (different start times)
       expect(perf2!.startTime).not.toBe(perf1!.startTime);
     });
 

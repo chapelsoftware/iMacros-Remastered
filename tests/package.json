@@ -1,0 +1,14 @@
+{
+  "name": "@imacros/tests",
+  "version": "1.0.0",
+  "description": "iMacros Test Suite",
+  "private": true,
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@imacros/shared": "*",
+    "@imacros/native-host": "*",
+    "@imacros/extension": "*"
+  }
+}

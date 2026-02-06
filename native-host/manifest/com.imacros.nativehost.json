@@ -1,0 +1,1 @@
+{"name": "com.imacros.nativehost", "description": "iMacros Native Host", "path": "imacros-native-host.exe", "type": "stdio", "allowed_origins": ["chrome-extension://*/"]}

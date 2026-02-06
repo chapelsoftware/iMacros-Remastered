@@ -1,0 +1,19 @@
+{
+  "name": "@imacros/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "expr-eval": "^2.0.2",
+    "papaparse": "^5.5.3"
+  },
+  "devDependencies": {
+    "@types/expr-eval": "^1.1.2",
+    "@types/papaparse": "^5.5.2"
+  }
+}

@@ -1,0 +1,54 @@
+iMacros - Browser Automation & Web Testing
+
+Automate your browser! iMacros records and replays repetitive web tasks. Perfect for form filling, web testing, data extraction, and workflow automation.
+
+KEY FEATURES:
+
+Record & Replay
+- Record your actions as you browse
+- Replay macros with a single click
+- Loop macros for repetitive tasks
+
+Form Filling
+- Save and replay form data
+- Auto-fill login credentials
+- Bulk form submission
+
+Web Testing
+- Functional testing automation
+- Regression testing support
+- Error detection and reporting
+
+Data Extraction
+- Extract data from web pages
+- Export to CSV format
+- Scrape tables and lists
+
+EASY TO USE:
+1. Click the iMacros icon to open the side panel
+2. Press Record to start capturing your actions
+3. Navigate, click, and fill forms as usual
+4. Press Stop to save your macro
+5. Replay anytime with one click
+
+POWERFUL SCRIPTING:
+- Simple, readable macro syntax
+- Variables and loops support
+- Conditional logic
+- Native host integration for file operations
+
+PRIVACY FOCUSED:
+- All data stored locally
+- No cloud sync required
+- No tracking or analytics
+- Open macro format
+
+Perfect for:
+- Business professionals automating daily tasks
+- QA engineers running test suites
+- Researchers collecting web data
+- Anyone tired of repetitive browsing
+
+Works on all websites. No coding required for basic tasks.
+
+For support and documentation, visit our website.

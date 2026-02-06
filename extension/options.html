@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iMacros Settings</title>
+  <style>
+/**
+ * iMacros Options Page Styles
+ * Consistent with the iMacros blue/gray theme
+ */
+
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Base styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #333;
+  background: #f5f5f5;
+  min-height: 100vh;
+}
+
+/* Container */
+.options-container {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #fff;
+  min-height: 100vh;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Header */
+.options-header {
+  display: flex;
+  align-items: center;
+  padding: 20px 24px;
+  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
+  border-bottom: 2px solid #1a4080;
+  color: white;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-text h1 {
+  font-size: 24px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  margin-bottom: 2px;
+}
+
+.header-version {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Main content */
+.options-content {
+  padding: 24px;
+}
+
+/* Sections */
+.options-section {
+  margin-bottom: 32px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.options-section:last-of-type {
+  border-bottom: none;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a5fb4;
+  margin-bottom: 8px;
+}
+
+.section-description {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 20px;
+}
+
+/* Form elements */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group > label {
+  display: block;
+  font-weight: 500;
+  color: #444;
+  margin-bottom: 6px;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 600px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Text inputs */
+input[type="text"],
+input[type="number"],
+input[type="password"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 14px;
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="password"]:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2);
+}
+
+input[type="text"]:disabled,
+input[type="number"]:disabled,
+input[type="password"]:disabled {
+  background: #f0f0f0;
+  color: #888;
+  cursor: not-allowed;
+}
+
+/* Input with button */
+.input-with-button {
+  display: flex;
+  gap: 8px;
+}
+
+.input-with-button input {
+  flex: 1;
+}
+
+.input-with-button .btn {
+  flex-shrink: 0;
+}
+
+/* Input with unit */
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-unit input {
+  width: 120px;
+}
+
+.unit {
+  font-size: 13px;
+  color: #666;
+}
+
+/* Help text */
+.help-text {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* Checkbox styling */
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #1a5fb4;
+}
+
+.checkbox-text {
+  font-weight: 500;
+  color: #444;
+}
+
+/* Slider styling */
+.slider-container {
+  padding: 8px 0;
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #ddd;
+  border-radius: 3px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  background: #1a5fb4;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  background: #2d6bc4;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  background: #1a5fb4;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
+}
+
+.slider-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #888;
+  margin-top: 4px;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+}
+
+.btn-secondary {
+  background: linear-gradient(to bottom, #f8f8f8 0%, #e8e8e8 100%);
+  border-color: #ccc;
+  color: #444;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+}
+
+.btn-secondary:active:not(:disabled) {
+  background: linear-gradient(to bottom, #e0e0e0 0%, #d0d0d0 100%);
+}
+
+/* Action buttons */
+.options-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 24px;
+  border-top: 1px solid #e0e0e0;
+  margin-top: 24px;
+}
+
+/* Status message */
+.status-message {
+  padding: 12px 16px;
+  border-radius: 4px;
+  margin-top: 16px;
+  font-size: 14px;
+}
+
+.status-message.hidden {
+  display: none;
+}
+
+.status-message.success {
+  background: #d4edda;
+  border: 1px solid #c3e6cb;
+  color: #155724;
+}
+
+.status-message.error {
+  background: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+}
+
+.status-message.info {
+  background: #cce5ff;
+  border: 1px solid #b8daff;
+  color: #004085;
+}
+
+/* Footer */
+.options-footer {
+  padding: 16px 24px;
+  background: #f8f8f8;
+  border-top: 1px solid #e0e0e0;
+  text-align: center;
+  font-size: 12px;
+  color: #888;
+}
+
+/* Conditional field visibility */
+.encryption-field,
+.si-field {
+  margin-left: 28px;
+  padding-left: 16px;
+  border-left: 2px solid #e0e0e0;
+}
+
+.encryption-field.hidden,
+.si-field.hidden {
+  display: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f0f0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c0c0c0;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a0a0a0;
+}
+
+/* Password validation */
+#password-match-status.match {
+  color: #155724;
+}
+
+#password-match-status.no-match {
+  color: #721c24;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .options-header {
+    padding: 16px;
+  }
+
+  .options-content {
+    padding: 16px;
+  }
+
+  .options-actions {
+    flex-direction: column;
+  }
+
+  .options-actions .btn {
+    width: 100%;
+  }
+
+  .input-with-button {
+    flex-direction: column;
+  }
+
+  .input-with-unit {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .input-with-unit input {
+    width: 100%;
+  }
+}
+  </style>
+</head>
+<body>
+  <div class="options-container">
+    <!-- Header -->
+    <header class="options-header">
+      <div class="header-logo">
+        <svg width="32" height="32" viewBox="0 0 32 32">
+          <circle cx="16" cy="16" r="14" fill="#1a5fb4" stroke="#0d3b82" stroke-width="2"/>
+          <text x="16" y="22" text-anchor="middle" font-size="14" fill="white" font-weight="bold">iM</text>
+        </svg>
+        <div class="header-text">
+          <h1>iMacros Settings</h1>
+          <span class="header-version">v1.0.0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main content -->
+    <main class="options-content">
+      <form id="options-form">
+        <!-- Folder Paths Section -->
+        <section class="options-section">
+          <h2 class="section-title">Folder Paths</h2>
+          <p class="section-description">Configure the default folders for macros, data sources, downloads, and logs.</p>
+
+          <div class="form-group">
+            <label for="path-macros">Macros Folder</label>
+            <div class="input-with-button">
+              <input type="text" id="path-macros" name="pathMacros" placeholder="e.g., C:\Users\YourName\Documents\iMacros\Macros">
+              <button type="button" class="btn btn-secondary" data-browse="pathMacros">Browse</button>
+            </div>
+            <span class="help-text">Default location for macro files (.iim)</span>
+          </div>
+
+          <div class="form-group">
+            <label for="path-datasources">Datasources Folder</label>
+            <div class="input-with-button">
+              <input type="text" id="path-datasources" name="pathDatasources" placeholder="e.g., C:\Users\YourName\Documents\iMacros\Datasources">
+              <button type="button" class="btn btn-secondary" data-browse="pathDatasources">Browse</button>
+            </div>
+            <span class="help-text">Default location for CSV data files</span>
+          </div>
+
+          <div class="form-group">
+            <label for="path-downloads">Downloads Folder</label>
+            <div class="input-with-button">
+              <input type="text" id="path-downloads" name="pathDownloads" placeholder="e.g., C:\Users\YourName\Documents\iMacros\Downloads">
+              <button type="button" class="btn btn-secondary" data-browse="pathDownloads">Browse</button>
+            </div>
+            <span class="help-text">Default location for downloaded files and screenshots</span>
+          </div>
+
+          <div class="form-group">
+            <label for="path-logs">Logs Folder</label>
+            <div class="input-with-button">
+              <input type="text" id="path-logs" name="pathLogs" placeholder="e.g., C:\Users\YourName\Documents\iMacros\Logs">
+              <button type="button" class="btn btn-secondary" data-browse="pathLogs">Browse</button>
+            </div>
+            <span class="help-text">Default location for log files</span>
+          </div>
+        </section>
+
+        <!-- Recording Options Section -->
+        <section class="options-section">
+          <h2 class="section-title">Recording Options</h2>
+          <p class="section-description">Configure how macros are recorded.</p>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="record-mousemove" name="recordMousemove">
+              <span class="checkbox-text">Record mouse movements</span>
+            </label>
+            <span class="help-text">Include mouse cursor movement in recorded macros</span>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="record-screenshots" name="recordScreenshots">
+              <span class="checkbox-text">Record screenshots</span>
+            </label>
+            <span class="help-text">Automatically capture screenshots during recording</span>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="record-coordinates" name="recordCoordinates">
+              <span class="checkbox-text">Use coordinate-based recording</span>
+            </label>
+            <span class="help-text">Record click positions instead of element selectors (less reliable)</span>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="record-direct-screen" name="recordDirectScreen" checked>
+              <span class="checkbox-text">Use DirectScreen for screenshots</span>
+            </label>
+            <span class="help-text">Use native screenshot capture for better quality</span>
+          </div>
+        </section>
+
+        <!-- Timeout Defaults Section -->
+        <section class="options-section">
+          <h2 class="section-title">Timeout Defaults</h2>
+          <p class="section-description">Default timeout values for macro execution.</p>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="timeout-page">Page Load Timeout (!TIMEOUT_PAGE)</label>
+              <div class="input-with-unit">
+                <input type="number" id="timeout-page" name="timeoutPage" min="1" max="3600" value="60">
+                <span class="unit">seconds</span>
+              </div>
+              <span class="help-text">Maximum time to wait for page load</span>
+            </div>
+
+            <div class="form-group">
+              <label for="timeout-tag">Element Timeout (!TIMEOUT_TAG)</label>
+              <div class="input-with-unit">
+                <input type="number" id="timeout-tag" name="timeoutTag" min="1" max="3600" value="10">
+                <span class="unit">seconds</span>
+              </div>
+              <span class="help-text">Maximum time to wait for element</span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="timeout-step">Step Timeout (!TIMEOUT_STEP)</label>
+              <div class="input-with-unit">
+                <input type="number" id="timeout-step" name="timeoutStep" min="0" max="3600" value="0">
+                <span class="unit">seconds</span>
+              </div>
+              <span class="help-text">Pause between macro steps (0 = no delay)</span>
+            </div>
+
+            <div class="form-group">
+              <label for="timeout-download">Download Timeout (!TIMEOUT_DOWNLOAD)</label>
+              <div class="input-with-unit">
+                <input type="number" id="timeout-download" name="timeoutDownload" min="1" max="3600" value="300">
+                <span class="unit">seconds</span>
+              </div>
+              <span class="help-text">Maximum time to wait for file download</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Encryption Settings Section -->
+        <section class="options-section">
+          <h2 class="section-title">Encryption Settings</h2>
+          <p class="section-description">Configure encryption for sensitive data in macros.</p>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="encryption-enabled" name="encryptionEnabled">
+              <span class="checkbox-text">Enable encryption</span>
+            </label>
+            <span class="help-text">Encrypt sensitive values in macros using AES-256</span>
+          </div>
+
+          <div class="form-group encryption-field">
+            <label for="master-password">Master Password</label>
+            <div class="input-with-button">
+              <input type="password" id="master-password" name="masterPassword" placeholder="Enter master password">
+              <button type="button" class="btn btn-secondary" id="toggle-password">Show</button>
+            </div>
+            <span class="help-text">Used to encrypt/decrypt sensitive data in macros</span>
+          </div>
+
+          <div class="form-group encryption-field">
+            <label for="master-password-confirm">Confirm Master Password</label>
+            <input type="password" id="master-password-confirm" name="masterPasswordConfirm" placeholder="Confirm master password">
+            <span class="help-text" id="password-match-status"></span>
+          </div>
+        </section>
+
+        <!-- Scripting Interface Section -->
+        <section class="options-section">
+          <h2 class="section-title">Scripting Interface</h2>
+          <p class="section-description">Configure the Scripting Interface for external automation.</p>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="si-enabled" name="siEnabled" checked>
+              <span class="checkbox-text">Enable Scripting Interface</span>
+            </label>
+            <span class="help-text">Allow external applications to control iMacros</span>
+          </div>
+
+          <div class="form-group si-field">
+            <label for="si-port">Port Number</label>
+            <div class="input-with-unit">
+              <input type="number" id="si-port" name="siPort" min="1024" max="65535" value="4951">
+              <span class="unit">TCP</span>
+            </div>
+            <span class="help-text">Default port for the Scripting Interface (1024-65535)</span>
+          </div>
+
+          <div class="form-group si-field">
+            <label class="checkbox-label">
+              <input type="checkbox" id="si-localhost-only" name="siLocalhostOnly" checked>
+              <span class="checkbox-text">Accept connections from localhost only</span>
+            </label>
+            <span class="help-text">For security, only allow local connections</span>
+          </div>
+        </section>
+
+        <!-- Advanced Settings Section -->
+        <section class="options-section">
+          <h2 class="section-title">Advanced Settings</h2>
+          <p class="section-description">Additional configuration options.</p>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="error-continue" name="errorContinue">
+              <span class="checkbox-text">Continue on error (!ERRORIGNORE YES)</span>
+            </label>
+            <span class="help-text">Continue macro execution even if an error occurs</span>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="debug-mode" name="debugMode">
+              <span class="checkbox-text">Enable debug mode</span>
+            </label>
+            <span class="help-text">Show detailed logging in the browser console</span>
+          </div>
+
+          <div class="form-group">
+            <label for="replay-speed">Replay Speed</label>
+            <div class="slider-container">
+              <input type="range" id="replay-speed" name="replaySpeed" min="0" max="10" value="5">
+              <div class="slider-labels">
+                <span>Slow</span>
+                <span>Fast</span>
+              </div>
+            </div>
+            <span class="help-text">Adjust the speed of macro playback</span>
+          </div>
+        </section>
+
+        <!-- Action Buttons -->
+        <div class="options-actions">
+          <button type="button" class="btn btn-secondary" id="btn-reset">Reset to Defaults</button>
+          <button type="submit" class="btn btn-primary" id="btn-save">Save Settings</button>
+        </div>
+      </form>
+
+      <!-- Status message -->
+      <div id="status-message" class="status-message hidden"></div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="options-footer">
+      <p>iMacros for Chrome - Settings are synchronized across devices</p>
+    </footer>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

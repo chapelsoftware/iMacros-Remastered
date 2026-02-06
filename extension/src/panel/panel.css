@@ -1,0 +1,419 @@
+/**
+ * iMacros Panel Styles
+ * Styled to match the original iMacros blue/gray theme
+ */
+
+/* Reset */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Base styles */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #333;
+  background: #f0f0f0;
+  overflow: hidden;
+}
+
+/* Panel container */
+.imacros-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(to bottom, #e8eef5 0%, #d8e2ed 100%);
+}
+
+/* Header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
+  border-bottom: 1px solid #1a4080;
+  color: white;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+}
+
+.header-version {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* Main content area with file tree */
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 8px;
+}
+
+.file-tree-wrapper {
+  height: 100%;
+  background: white;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+/* Tab bar */
+.tab-bar {
+  display: flex;
+  background: #c8d4e4;
+  border-top: 1px solid #a8b8cc;
+  border-bottom: 1px solid #a8b8cc;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 500;
+  color: #456;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-right: 1px solid #a8b8cc;
+}
+
+.tab-btn:last-child {
+  border-right: none;
+}
+
+.tab-btn:hover {
+  background: #d8e4f0;
+}
+
+.tab-btn.active {
+  background: linear-gradient(to bottom, #f0f4f8 0%, #e4ecf4 100%);
+  color: #1a5fb4;
+  font-weight: 600;
+  border-bottom: 2px solid #1a5fb4;
+  margin-bottom: -1px;
+}
+
+/* Tab panels */
+.tab-panels {
+  background: linear-gradient(to bottom, #f0f4f8 0%, #e4ecf4 100%);
+  border-bottom: 1px solid #a8b8cc;
+}
+
+.tab-panel {
+  display: none;
+  padding: 12px;
+}
+
+.tab-panel.active {
+  display: block;
+}
+
+/* Control buttons */
+.control-buttons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+/* Button base styles */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid #888;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: linear-gradient(to bottom, #f8f8f8 0%, #e0e0e0 100%);
+  color: #333;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+}
+
+.btn:active:not(:disabled) {
+  background: linear-gradient(to bottom, #d8d8d8 0%, #c8c8c8 100%);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.15);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn svg {
+  flex-shrink: 0;
+}
+
+/* Play button - Blue accent */
+.btn-play {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.btn-play:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.btn-play:active:not(:disabled) {
+  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+}
+
+/* Record button - Red/Orange accent */
+.btn-record {
+  background: linear-gradient(to bottom, #ff9966 0%, #e67340 100%);
+  border-color: #cc5c2e;
+  color: white;
+}
+
+.btn-record:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #ffa978 0%, #f08050 100%);
+}
+
+.btn-record:active:not(:disabled) {
+  background: linear-gradient(to bottom, #e67340 0%, #cc5c2e 100%);
+}
+
+/* Stop button */
+.btn-stop {
+  background: linear-gradient(to bottom, #d0d0d0 0%, #b0b0b0 100%);
+  border-color: #888;
+  color: #333;
+}
+
+.btn-stop:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #e0e0e0 0%, #c0c0c0 100%);
+}
+
+/* Loop button */
+.btn-loop {
+  width: 100%;
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.btn-loop:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+/* Secondary button */
+.btn-secondary {
+  background: linear-gradient(to bottom, #f8f8f8 0%, #e0e0e0 100%);
+  border-color: #999;
+  color: #444;
+}
+
+/* Full width button */
+.btn-full {
+  width: 100%;
+}
+
+/* Loop controls */
+.loop-controls {
+  background: #f8f9fa;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 10px;
+}
+
+.loop-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #555;
+  margin-bottom: 8px;
+}
+
+.loop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.loop-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.loop-field-label {
+  font-size: 11px;
+  color: #666;
+}
+
+.loop-input {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  font-size: 13px;
+  text-align: center;
+  background: white;
+}
+
+.loop-input:read-only {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.loop-input:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+}
+
+/* Record options */
+.record-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Manage buttons */
+.manage-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Status bar */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: linear-gradient(to bottom, #e8eef5 0%, #d8e2ed 100%);
+  border-top: 1px solid #a8b8cc;
+  font-size: 11px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+
+.status-indicator.ready {
+  background: linear-gradient(to bottom, #90ee90 0%, #60c060 100%);
+}
+
+.status-indicator.playing {
+  background: linear-gradient(to bottom, #ffe066 0%, #ffc800 100%);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status-indicator.recording {
+  background: linear-gradient(to bottom, #ff6666 0%, #e04040 100%);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.status-indicator.paused {
+  background: linear-gradient(to bottom, #ffaa66 0%, #e88040 100%);
+}
+
+.status-indicator.error {
+  background: linear-gradient(to bottom, #ff4444 0%, #cc2020 100%);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.status-text {
+  color: #444;
+  font-weight: 500;
+}
+
+.status-counters {
+  display: flex;
+  gap: 12px;
+}
+
+.counter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.counter-label {
+  color: #666;
+}
+
+.counter-value {
+  font-weight: 600;
+  color: #333;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Scrollbar styling for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #e8eef5;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #a8b8cc;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8898ac;
+}
+
+/* Responsive adjustments */
+@media (max-width: 320px) {
+  .control-buttons {
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    flex: 1;
+    min-width: calc(50% - 3px);
+  }
+
+  .loop-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Import file tree styles */
+@import url('./file-tree.css');

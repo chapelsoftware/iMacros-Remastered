@@ -137,5 +137,33 @@
       <p>Reference code: REF-2024-XYZ-789 for tracking.</p>
     </div>
   </section>
+
+  <!-- Validation Section - Display extracted data -->
+  <section>
+    <h2 id="section-validation">Extraction Validation</h2>
+    <p style="color: #666; margin-bottom: 12px;">After running the test-extraction macro, these fields should be populated with extracted data:</p>
+    <div style="display: grid; grid-template-columns: 150px 1fr; gap: 8px; align-items: center;">
+      <label for="val-heading1">Heading 1 (!VAR0):</label>
+      <input type="text" id="val-heading1" name="val-heading1" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-heading2">Heading 2 (!VAR1):</label>
+      <input type="text" id="val-heading2" name="val-heading2" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-heading3">Heading 3 (!VAR2):</label>
+      <input type="text" id="val-heading3" name="val-heading3" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-order">Order # (!VAR3):</label>
+      <input type="text" id="val-order" name="val-order" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-email">Email (!VAR4):</label>
+      <input type="text" id="val-email" name="val-email" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-amount">Amount (!VAR5):</label>
+      <input type="text" id="val-amount" name="val-amount" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+
+      <label for="val-refcode">Ref Code (!VAR6):</label>
+      <input type="text" id="val-refcode" name="val-refcode" style="padding: 6px; border: 1px solid #ccc; border-radius: 4px;" readonly>
+    </div>
+  </section>
 </body>
 </html>

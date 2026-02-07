@@ -286,6 +286,20 @@ function createBrowserBridge(sendMessage, createMessageId) {
     });
   }
 
+  /**
+   * Execute a SEARCH command
+   * @param {object} params - SEARCH parameters
+   * @returns {Promise<object>}
+   */
+  async function executeSearch(params) {
+    return sendBrowserCommand('SEARCH_COMMAND', {
+      sourceType: params.sourceType,
+      pattern: params.pattern,
+      ignoreCase: params.ignoreCase || false,
+      extractPattern: params.extractPattern,
+    });
+  }
+
   // ===== Wait for Page Load =====
 
   /**
@@ -355,10 +369,11 @@ function createBrowserBridge(sendMessage, createMessageId) {
     selectFrame,
     selectFrameByName,
 
-    // Interaction (TAG, CLICK, EVENT)
+    // Interaction (TAG, CLICK, EVENT, SEARCH)
     executeTag,
     executeClick,
     executeEvent,
+    executeSearch,
 
     // Utility
     waitForPageLoad,

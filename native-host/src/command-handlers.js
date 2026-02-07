@@ -468,6 +468,87 @@ function createBrowserHandlers(bridge) {
       return createBrowserHandlers(bridge).EVENT(ctx);
     },
 
+    // ===== Search Commands =====
+
+    /**
+     * SEARCH command handler
+     * SEARCH SOURCE=TXT:pattern
+     * SEARCH SOURCE=REGEXP:pattern
+     * SEARCH SOURCE=TXT:pattern IGNORE_CASE=YES
+     */
+    SEARCH: async (ctx) => {
+      const sourceParam = ctx.getParam('SOURCE');
+
+      if (!sourceParam) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.MISSING_PARAMETER,
+          errorMessage: 'SEARCH command requires SOURCE parameter',
+        };
+      }
+
+      const source = ctx.expand(sourceParam);
+
+      // Parse SOURCE=TXT:pattern or SOURCE=REGEXP:pattern
+      let sourceType, pattern;
+      if (source.toUpperCase().startsWith('TXT:')) {
+        sourceType = 'TXT';
+        pattern = source.substring(4);
+      } else if (source.toUpperCase().startsWith('REGEXP:')) {
+        sourceType = 'REGEXP';
+        pattern = source.substring(7);
+      } else {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `Invalid SOURCE format: ${sourceParam}. Expected TXT:<pattern> or REGEXP:<pattern>`,
+        };
+      }
+
+      const ignoreCaseParam = ctx.getParam('IGNORE_CASE');
+      const ignoreCase = ignoreCaseParam?.toUpperCase() === 'YES';
+
+      const extractPattern = ctx.getParam('EXTRACT');
+
+      ctx.log('debug', `SEARCH: type=${sourceType}, pattern=${pattern}, ignoreCase=${ignoreCase}`);
+
+      try {
+        const result = await bridge.executeSearch({
+          sourceType,
+          pattern,
+          ignoreCase,
+          extractPattern,
+        });
+
+        if (!result.success) {
+          ctx.log('warn', `SEARCH pattern not found: ${pattern}`);
+          return {
+            success: false,
+            errorCode: ERROR_CODES.ELEMENT_NOT_FOUND,
+            errorMessage: result.error || `Pattern not found: ${pattern}`,
+          };
+        }
+
+        // Handle extraction
+        if (result.extractedData !== undefined) {
+          ctx.state.addExtract(result.extractedData);
+          ctx.log('info', `SEARCH found: ${result.extractedData}`);
+        }
+
+        return {
+          success: true,
+          errorCode: ERROR_CODES.OK,
+          output: result.extractedData,
+        };
+      } catch (error) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.SCRIPT_ERROR,
+          errorMessage: error.message || 'SEARCH command failed',
+        };
+      }
+    },
+
     // ===== Dialog Commands =====
 
     /**

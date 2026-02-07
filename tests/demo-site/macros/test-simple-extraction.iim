@@ -1,0 +1,21 @@
+' Simple extraction test - verify POS and variables work
+' Requires: http://localhost:8080/extraction.html
+
+URL GOTO=http://localhost:8080/extraction.html
+
+' Extract heading 1
+TAG POS=1 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+
+' Extract heading 2
+TAG POS=2 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR1 {{!EXTRACT}}
+
+' Extract heading 3
+TAG POS=3 TYPE=H3 ATTR=CLASS:test-heading EXTRACT=TXT
+SET !VAR2 {{!EXTRACT}}
+
+' Immediately enter into validation fields (no other commands in between)
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading1 CONTENT={{!VAR0}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading2 CONTENT={{!VAR1}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading3 CONTENT={{!VAR2}}

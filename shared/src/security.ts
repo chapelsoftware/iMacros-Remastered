@@ -198,7 +198,7 @@ export function createMacroSource(
   return {
     origin,
     location: pathOrUrl,
-    domain,
+    domain: domain ?? undefined,
     trusted,
     loadedAt: Date.now(),
   };

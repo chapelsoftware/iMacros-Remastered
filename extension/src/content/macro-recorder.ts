@@ -30,6 +30,22 @@ export type RecordedEventType =
   | 'keydown';
 
 /**
+ * Frame context information for recorded events
+ */
+export interface FrameContext {
+  /** Whether the event occurred in a frame (not the top window) */
+  inFrame: boolean;
+  /** Frame index in document order (1-based, 0 means main document) */
+  frameIndex: number;
+  /** Frame name attribute if available */
+  frameName: string | null;
+  /** Frame id attribute if available */
+  frameId: string | null;
+  /** Depth in frame hierarchy (0 for main, 1+ for nested frames) */
+  frameDepth: number;
+}
+
+/**
  * Recorded event data
  */
 export interface RecordedEvent {
@@ -41,6 +57,8 @@ export interface RecordedEvent {
   timestamp: number;
   /** URL where event occurred */
   url: string;
+  /** Frame context where event occurred */
+  frameContext?: FrameContext;
   /** Additional metadata */
   metadata?: {
     tagName?: string;
@@ -160,6 +178,12 @@ export class MacroRecorder {
   /** Element position cache for POS calculation */
   private elementPositionCache: WeakMap<Element, Map<string, number>> = new WeakMap();
 
+  /** URL where recording started */
+  private startingUrl: string = '';
+
+  /** Cached frame context for this window */
+  private cachedFrameContext: FrameContext | null = null;
+
   /** Bound event handlers */
   private boundHandlers: {
     click: (e: MouseEvent) => void;
@@ -199,6 +223,9 @@ export class MacroRecorder {
 
     this.recording = true;
     this.events = [];
+    this.startingUrl = window.location.href;
+    // Clear cached frame context in case we're restarting after navigation
+    this.cachedFrameContext = null;
     this.installEventListeners();
 
     console.log('[iMacros] Macro recorder started');
@@ -261,14 +288,53 @@ export class MacroRecorder {
   }
 
   /**
+   * Record a tab event command (TAB OPEN, TAB CLOSE, TAB T=n)
+   * Called from background script via message handler
+   */
+  recordTabEvent(command: string): void {
+    if (!this.recording) {
+      return;
+    }
+
+    // Get frame context for this event
+    const frameContext = this.detectFrameContext();
+
+    const event: RecordedEvent = {
+      type: 'click', // Use click as the event type for tab events
+      command,
+      timestamp: Date.now(),
+      url: window.location.href,
+      frameContext,
+      metadata: {
+        tagName: 'TAB',
+      },
+    };
+
+    this.events.push(event);
+
+    // Call the event callback
+    if (this.eventCallback) {
+      try {
+        this.eventCallback(event);
+      } catch (error) {
+        console.error('[iMacros] Error in record event callback:', error);
+      }
+    }
+
+    // Send to background script
+    this.sendEventToBackground(event);
+  }
+
+  /**
    * Generate a playable macro from recorded events
    */
   generateMacro(): string {
+    // Use starting URL if available, otherwise use current URL
+    const url = this.startingUrl || window.location.href;
+
     const lines: string[] = [
-      "' iMacros Recorded Macro",
-      `' Recorded: ${new Date().toISOString()}`,
-      `' URL: ${window.location.href}`,
-      '',
+      'VERSION BUILD=1 RECORDER=CR',
+      `URL GOTO=${url}`,
     ];
 
     for (const event of this.events) {
@@ -276,6 +342,128 @@ export class MacroRecorder {
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Detect the frame context for the current window.
+   * Returns frame info including index, name, and whether we're in a frame.
+   */
+  private detectFrameContext(): FrameContext {
+    // Return cached context if available
+    if (this.cachedFrameContext) {
+      return this.cachedFrameContext;
+    }
+
+    // Check if we're in the top frame
+    const inFrame = window !== window.top;
+
+    if (!inFrame) {
+      // We're in the main/top document
+      this.cachedFrameContext = {
+        inFrame: false,
+        frameIndex: 0,
+        frameName: null,
+        frameId: null,
+        frameDepth: 0,
+      };
+      return this.cachedFrameContext;
+    }
+
+    // We're inside a frame - need to determine frame identifier
+    // Try to get frame info by looking at how the parent accesses us
+    let frameIndex = 1; // Default to 1 if we can't determine
+    let frameName: string | null = null;
+    let frameId: string | null = null;
+    let frameDepth = 1;
+
+    try {
+      // Try to access parent to find our frame element
+      // This may fail for cross-origin frames
+      const parent = window.parent;
+      if (parent && parent !== window) {
+        // Find all frames/iframes in parent
+        const frameElements = parent.document.querySelectorAll('iframe, frame');
+        let foundIndex = 0;
+
+        for (let i = 0; i < frameElements.length; i++) {
+          const frameEl = frameElements[i] as HTMLIFrameElement | HTMLFrameElement;
+          foundIndex++;
+
+          // Check if this frame's contentWindow is our window
+          try {
+            if (frameEl.contentWindow === window) {
+              frameIndex = foundIndex;
+              frameName = frameEl.getAttribute('name') || null;
+              frameId = frameEl.getAttribute('id') || null;
+              break;
+            }
+          } catch {
+            // Cross-origin frame, can't access contentWindow
+            continue;
+          }
+        }
+
+        // Calculate frame depth
+        let currentWin: Window = window;
+        while (currentWin !== currentWin.top) {
+          frameDepth++;
+          try {
+            currentWin = currentWin.parent;
+          } catch {
+            // Cross-origin, stop counting
+            break;
+          }
+        }
+        frameDepth--; // Adjust since we started at 1
+      }
+    } catch {
+      // Cross-origin access denied - use fallback detection
+      console.debug('[iMacros] Cross-origin frame detected, using fallback frame context');
+    }
+
+    this.cachedFrameContext = {
+      inFrame: true,
+      frameIndex,
+      frameName,
+      frameId,
+      frameDepth,
+    };
+
+    return this.cachedFrameContext;
+  }
+
+  /**
+   * Generate a FRAME command for the current frame context.
+   * Returns empty string if in main document.
+   */
+  private generateFrameCommand(): string {
+    const ctx = this.detectFrameContext();
+
+    if (!ctx.inFrame) {
+      return '';
+    }
+
+    // Prefer FRAME NAME= if we have a name
+    if (ctx.frameName) {
+      return `FRAME NAME="${ctx.frameName}"`;
+    }
+
+    // Fall back to FRAME F=n (index-based)
+    return `FRAME F=${ctx.frameIndex}`;
+  }
+
+  /**
+   * Get the current frame context (public accessor for sending with events)
+   */
+  getFrameContext(): FrameContext {
+    return this.detectFrameContext();
+  }
+
+  /**
+   * Clear cached frame context (call on navigation)
+   */
+  clearFrameContextCache(): void {
+    this.cachedFrameContext = null;
   }
 
   /**
@@ -787,11 +975,15 @@ export class MacroRecorder {
     command: string,
     metadata?: RecordedEvent['metadata']
   ): void {
+    // Get frame context for this event
+    const frameContext = this.detectFrameContext();
+
     const event: RecordedEvent = {
       type,
       command,
       timestamp: Date.now(),
       url: window.location.href,
+      frameContext,
       metadata,
     };
 
@@ -967,6 +1159,123 @@ export function setupRecordingMessageListener(): void {
         const recorder = getMacroRecorder();
         const macro = recorder.generateMacro();
         sendResponse({ success: true, macro });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
+    // Handle tab events from background script (TAB OPEN, TAB CLOSE, TAB T=n)
+    if (message.type === 'RECORD_TAB_EVENT') {
+      try {
+        const recorder = getMacroRecorder();
+        if (!recorder.isRecording()) {
+          sendResponse({ success: false, error: 'Not recording' });
+          return true;
+        }
+
+        const payload = message.payload as {
+          action: 'open' | 'close' | 'switch';
+          tabIndex?: number;
+          tabId?: number;
+          url?: string;
+        };
+
+        let command = '';
+
+        switch (payload.action) {
+          case 'open':
+            command = 'TAB OPEN';
+            break;
+          case 'close':
+            command = 'TAB CLOSE';
+            break;
+          case 'switch':
+            if (payload.tabIndex !== undefined) {
+              command = `TAB T=${payload.tabIndex}`;
+            }
+            break;
+        }
+
+        if (command) {
+          // Record the tab event using the recorder's internal method via a public interface
+          recorder.recordTabEvent(command);
+        }
+
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
+    // Handle navigation events from background script (REFRESH, BACK, FORWARD)
+    if (message.type === 'RECORD_NAVIGATION_EVENT') {
+      try {
+        const recorder = getMacroRecorder();
+        if (!recorder.isRecording()) {
+          sendResponse({ success: false, error: 'Not recording' });
+          return true;
+        }
+
+        const payload = message.payload as {
+          action: 'refresh' | 'back' | 'forward';
+          tabId?: number;
+        };
+
+        let command = '';
+
+        switch (payload.action) {
+          case 'refresh':
+            command = 'REFRESH';
+            break;
+          case 'back':
+            command = 'BACK';
+            break;
+          case 'forward':
+            command = 'BACK BACK=NO';
+            break;
+        }
+
+        if (command) {
+          recorder.recordTabEvent(command);
+        }
+
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
+    // Handle download events from background script
+    if (message.type === 'RECORD_DOWNLOAD') {
+      try {
+        const recorder = getMacroRecorder();
+        if (!recorder.isRecording()) {
+          sendResponse({ success: false, error: 'Not recording' });
+          return true;
+        }
+
+        const payload = message.payload as {
+          folder: string;
+          filename: string;
+          url?: string;
+        };
+
+        const command = `ONDOWNLOAD FOLDER=${payload.folder} FILE=${payload.filename} WAIT=YES`;
+        recorder.recordTabEvent(command);
+
+        sendResponse({ success: true });
       } catch (error) {
         sendResponse({
           success: false,

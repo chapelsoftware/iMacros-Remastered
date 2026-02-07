@@ -54,6 +54,9 @@ export interface FileTreeOptions {
   onSelect?: (event: FileTreeSelectionEvent) => void;
   onContextMenu?: (event: FileTreeContextMenuEvent) => void;
   onMove?: (event: FileTreeMoveEvent) => void;
+  onCreateFolder?: (parentPath: string, folderName: string) => Promise<boolean>;
+  onRename?: (oldPath: string, newName: string) => Promise<boolean>;
+  onDelete?: (node: FileTreeNode) => Promise<boolean>;
   onRefresh?: () => void;
   storageKey?: string;
 }
@@ -87,24 +90,10 @@ export class FileTree {
   private init(): void {
     this.container.classList.add('file-tree-container');
     this.container.innerHTML = `
-      <div class="file-tree-header">
-        <span class="file-tree-title">Macros</span>
-        <button class="file-tree-refresh" title="Refresh">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-            <path d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35z"/>
-          </svg>
-        </button>
-      </div>
       <div class="file-tree-content">
         <div class="file-tree-empty">No macros loaded</div>
       </div>
     `;
-
-    // Setup refresh button
-    const refreshBtn = this.container.querySelector('.file-tree-refresh');
-    refreshBtn?.addEventListener('click', () => {
-      this.options.onRefresh?.();
-    });
 
     // Setup global click handler to close context menu
     document.addEventListener('click', (e) => {
@@ -118,8 +107,31 @@ export class FileTree {
    * Set the root data for the tree
    */
   setData(root: FileTreeNode): void {
+    // Preserve current state before replacing tree
+    const currentState = this.root ? this.getState() : null;
+
     this.root = root;
-    this.applyPendingState();
+
+    // Apply pending state from storage (initial load) or current state (refresh)
+    if (this.pendingStateRestore) {
+      this.applyPendingState();
+    } else if (currentState) {
+      // Reapply the current expanded paths to the new tree
+      for (const path of currentState.expandedPaths) {
+        const node = this.findNodeByPath(path);
+        if (node && node.isDirectory) {
+          node.expanded = true;
+        }
+      }
+      // Restore selection
+      if (currentState.selectedPath) {
+        const node = this.findNodeByPath(currentState.selectedPath);
+        if (node) {
+          this.selectedNode = node;
+        }
+      }
+    }
+
     this.render();
   }
 
@@ -130,7 +142,7 @@ export class FileTree {
     const content = this.container.querySelector('.file-tree-content');
     if (!content) return;
 
-    if (!this.root || !this.root.children || this.root.children.length === 0) {
+    if (!this.root) {
       content.innerHTML = '<div class="file-tree-empty">No macros available</div>';
       return;
     }
@@ -139,7 +151,9 @@ export class FileTree {
     const ul = document.createElement('ul');
     ul.className = 'file-tree-list';
 
-    this.renderNodes(this.root.children, ul);
+    // Render the root folder itself so users can right-click on it
+    const rootLi = this.createNodeElement(this.root);
+    ul.appendChild(rootLi);
     content.appendChild(ul);
   }
 
@@ -367,17 +381,23 @@ export class FileTree {
       const div = document.createElement('div');
       div.className = 'file-tree-context-item';
       div.textContent = item.label;
-      div.addEventListener('click', () => {
+      div.addEventListener('click', async () => {
         this.hideContextMenu();
         if (item.action === 'refresh') {
           this.options.onRefresh?.();
+        } else if (item.action === 'newFolder') {
+          this.startInlineNewFolder(node);
+        } else if (item.action === 'rename') {
+          this.startInlineRename(node);
+        } else if (item.action === 'delete') {
+          if (this.options.onDelete) {
+            const success = await this.options.onDelete(node);
+            if (success) this.options.onRefresh?.();
+          } else {
+            this.options.onContextMenu?.({ node, action: item.action, x, y });
+          }
         } else {
-          this.options.onContextMenu?.({
-            node,
-            action: item.action,
-            x,
-            y
-          });
+          this.options.onContextMenu?.({ node, action: item.action, x, y });
         }
       });
       menu.appendChild(div);
@@ -405,6 +425,158 @@ export class FileTree {
       this.contextMenu = null;
       this.contextMenuNode = null;
     }
+  }
+
+  /**
+   * Start inline editing for a new folder
+   */
+  private startInlineNewFolder(parentNode: FileTreeNode): void {
+    // Expand parent if not already
+    if (parentNode.isDirectory && !parentNode.expanded) {
+      parentNode.expanded = true;
+    }
+
+    // Find the parent element in DOM
+    const parentItem = this.container.querySelector(`[data-path="${parentNode.path}"]`);
+    if (!parentItem) return;
+
+    // Find or create the children container
+    let childrenUl = parentItem.querySelector(':scope > .file-tree-children') as HTMLElement;
+    if (!childrenUl) {
+      childrenUl = document.createElement('ul');
+      childrenUl.className = 'file-tree-children';
+      parentItem.appendChild(childrenUl);
+    }
+
+    // Create temporary folder item with input
+    const tempLi = document.createElement('li');
+    tempLi.className = 'file-tree-item file-tree-new-item';
+    tempLi.innerHTML = `
+      <div class="file-tree-row">
+        <span class="file-tree-arrow hidden"></span>
+        <span class="file-tree-icon">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="#dcb67a"><path d="M1 3h6l1 1h7v10H1V3z"/></svg>
+        </span>
+        <input type="text" class="file-tree-inline-input" placeholder="New Folder" />
+      </div>
+    `;
+
+    // Insert at the beginning of children
+    childrenUl.insertBefore(tempLi, childrenUl.firstChild);
+
+    const input = tempLi.querySelector('input') as HTMLInputElement;
+    input.focus();
+    input.select();
+
+    const cleanup = () => {
+      tempLi.remove();
+      // Remove empty children container
+      if (childrenUl.children.length === 0) {
+        childrenUl.remove();
+      }
+    };
+
+    const confirm = async () => {
+      const name = input.value.trim();
+      if (name && this.options.onCreateFolder) {
+        const success = await this.options.onCreateFolder(parentNode.path, name);
+        if (success) {
+          this.options.onRefresh?.();
+        } else {
+          cleanup();
+        }
+      } else {
+        cleanup();
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirm();
+      } else if (e.key === 'Escape') {
+        cleanup();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      // Small delay to allow click events to fire first
+      setTimeout(() => {
+        if (document.activeElement !== input) {
+          cleanup();
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * Start inline rename for a node
+   */
+  private startInlineRename(node: FileTreeNode): void {
+    const item = this.container.querySelector(`[data-path="${node.path}"]`);
+    if (!item) return;
+
+    const nameSpan = item.querySelector('.file-tree-name') as HTMLElement;
+    if (!nameSpan) return;
+
+    const originalName = node.name;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'file-tree-inline-input';
+    input.value = originalName;
+
+    nameSpan.replaceWith(input);
+    input.focus();
+
+    // Select name without extension for files
+    if (!node.isDirectory) {
+      const dotIndex = originalName.lastIndexOf('.');
+      if (dotIndex > 0) {
+        input.setSelectionRange(0, dotIndex);
+      } else {
+        input.select();
+      }
+    } else {
+      input.select();
+    }
+
+    const cleanup = () => {
+      const newSpan = document.createElement('span');
+      newSpan.className = 'file-tree-name';
+      newSpan.textContent = originalName;
+      input.replaceWith(newSpan);
+    };
+
+    const confirm = async () => {
+      const newName = input.value.trim();
+      if (newName && newName !== originalName && this.options.onRename) {
+        const success = await this.options.onRename(node.path, newName);
+        if (success) {
+          this.options.onRefresh?.();
+        } else {
+          cleanup();
+        }
+      } else {
+        cleanup();
+      }
+    };
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        confirm();
+      } else if (e.key === 'Escape') {
+        cleanup();
+      }
+    });
+
+    input.addEventListener('blur', () => {
+      setTimeout(() => {
+        if (document.activeElement !== input) {
+          confirm();
+        }
+      }, 100);
+    });
   }
 
   /**
@@ -656,6 +828,14 @@ export class FileTree {
 }
 
 /**
+ * Check if a path represents a file (has macro extension)
+ */
+function isFilePath(pathStr: string): boolean {
+  const ext = pathStr.split('.').pop()?.toLowerCase();
+  return ext === 'iim' || ext === 'js';
+}
+
+/**
  * Create a file tree from a flat list of file paths
  */
 export function createTreeFromPaths(paths: string[], rootName: string = 'Macros'): FileTreeNode {
@@ -667,14 +847,20 @@ export function createTreeFromPaths(paths: string[], rootName: string = 'Macros'
     expanded: true
   };
 
-  for (const path of paths) {
-    const parts = path.split('/').filter(p => p);
+  for (const pathStr of paths) {
+    const parts = pathStr.split('/').filter(p => p);
     let current = root;
+
+    // Check if this entire path represents a file or folder
+    const pathIsFile = isFilePath(pathStr);
 
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i];
       const isLast = i === parts.length - 1;
       const currentPath = parts.slice(0, i + 1).join('/');
+
+      // A node is a directory if it's not the last part, OR if the entire path is a folder
+      const isDirectory = !isLast || !pathIsFile;
 
       let child = current.children?.find(c => c.name === part);
 
@@ -682,11 +868,16 @@ export function createTreeFromPaths(paths: string[], rootName: string = 'Macros'
         child = {
           name: part,
           path: currentPath,
-          isDirectory: !isLast,
-          children: isLast ? undefined : [],
+          isDirectory,
+          children: isDirectory ? [] : undefined,
           expanded: false
         };
         current.children?.push(child);
+      } else if (isDirectory && !child.isDirectory) {
+        // If we find an existing node that's a file but this path says it's a folder,
+        // upgrade it to a folder (edge case: folder came before file in the list)
+        child.isDirectory = true;
+        child.children = child.children || [];
       }
 
       if (!isLast) {

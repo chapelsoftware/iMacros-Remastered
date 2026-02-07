@@ -297,6 +297,36 @@ function createBrowserBridge(sendMessage, createMessageId) {
     return sendBrowserCommand('waitForPageLoad', { timeout: timeoutMs });
   }
 
+  // ===== Dialog Commands =====
+
+  /**
+   * Configure dialog handling (ONDIALOG command)
+   * @param {object} config - Dialog configuration
+   * @param {number} config.pos - Position (1-based)
+   * @param {string} config.button - Button to click (OK, CANCEL, YES, NO)
+   * @param {string} [config.content] - Content for prompt dialogs
+   * @returns {Promise<object>}
+   */
+  async function configureDialog(config) {
+    return sendBrowserCommand('DIALOG_CONFIG', {
+      config: {
+        pos: config.pos,
+        button: config.button,
+        content: config.content,
+        active: true,
+      },
+      dialogTypes: ['alert', 'confirm', 'prompt', 'beforeunload'],
+    });
+  }
+
+  /**
+   * Reset dialog configuration
+   * @returns {Promise<object>}
+   */
+  async function resetDialog() {
+    return sendBrowserCommand('DIALOG_RESET', {});
+  }
+
   // Return the bridge interface
   return {
     // Response handling
@@ -333,6 +363,10 @@ function createBrowserBridge(sendMessage, createMessageId) {
     // Utility
     waitForPageLoad,
     sendBrowserCommand,
+
+    // Dialogs
+    configureDialog,
+    resetDialog,
   };
 }
 

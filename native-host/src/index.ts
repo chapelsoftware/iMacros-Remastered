@@ -54,7 +54,7 @@ export async function handleMessage(message: Message): Promise<ResponseMessage> 
             errorCode: result.errorCode,
             errorMessage: result.errorMessage,
             extractData: result.extractData,
-            runtime: result.runtime,
+            runtime: result.executionTimeMs,
           },
         };
       } catch (err: any) {

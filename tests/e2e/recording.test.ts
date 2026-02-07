@@ -771,15 +771,15 @@ describe('Recording E2E Tests (Real MacroRecorder)', () => {
       ctx.cleanup();
     });
 
-    it('should generate macro header with URL comment', async () => {
+    it('should generate macro header with URL GOTO command', async () => {
       const { MacroRecorder } = await importMacroRecorder();
       const recorder = new MacroRecorder();
       recorder.start();
       recorder.stop();
 
       const macro = recorder.generateMacro();
-      // Header contains a URL comment
-      expect(macro).toContain("' URL:");
+      // Header contains URL GOTO command (iMacros format)
+      expect(macro).toContain('URL GOTO=');
     });
 
     it('should record link clicks that would navigate', async () => {
@@ -832,14 +832,14 @@ describe('Recording E2E Tests (Real MacroRecorder)', () => {
       ctx.cleanup();
     });
 
-    it('should generate macro with comment header', async () => {
+    it('should generate macro with VERSION header', async () => {
       const { MacroRecorder } = await importMacroRecorder();
       const recorder = new MacroRecorder();
       recorder.start();
       recorder.stop();
 
       const macro = recorder.generateMacro();
-      expect(macro).toContain("' iMacros Recorded Macro");
+      expect(macro).toContain('VERSION BUILD=1 RECORDER=CR');
     });
 
     it('should generate parseable macro with no validation errors', async () => {

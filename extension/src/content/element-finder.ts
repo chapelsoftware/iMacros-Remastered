@@ -380,6 +380,9 @@ export function findByTagSelector(
   const tagName = parsedSelector.tag.toUpperCase() === '*' ? '*' : parsedSelector.tag;
   const allElements = Array.from(contextNode.querySelectorAll(tagName));
 
+  console.log(`[iMacros DEBUG] Finding ${tagName} elements, found ${allElements.length} total`);
+  console.log(`[iMacros DEBUG] Selector attrs:`, parsedSelector.attrs);
+
   // Filter by type and attributes
   const matchingElements: Element[] = [];
 
@@ -394,8 +397,11 @@ export function findByTagSelector(
       continue;
     }
 
+    console.log(`[iMacros DEBUG] Match found:`, element.tagName, `text="${escapeTextContent(element.textContent || '')}"`);
     matchingElements.push(element);
   }
+
+  console.log(`[iMacros DEBUG] Total matches: ${matchingElements.length}, requested POS=${parsedSelector.pos}`);
 
   // Apply position
   const pos = parsedSelector.pos;

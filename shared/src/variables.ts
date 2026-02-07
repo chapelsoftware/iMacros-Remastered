@@ -187,11 +187,14 @@ export class VariableContext {
   private customVars: Map<string, VariableValue>;
   /** Extract accumulator for !EXTRACTADD */
   private extractAccumulator: string[];
+  /** Raw datasource rows for dynamic !COL resolution (original iMacros behavior) */
+  private datasourceRows: string[][] | null;
 
   constructor() {
     this.systemVars = new Map();
     this.customVars = new Map();
     this.extractAccumulator = [];
+    this.datasourceRows = null;
     this.reset();
   }
 
@@ -202,6 +205,7 @@ export class VariableContext {
     this.systemVars.clear();
     this.customVars.clear();
     this.extractAccumulator = [];
+    this.datasourceRows = null;
 
     // Initialize system variables with defaults
     for (const [name, value] of Object.entries(DEFAULT_VALUES)) {
@@ -275,6 +279,14 @@ export class VariableContext {
       return this.resolveNow(upperName);
     }
 
+    // Handle !COL1-10 dynamically from datasource (original iMacros behavior)
+    // Reads from datasourceRows based on !DATASOURCE_LINE
+    // Only matches !COL1 through !COL10 (not !COL11, !COL0, etc.)
+    const colMatch = upperName.match(/^!COL([1-9]|10)$/);
+    if (colMatch) {
+      return this.resolveDatasourceColumn(parseInt(colMatch[1], 10));
+    }
+
     // System variable
     if (upperName.startsWith('!')) {
       const value = this.systemVars.get(upperName);
@@ -284,6 +296,47 @@ export class VariableContext {
     // Custom variable
     const value = this.customVars.get(upperName);
     return value !== undefined ? value : null;
+  }
+
+  /**
+   * Resolve !COLn dynamically from datasource based on !DATASOURCE_LINE
+   * This matches original iMacros 8.9.7 behavior where !COL variables
+   * are computed at expansion time, not stored.
+   *
+   * Falls back to stored value (from setDatasourceCols) if no datasource
+   * rows are loaded, for backward compatibility.
+   */
+  private resolveDatasourceColumn(colNum: number): string {
+    // Validate column number (1-10)
+    if (colNum < 1 || colNum > 10) {
+      return '';
+    }
+
+    // If datasource rows loaded, resolve dynamically (original iMacros behavior)
+    if (this.datasourceRows && this.datasourceRows.length > 0) {
+      // Get current datasource line (1-based, may be stored as string or number)
+      const lineNum = this.systemVars.get('!DATASOURCE_LINE');
+      const line = typeof lineNum === 'number' ? lineNum : parseInt(String(lineNum), 10) || 1;
+
+      // Convert to 0-based index
+      const rowIndex = line - 1;
+
+      // Check bounds
+      if (rowIndex < 0 || rowIndex >= this.datasourceRows.length) {
+        return '';
+      }
+
+      const row = this.datasourceRows[rowIndex];
+      const colIndex = colNum - 1;
+
+      // Return column value or empty string if out of bounds
+      return row[colIndex] ?? '';
+    }
+
+    // Fallback: read from stored value (backward compatibility with setDatasourceCols)
+    const colName = `!COL${colNum}`;
+    const value = this.systemVars.get(colName);
+    return typeof value === 'string' ? value : '';
   }
 
   /**
@@ -491,6 +544,32 @@ export class VariableContext {
   }
 
   /**
+   * Set the raw datasource rows for dynamic !COL resolution.
+   * This enables original iMacros behavior where {{!COL1}} reads
+   * directly from the datasource based on !DATASOURCE_LINE.
+   */
+  setDatasourceRows(rows: string[][]): void {
+    this.datasourceRows = rows;
+    // Update column count
+    const maxCols = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    this.systemVars.set('!DATASOURCE_COLUMNS', maxCols);
+  }
+
+  /**
+   * Get the raw datasource rows
+   */
+  getDatasourceRows(): string[][] | null {
+    return this.datasourceRows;
+  }
+
+  /**
+   * Get the total number of datasource rows
+   */
+  getDatasourceRowCount(): number {
+    return this.datasourceRows?.length ?? 0;
+  }
+
+  /**
    * Set timeout values
    */
   setTimeout(type: 'page' | 'step' | 'default', seconds: number): void {
@@ -648,11 +727,17 @@ export class VariableContext {
 
   /**
    * Get all system variables as a record
+   * Includes dynamically resolved !COL1-10 values from datasource
    */
   getSystemVariables(): Record<string, VariableValue> {
     const result: Record<string, VariableValue> = {};
     for (const [key, value] of this.systemVars) {
       result[key] = value;
+    }
+    // Add dynamically resolved !COL values
+    for (let i = 1; i <= 10; i++) {
+      const colName = `!COL${i}`;
+      result[colName] = this.resolveDatasourceColumn(i);
     }
     return result;
   }
@@ -695,6 +780,8 @@ export class VariableContext {
     cloned.systemVars = new Map(this.systemVars);
     cloned.customVars = new Map(this.customVars);
     cloned.extractAccumulator = [...this.extractAccumulator];
+    // Share datasource rows reference (immutable data)
+    cloned.datasourceRows = this.datasourceRows;
     return cloned;
   }
 }

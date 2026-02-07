@@ -189,6 +189,33 @@
   margin: 4px 0;
 }
 
+/* Inline input for new folder/rename */
+.file-tree-inline-input {
+  flex: 1;
+  padding: 2px 6px;
+  font-size: 13px;
+  border: 1px solid #4a90d9;
+  border-radius: 2px;
+  outline: none;
+  background: #fff;
+  color: #333;
+  min-width: 60px;
+}
+
+.file-tree-inline-input:focus {
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.2);
+}
+
+.file-tree-inline-input::placeholder {
+  color: #999;
+  font-style: italic;
+}
+
+/* New item styling */
+.file-tree-new-item .file-tree-row {
+  background: #f5f9ff;
+}
+
 /* Scrollbar styling */
 .file-tree-content::-webkit-scrollbar {
   width: 8px;
@@ -281,5 +308,19 @@
 
   .file-tree-content::-webkit-scrollbar-thumb:hover {
     background: #666;
+  }
+
+  .file-tree-inline-input {
+    background: #333;
+    color: #eee;
+    border-color: #5a9ae9;
+  }
+
+  .file-tree-inline-input::placeholder {
+    color: #777;
+  }
+
+  .file-tree-new-item .file-tree-row {
+    background: #1a2a3a;
   }
 }

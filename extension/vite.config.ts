@@ -58,6 +58,7 @@ export default defineConfig({
     rollupOptions: {
       input: availableEntries,
       output: {
+        format: 'es', // ES modules required for service worker with "type": "module"
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',

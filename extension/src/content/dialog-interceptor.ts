@@ -1,8 +1,11 @@
 /**
  * Dialog Interceptor for iMacros
  *
- * Overrides window.alert/confirm/prompt to handle ONDIALOG command.
- * Auto-responds based on settings and reports dialog events to host.
+ * Injects a script into the page's MAIN WORLD to intercept
+ * window.alert/confirm/prompt calls. Content scripts run in an
+ * isolated world and cannot directly override these functions.
+ *
+ * Communication between main world and content script uses CustomEvents.
  */
 
 import type {
@@ -54,80 +57,96 @@ export interface DialogInterceptorConfig {
 export type DialogEventCallback = (event: DialogEvent) => void;
 
 /**
- * Dialog Interceptor class
- * Manages interception of window.alert, window.confirm, and window.prompt
+ * URL of the external script that runs in the main world.
+ * We use an external file to avoid CSP issues with inline scripts.
+ */
+const MAIN_WORLD_SCRIPT_URL = chrome.runtime.getURL('dialog-interceptor-main.js');
+
+/**
+ * Whether the main world script has been injected
+ */
+let mainWorldScriptInjected = false;
+
+/**
+ * Callback for dialog events
+ */
+let eventCallback: DialogEventCallback | null = null;
+
+/**
+ * Current configuration (mirrored for status queries)
+ */
+let currentConfig: DialogInterceptorConfig = {
+  enabled: false,
+  button: 'OK',
+  pos: 1,
+};
+
+/**
+ * Inject the dialog interceptor script into the main world
+ */
+function injectMainWorldScript(): void {
+  if (mainWorldScriptInjected) return;
+
+  try {
+    const script = document.createElement('script');
+    script.src = MAIN_WORLD_SCRIPT_URL;
+    script.onload = () => {
+      script.remove(); // Clean up after loading
+    };
+    script.onerror = () => {
+      console.error('[iMacros] Failed to load dialog interceptor script');
+      script.remove();
+    };
+    (document.head || document.documentElement).appendChild(script);
+    mainWorldScriptInjected = true;
+  } catch (error) {
+    console.error('[iMacros] Failed to inject dialog interceptor:', error);
+  }
+}
+
+/**
+ * Set up event listener for dialog events from main world
+ */
+function setupEventListener(): void {
+  window.addEventListener('__imacros_dialog_event', ((event: CustomEvent) => {
+    const detail = event.detail as DialogEvent;
+    if (eventCallback) {
+      try {
+        eventCallback(detail);
+      } catch (error) {
+        console.error('[iMacros] Error in dialog event callback:', error);
+      }
+    }
+  }) as EventListener);
+}
+
+/**
+ * Dialog Interceptor class (wrapper for API compatibility)
  */
 export class DialogInterceptor {
-  /** Original window.alert function */
-  private originalAlert: typeof window.alert;
-
-  /** Original window.confirm function */
-  private originalConfirm: typeof window.confirm;
-
-  /** Original window.prompt function */
-  private originalPrompt: typeof window.prompt;
-
-  /** Current configuration */
-  private config: DialogInterceptorConfig = {
-    enabled: false,
-    button: 'OK',
-    pos: 1,
-  };
-
-  /** Callback for dialog events */
-  private eventCallback: DialogEventCallback | null = null;
-
-  /** Counter for dialog occurrences */
-  private dialogCounter: number = 0;
-
-  /** Whether interceptor is currently installed */
   private installed: boolean = false;
 
   constructor() {
-    // Store original functions
-    this.originalAlert = window.alert.bind(window);
-    this.originalConfirm = window.confirm.bind(window);
-    this.originalPrompt = window.prompt.bind(window);
+    // Constructor doesn't need to do much - actual install happens in install()
   }
 
   /**
    * Install the dialog interceptor
    */
   install(): void {
-    if (this.installed) {
-      return;
-    }
+    if (this.installed) return;
 
-    // Override window.alert
-    window.alert = (message?: unknown): void => {
-      this.handleAlert(String(message ?? ''));
-    };
-
-    // Override window.confirm
-    window.confirm = (message?: string): boolean => {
-      return this.handleConfirm(message ?? '');
-    };
-
-    // Override window.prompt
-    window.prompt = (message?: string, defaultValue?: string): string | null => {
-      return this.handlePrompt(message ?? '', defaultValue);
-    };
-
+    injectMainWorldScript();
+    setupEventListener();
     this.installed = true;
   }
 
   /**
-   * Uninstall the dialog interceptor and restore original functions
+   * Uninstall - not really possible once injected, but we can disable
    */
   uninstall(): void {
-    if (!this.installed) {
-      return;
-    }
-
-    window.alert = this.originalAlert;
-    window.confirm = this.originalConfirm;
-    window.prompt = this.originalPrompt;
-
+    // Send reset to disable interception
+    window.dispatchEvent(new CustomEvent('__imacros_dialog_reset'));
     this.installed = false;
   }
 
@@ -135,48 +154,52 @@ export class DialogInterceptor {
    * Set the configuration for dialog handling
    */
   setConfig(config: Partial<DialogInterceptorConfig>): void {
-    this.config = { ...this.config, ...config };
+    currentConfig = { ...currentConfig, ...config };
   }
 
   /**
    * Apply ONDIALOG configuration from command
    */
   applyDialogConfig(config: DialogConfig): void {
-    this.config = {
+    currentConfig = {
       enabled: config.active,
       button: config.button,
       content: config.content,
       pos: config.pos,
     };
-    this.dialogCounter = 0;
+
+    // Send to main world
+    window.dispatchEvent(new CustomEvent('__imacros_dialog_config', {
+      detail: { config }
+    }));
   }
 
   /**
    * Set the callback for dialog events
    */
   setEventCallback(callback: DialogEventCallback | null): void {
-    this.eventCallback = callback;
+    eventCallback = callback;
   }
 
   /**
    * Get the current configuration
    */
   getConfig(): DialogInterceptorConfig {
-    return { ...this.config };
+    return { ...currentConfig };
   }
 
   /**
    * Reset the dialog counter
    */
   resetCounter(): void {
-    this.dialogCounter = 0;
+    window.dispatchEvent(new CustomEvent('__imacros_dialog_reset'));
   }
 
   /**
    * Check if interception is enabled
    */
   isEnabled(): boolean {
-    return this.config.enabled;
+    return currentConfig.enabled;
   }
 
   /**
@@ -186,148 +209,17 @@ export class DialogInterceptor {
     return this.installed;
   }
 
-  /**
-   * Handle alert() calls
-   */
-  private handleAlert(message: string): void {
-    this.dialogCounter++;
-
-    const button = this.shouldAutoRespond() ? this.config.button : 'OK';
-
-    // Report the dialog event
-    this.reportDialogEvent({
-      type: 'alert',
-      message,
-      timestamp: Date.now(),
-      url: window.location.href,
-      response: { button },
-    });
-
-    // If not auto-responding, call the original
-    if (!this.shouldAutoRespond()) {
-      this.originalAlert(message);
-    }
-    // For auto-response, alert just returns (user sees nothing)
-  }
-
-  /**
-   * Handle confirm() calls
-   */
-  private handleConfirm(message: string): boolean {
-    this.dialogCounter++;
-
-    let result: boolean;
-    let button: DialogButton;
-
-    if (this.shouldAutoRespond()) {
-      // Auto-respond based on configuration
-      button = this.config.button;
-      result = button === 'OK' || button === 'YES';
-    } else {
-      // Call original and determine button from result
-      result = this.originalConfirm(message);
-      button = result ? 'OK' : 'CANCEL';
-    }
-
-    // Report the dialog event
-    this.reportDialogEvent({
-      type: 'confirm',
-      message,
-      timestamp: Date.now(),
-      url: window.location.href,
-      response: { button },
-    });
-
-    return result;
-  }
-
-  /**
-   * Handle prompt() calls
-   */
-  private handlePrompt(message: string, defaultValue?: string): string | null {
-    this.dialogCounter++;
-
-    let result: string | null;
-    let button: DialogButton;
-
-    if (this.shouldAutoRespond()) {
-      // Auto-respond based on configuration
-      button = this.config.button;
-
-      if (button === 'OK' || button === 'YES') {
-        // Return configured content, or default value, or empty string
-        result = this.config.content ?? defaultValue ?? '';
-      } else {
-        // CANCEL or NO returns null
-        result = null;
-      }
-    } else {
-      // Call original
-      result = this.originalPrompt(message, defaultValue);
-      button = result !== null ? 'OK' : 'CANCEL';
-    }
-
-    // Report the dialog event
-    this.reportDialogEvent({
-      type: 'prompt',
-      message,
-      defaultValue,
-      timestamp: Date.now(),
-      url: window.location.href,
-      response: {
-        button,
-        value: result ?? undefined,
-      },
-    });
-
-    return result;
-  }
-
-  /**
-   * Check if we should auto-respond to dialogs
-   */
-  private shouldAutoRespond(): boolean {
-    if (!this.config.enabled) {
-      return false;
-    }
-
-    // Check if we've reached the configured POS
-    // POS=1 means respond to 1st dialog, POS=2 means 2nd, etc.
-    return this.dialogCounter <= this.config.pos;
-  }
-
-  /**
-   * Report a dialog event to the callback
-   */
-  private reportDialogEvent(event: DialogEvent): void {
-    if (this.eventCallback) {
-      try {
-        this.eventCallback(event);
-      } catch (error) {
-        console.error('[iMacros] Error in dialog event callback:', error);
-      }
-    }
-  }
-
-  /**
-   * Call the original alert function
-   */
+  // Legacy methods for compatibility
   callOriginalAlert(message: string): void {
-    this.originalAlert(message);
+    window.alert(message);
   }
 
-  /**
-   * Call the original confirm function
-   */
   callOriginalConfirm(message: string): boolean {
-    return this.originalConfirm(message);
+    return window.confirm(message);
   }
 
-  /**
-   * Call the original prompt function
-   */
   callOriginalPrompt(message: string, defaultValue?: string): string | null {
-    return this.originalPrompt(message, defaultValue);
+    return window.prompt(message, defaultValue);
   }
 }
 

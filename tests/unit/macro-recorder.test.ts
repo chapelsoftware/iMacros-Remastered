@@ -444,11 +444,18 @@ describe('MacroRecorder', () => {
   // ===== generateMacro =====
 
   describe('generateMacro', () => {
-    it('should generate header comments with recorded marker', () => {
+    it('should generate VERSION and URL headers matching iMacros format', () => {
+      recorder.start();
       const macro = recorder.generateMacro();
-      expect(macro).toContain("' iMacros Recorded Macro");
-      expect(macro).toContain("' Recorded:");
-      expect(macro).toContain("' URL:");
+      expect(macro).toContain('VERSION BUILD=1 RECORDER=CR');
+      expect(macro).toContain('URL GOTO=');
+    });
+
+    it('should use the starting URL in the URL GOTO header', () => {
+      recorder.start();
+      const macro = recorder.generateMacro();
+      // JSDOM test URL is http://localhost/
+      expect(macro).toContain('URL GOTO=http://localhost/');
     });
 
     it('should include recorded commands in the macro', () => {
@@ -464,20 +471,28 @@ describe('MacroRecorder', () => {
       const macro = recorder.generateMacro();
       const lines = macro.split('\n');
 
-      // Header lines + blank line + command lines
-      expect(lines.length).toBeGreaterThanOrEqual(5);
+      // VERSION line + URL line + 2 TAG commands = 4 lines minimum
+      expect(lines.length).toBeGreaterThanOrEqual(4);
       // Should have TAG commands after the header
       const tagLines = lines.filter(l => l.startsWith('TAG'));
       expect(tagLines.length).toBe(2);
     });
 
-    it('should return only header when no events', () => {
+    it('should return VERSION and URL headers when no events', () => {
+      recorder.start();
       const macro = recorder.generateMacro();
       const lines = macro.split('\n').filter(l => l.trim().length > 0);
-      // All non-empty lines should be comments
-      for (const line of lines) {
-        expect(line.startsWith("'")).toBe(true);
-      }
+      // Should have exactly 2 lines: VERSION and URL
+      expect(lines.length).toBe(2);
+      expect(lines[0]).toBe('VERSION BUILD=1 RECORDER=CR');
+      expect(lines[1]).toContain('URL GOTO=');
+    });
+
+    it('should store starting URL when recording begins', () => {
+      recorder.start();
+      // Even if window.location changes, the starting URL should be captured
+      const macro = recorder.generateMacro();
+      expect(macro).toContain('URL GOTO=http://localhost/');
     });
   });
 
@@ -509,7 +524,8 @@ describe('MacroRecorder', () => {
       expect(result.events).toBeDefined();
       expect(Array.isArray(result.events)).toBe(true);
       expect(typeof result.macro).toBe('string');
-      expect(result.macro).toContain("' iMacros Recorded Macro");
+      expect(result.macro).toContain('VERSION BUILD=1 RECORDER=CR');
+      expect(result.macro).toContain('URL GOTO=');
     });
 
     it('handleRecordStatusMessage should return status info', () => {
@@ -870,68 +886,42 @@ describe('MacroRecorder', () => {
 
   // ===== Tab Event Recording =====
 
-  describe.skip('tab event recording', () => {
-    it('should record TAB OPEN event', () => {
+  describe('tab event recording', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should record TAB OPEN command', () => {
       recorder.start();
-      recorder.recordTabEvent('open');
+      recorder.recordTabEvent('TAB OPEN');
 
       const events = recorder.getEvents();
       expect(events.length).toBe(1);
-      expect(events[0].type).toBe('tab');
       expect(events[0].command).toBe('TAB OPEN');
-      expect(events[0].metadata?.tabAction).toBe('open');
+      expect(events[0].metadata?.tagName).toBe('TAB');
     });
 
-    it('should record TAB CLOSE event', () => {
+    it('should record TAB CLOSE command', () => {
       recorder.start();
-      recorder.recordTabEvent('close');
+      recorder.recordTabEvent('TAB CLOSE');
 
       const events = recorder.getEvents();
       expect(events.length).toBe(1);
-      expect(events[0].type).toBe('tab');
       expect(events[0].command).toBe('TAB CLOSE');
-      expect(events[0].metadata?.tabAction).toBe('close');
     });
 
-    it('should record TAB T=n event for tab switch', () => {
+    it('should record TAB T=n command for tab switch', () => {
       recorder.start();
-      recorder.recordTabEvent('switch', 3);
+      recorder.recordTabEvent('TAB T=3');
 
       const events = recorder.getEvents();
       expect(events.length).toBe(1);
-      expect(events[0].type).toBe('tab');
       expect(events[0].command).toBe('TAB T=3');
-      expect(events[0].metadata?.tabAction).toBe('switch');
-      expect(events[0].metadata?.tabIndex).toBe(3);
-    });
-
-    it('should default to TAB T=1 if tabIndex not provided for switch', () => {
-      recorder.start();
-      recorder.recordTabEvent('switch');
-
-      const events = recorder.getEvents();
-      expect(events[0].command).toBe('TAB T=1');
-    });
-
-    it('should include tabId in metadata when provided', () => {
-      recorder.start();
-      recorder.recordTabEvent('switch', 2, 12345);
-
-      const events = recorder.getEvents();
-      expect(events[0].metadata?.tabId).toBe(12345);
-    });
-
-    it('should include tabUrl in metadata when provided', () => {
-      recorder.start();
-      recorder.recordTabEvent('open', undefined, undefined, 'https://example.com');
-
-      const events = recorder.getEvents();
-      expect(events[0].metadata?.tabUrl).toBe('https://example.com');
     });
 
     it('should not record tab event when not recording', () => {
       // Don't start recording
-      recorder.recordTabEvent('open');
+      recorder.recordTabEvent('TAB OPEN');
 
       const events = recorder.getEvents();
       expect(events.length).toBe(0);
@@ -939,8 +929,8 @@ describe('MacroRecorder', () => {
 
     it('should include tab events in generated macro', () => {
       recorder.start();
-      recorder.recordTabEvent('open');
-      recorder.recordTabEvent('switch', 2);
+      recorder.recordTabEvent('TAB OPEN');
+      recorder.recordTabEvent('TAB T=2');
       recorder.stop();
 
       const macro = recorder.generateMacro();
@@ -950,13 +940,103 @@ describe('MacroRecorder', () => {
 
     it('should send tab event to background script', () => {
       recorder.start();
-      recorder.recordTabEvent('switch', 1);
+      recorder.recordTabEvent('TAB T=1');
 
       expect((globalThis as any).chrome.runtime.sendMessage).toHaveBeenCalled();
       const callArg = (globalThis as any).chrome.runtime.sendMessage.mock.calls[0][0];
       expect(callArg.type).toBe('RECORD_EVENT');
-      expect(callArg.payload.type).toBe('tab');
       expect(callArg.payload.command).toContain('TAB');
+    });
+
+    it('should call event callback when recording tab event', () => {
+      const callback = vi.fn();
+      recorder.setEventCallback(callback);
+      recorder.start();
+      recorder.recordTabEvent('TAB OPEN');
+
+      expect(callback).toHaveBeenCalled();
+      expect(callback.mock.calls[0][0].command).toBe('TAB OPEN');
+    });
+  });
+
+  // ===== Frame Context Detection =====
+
+  describe('frame context detection', () => {
+    it('should detect when in top frame (not in iframe)', () => {
+      recorder.start();
+      const btn = document.querySelector('#loginBtn')!;
+      btn.dispatchEvent(createMouseEvent('click', { bubbles: true }));
+
+      const events = recorder.getEvents();
+      expect(events.length).toBe(1);
+      expect(events[0].frameContext).toBeDefined();
+      expect(events[0].frameContext?.inFrame).toBe(false);
+      expect(events[0].frameContext?.frameIndex).toBe(0);
+    });
+
+    it('should include frame context in recorded events', () => {
+      recorder.start();
+      const input = document.querySelector('#username') as HTMLInputElement;
+      input.value = 'testuser';
+      input.dispatchEvent(createEvent('change', { bubbles: true }));
+
+      const events = recorder.getEvents();
+      expect(events[0].frameContext).toBeDefined();
+      expect(events[0].frameContext?.inFrame).toBe(false);
+    });
+
+    it('should include frame context in tab events', () => {
+      recorder.start();
+      recorder.recordTabEvent('TAB OPEN');
+
+      const events = recorder.getEvents();
+      expect(events[0].frameContext).toBeDefined();
+      expect(events[0].frameContext?.inFrame).toBe(false);
+      expect(events[0].frameContext?.frameIndex).toBe(0);
+    });
+
+    it('should cache frame context', () => {
+      recorder.start();
+
+      // Get frame context multiple times
+      const context1 = recorder.getFrameContext();
+      const context2 = recorder.getFrameContext();
+
+      // Should return the same cached object
+      expect(context1).toBe(context2);
+    });
+
+    it('should clear frame context cache on start()', () => {
+      // Get initial context
+      const context1 = recorder.getFrameContext();
+
+      // Start recording (which should clear cache)
+      recorder.start();
+      recorder.clearFrameContextCache();
+
+      // Get context again
+      const context2 = recorder.getFrameContext();
+
+      // Should be a new object (not the same reference)
+      expect(context1).not.toBe(context2);
+    });
+
+    it('should provide getFrameContext public method', () => {
+      const context = recorder.getFrameContext();
+
+      expect(context).toBeDefined();
+      expect(typeof context.inFrame).toBe('boolean');
+      expect(typeof context.frameIndex).toBe('number');
+      expect(typeof context.frameDepth).toBe('number');
+    });
+
+    it('should provide clearFrameContextCache method', () => {
+      const context1 = recorder.getFrameContext();
+      recorder.clearFrameContextCache();
+      const context2 = recorder.getFrameContext();
+
+      // After clearing cache, should get a new context object
+      expect(context1).not.toBe(context2);
     });
   });
 

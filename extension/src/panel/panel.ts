@@ -104,24 +104,38 @@ function createInlineEditor(container: HTMLElement, content: string, filePath: s
         '&': {
           height: '100%',
           fontSize: '12px',
-          backgroundColor: '#E7E7E7',
+          backgroundColor: '#324155',
         },
         '.cm-scroller': {
           overflow: 'auto',
           fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
         },
         '.cm-content': {
-          backgroundColor: '#E7E7E7',
+          backgroundColor: '#324155',
+          caretColor: '#FFFFFF',
         },
         '.cm-gutters': {
-          backgroundColor: '#E7E7E7',
-          borderRight: '1px solid #D0D0D0',
+          backgroundColor: '#2A3544',
+          borderRight: '1px solid #3D4A5C',
+          color: '#8B95A5',
         },
         '.cm-activeLineGutter': {
-          backgroundColor: '#DCDCDC',
+          backgroundColor: '#3D4A5C',
         },
         '.cm-activeLine': {
-          backgroundColor: 'rgba(169, 160, 235, 0.1)',
+          backgroundColor: 'rgba(169, 160, 235, 0.15)',
+        },
+        '.cm-cursor': {
+          borderLeftColor: '#FFFFFF',
+        },
+        '.cm-selectionBackground': {
+          backgroundColor: 'rgba(169, 160, 235, 0.3) !important',
+        },
+        '&.cm-focused .cm-selectionBackground': {
+          backgroundColor: 'rgba(169, 160, 235, 0.4) !important',
+        },
+        '.cm-line': {
+          color: '#E8E8E8',
         },
       }),
     ],

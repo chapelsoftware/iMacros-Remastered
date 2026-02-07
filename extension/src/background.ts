@@ -554,17 +554,20 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
       // DOM interaction commands - route to content script
       case 'TAG_COMMAND':
       case 'CLICK_COMMAND':
-      case 'EVENT_COMMAND': {
+      case 'EVENT_COMMAND':
+      case 'SEARCH_COMMAND': {
         const options: chrome.tabs.MessageSendOptions = {};
         if (frameId !== undefined && frameId > 0) {
           options.frameId = frameId;
         }
+        console.log(`[iMacros] Sending ${commandType} to tab ${targetTabId}:`, JSON.stringify(params.selector || params));
         result = await chrome.tabs.sendMessage(targetTabId, {
           type: commandType,
           id: messageId,
           timestamp: Date.now(),
           payload: params,
         }, options);
+        console.log(`[iMacros] ${commandType} result:`, JSON.stringify(result));
         break;
       }
 

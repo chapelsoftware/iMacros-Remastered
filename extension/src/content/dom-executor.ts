@@ -779,14 +779,12 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
           element = result.element;
           break;
         }
-        // waitVisible: pick the first visible match (like real iMacros)
-        for (const el of result.elements) {
-          if (isElementVisible(el)) {
-            element = el;
-            break;
-          }
+        // waitVisible: check if the selected element (at requested POS) is visible
+        if (isElementVisible(result.element)) {
+          element = result.element;
+          break;
         }
-        if (element) break;
+        // Element exists but not visible yet, will retry
       }
 
       // Check timeout
@@ -1199,7 +1197,7 @@ function escapeRegexPreserveWildcard(str: string): string {
  */
 function txtPatternToRegex(pattern: string): string {
   let regexPattern = escapeRegexPreserveWildcard(pattern);
-  // Replace * with pattern that matches anything including newlines
+  // Replace * with pattern that matches anything including newlines (greedy, like original iMacros)
   regexPattern = regexPattern.replace(/\*/g, '(?:[\\r\\n]|.)*');
   // Replace space with flexible whitespace matching
   regexPattern = regexPattern.replace(/ /g, '\\s+');

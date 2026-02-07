@@ -98,6 +98,16 @@ SET !VAR4 {{!EXTRACT}}
 SEARCH SOURCE=REGEXP:\$[\d,]+\.\d{2}
 SET !VAR5 {{!EXTRACT}}
 
-' Search for reference code
-SEARCH SOURCE=TXT:REF-*-XYZ-*
+' Search for reference code (use REGEXP to match exactly)
+SEARCH SOURCE=REGEXP:REF-\d+-XYZ-\d+
 SET !VAR6 {{!EXTRACT}}
+
+' === Validation: Enter extracted data into text boxes ===
+' Fill validation fields with extracted values
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading1 CONTENT={{!VAR0}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading2 CONTENT={{!VAR1}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-heading3 CONTENT={{!VAR2}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-order CONTENT={{!VAR3}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-email CONTENT={{!VAR4}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-amount CONTENT={{!VAR5}}
+TAG POS=1 TYPE=INPUT ATTR=ID:val-refcode CONTENT={{!VAR6}}

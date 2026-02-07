@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/common.css" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/options.css" type="text/css"?>
+
+<!DOCTYPE window SYSTEM "chrome://imacros/locale/labels.dtd" >
+<prefwindow xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+            id="imacros-options-dialog"
+            title="&imacros.window.options;"
+            type="prefwindow"
+            buttons="extra1,cancel"
+            buttonlabelextra1="Apply"
+            defaultButton="extra1"
+            ondialogextra1="return do_accept();"
+            >
+
+  <prefpane id="common-settings" label="&imacros.options.general;"
+            image="chrome://imacros/skin/common-settings.png">
+    <vbox>
+      <groupbox >
+        <caption label="&imacros.label.replay.speed;"/>
+        <radiogroup id="replay-speed" orient="horizontal">
+	  <radio id="delayfast" label="&imacros.radio.fast;" />
+	  <radio id="delaymedium" label="&imacros.radio.medium;" />
+	  <radio id="delayslow" label="&imacros.radio.slow;" />
+	</radiogroup>
+        <hbox >
+          <spacer width="30px"/>
+          <label class="text-link"
+                 value="&imacros.label.or.use.set.r0;"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=replayspeed"/>
+        </hbox>
+      </groupbox>
+      
+      <groupbox  flex="1">
+        <caption label="&imacros.options.visual.effects;"/>
+	<checkbox id="scroll"
+                  label="&imacros.checkbox.scroll.to3;" />
+	<checkbox id="highlight"
+                  label="&imacros.checkbox.highlight4;" />
+      </groupbox>
+      <groupbox  flex="1">
+        <caption label="&imacros.options.hotkey;"/>
+	<checkbox id="use-toggle-hotkey"
+                  label="&imacros.checkbox.hotkey;" />
+      </groupbox>
+      <groupbox>
+        <caption label="&imacros.label.timeout.limi1;"/>
+        <hbox align="center" >
+          <textbox style="max-width: 50px;" id="maxwait"
+                   type="number" />
+          <label class="text-link"
+                 value="&imacros.label.or.use.set.t2;"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=timeout"/>  
+        </hbox>
+      </groupbox>
+      
+      <groupbox>
+        <caption label="&imacros.options.scripting.settings;"/>
+	<checkbox id="showjs"
+                  label="&imacros.checkbox.js5;" />
+        <hbox>
+          <spacer width="30px"/>
+          <label class="text-link"
+                 value="(or use //imacros-js:showsteps yes|no)"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=showsteps"/>
+        </hbox>
+      </groupbox>
+      <!--spacer height="15px"/-->
+      <groupbox>
+        <hbox pack="center">
+          <button id="record-mode"
+                label="Recording preferences"
+                oncommand="window.openDialog('chrome://imacros/content/recordPrefDlg.xul')" />
+        </hbox>
+      </groupbox>
+      <groupbox>
+        <hbox>
+          <checkbox id="profiler-enabled"
+                  label="Profile macro performance" />
+          <spacer width="10px"/>
+          <label class="text-link"
+                 value="(More information)"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=profiler"/>
+        </hbox>
+      </groupbox>
+    </vbox>
+  </prefpane>
+  
+  <prefpane id="security-settings" label="&imacros.options.security;"
+            image="chrome://imacros/skin/security-settings.png">
+    <description maxwidth="500">
+        &imacros.label.the.master.p7;
+    </description>
+      <groupbox flex="1">
+        <caption label="&imacros.label.master.passw6;" />
+        <radiogroup id="masterpwd-usage">
+          <groupbox>
+            <radio id="sec1" onclick="updatePasswordControls(1);"
+                   label="&imacros.label.do.not.encry9;"/>
+          </groupbox>
+          <groupbox>
+            <vbox>
+              <radio id="sec2" onclick="updatePasswordControls(2);"
+                     label="&imacros.label.enter.maste10;" />
+              <box style="margin-left: 30px">
+	        <textbox flex="1" id="sec2master" maxwidth="300"
+	                 type="password" />
+              </box>
+            </vbox>
+          </groupbox>
+          <groupbox>
+            <hbox align="center" >
+              <radio id="sec3" onclick="updatePasswordControls(3);" />
+              
+              <button id="tmp-master"
+                      label="&imacros.button.enter.mast11;"
+                      oncommand="enterTempPassword();"/>
+            </hbox>
+            <description >
+              &imacros.label.enter.a.tem12;
+            </description>
+          </groupbox>
+        </radiogroup>
+      </groupbox>
+      <description >
+          &imacros.label.encryption.16;
+      </description>
+      <vbox >
+        <hbox pack="center">
+          <label class="text-link"
+                 value="&imacros.options.enc.command;"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=encryption"/>
+        </hbox>
+        <spacer height="10px" />
+        <hbox align="center" pack="center">
+          <label value="Create or decrypt password strings manually:"/>
+          <label class="text-link"
+                 value="iMacros Password Tool"
+                 href="http://www.iopus.com/imacros/support/passwordtool/"/>
+        </hbox>
+      </vbox>
+      
+  </prefpane>
+  
+  <prefpane id="path-settings" label="Paths"
+            image="chrome://imacros/skin/path-settings.png">
+    <groupbox>
+      <caption label="Working folders"/>
+      <grid>
+        <columns>
+          <column />
+          <column flex="1"/>
+          <column />
+        </columns>
+        <rows>
+          <row align="center">
+            <hbox pack="end">
+            <label value="&imacros.label.folder.macros;"
+                   class="im-file-link"
+                   onclick="lookAt('defsavepath')"/>
+            </hbox>
+            <textbox flex="1" id="savepath" />
+            <toolbarbutton id="browse-savepath" class="browse"
+                    oncommand="browseForFolder('defsavepath', 'savepath');" />
+          </row>
+          <row align="center">
+            <hbox pack="end">
+            <label value="&imacros.label.folder.data17;"
+                   class="im-file-link"
+                   onclick="lookAt('defdatapath')"/>
+            </hbox>
+            <textbox id="datapath" flex="1" />
+            <toolbarbutton id="browse-datapath" class="browse" 
+                    oncommand="browseForFolder('defdatapath', 'datapath');" />
+          </row>
+          <row align="center">
+            <hbox pack="end">
+            <label value="&imacros.label.folder.down18;"
+                   class="im-file-link"
+                   onclick="lookAt('defdownpath')"/>
+            </hbox>
+            <textbox id="downpath" flex="1" />
+            <toolbarbutton id="browse-downpath" class="browse" 
+                    oncommand="browseForFolder('defdownpath', 'downpath');" />
+          </row>
+          <!-- <row align="center"> -->
+          <!--   <hbox pack="end"> -->
+          <!--   <label value="&imacros.label.logs.events;" -->
+          <!--          class="im-file-link" -->
+          <!--          onclick="lookAt('deflogpath')"/> -->
+          <!--   </hbox> -->
+          <!--   <textbox id="logpath" flex="1" /> -->
+          <!--   <toolbarbutton id="browse-logpath" class="browse"  -->
+          <!--           oncommand="browseForFolder('deflogpath', 'logpath');" /> -->
+          <!-- </row> -->
+        </rows>
+      </grid>
+      <hbox align="center">
+        <checkbox id="store-in-profile"
+                  label="Store data in profile folder"
+                  oncommand="storeInProfile();"/>
+        <label class="text-link"
+               value="(recommended with Portable Firefox)"
+               href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=portable"/>
+      </hbox>
+      
+    </groupbox>
+    <groupbox>
+      <caption label="&imacros.options.external.editor;"/>
+      <checkbox id="chkeditor"
+                label="&imacros.checkbox.use.exte19;"
+                oncommand="updateEditorField();" />
+      <hbox style="margin-left: 30px">
+        <textbox id="editpath" flex="1" />
+        <toolbarbutton id="editpathbtn"
+                class="browse" 
+                oncommand="browseForFile('externaleditorpath','editpath');" />
+      </hbox>
+      <hbox pack="center">
+      <label class="text-link"
+               value="(View list of recommended editors)"
+               href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=editorlist"/>
+      </hbox>
+    </groupbox>
+  </prefpane>
+
+  <prefpane id="shared-macro-settings" label="&imacros.options.shared;"
+            image="chrome://imacros/skin/shared-settings.png">
+    <description maxwidth="500">
+      Running shared macros could be dangerous. In order to protect
+      you from malicious code, iMacros shows a warning which
+      lets you inspect the source code of the macro to allow or block
+      it. The 'trusted sites' list lets you choose a default action for
+      the site.
+    </description>
+    
+    <groupbox >
+      <!--caption label="Trusted sites"/-->
+      <vbox>
+        <label value="Enter URL or domain name:"/>
+        <hbox pack="end">
+          <textbox id="add-site-textbox"
+                   type="autocomplete"
+                   autocompletesearch="history"
+                   completedefaultindex="true"
+                   onkeydown="onTextBoxKeypress(event)"
+                   ontextentered="addSite()"
+                   flex="1"/>
+          <button id="add-site" label="Add"
+                  tooltiptext="Add a site to the Trusted list"
+                  oncommand="addSite()"/>
+        </hbox>
+      </vbox>
+      <listbox id="white-list" seltype="multiple"
+               onkeydown="onListKeydown(event)"
+               ondblclick="onListDblClick(event)"
+               onselect="onSelectWhiteList()"
+               >
+        <listhead>
+          <listheader label="Site"/>
+          <listheader label="Status"/>
+        </listhead>
+        <listcols>
+          <listcol flex="1"/>
+          <listcol />
+        </listcols>
+      </listbox>
+      <hbox >
+        <button id="remove-site" label="Remove"
+                tooltiptext="Remove the selected entries from the Trusted list"
+                disabled="true"
+                oncommand="removeSites()"/>
+        <!--spacer flex="1"/-->
+        <button id="toggle-site" label="Block"
+                tooltiptext="Change the site status"
+                disabled="true"
+                oncommand="toggleSite()"/>
+      </hbox>
+      <label class="text-link"
+             value="&imacros.options.more.info;"
+             href="http://wiki.imacros.net/iMacros_for_Firefox#Bookmarking"/>
+      
+    </groupbox>
+  </prefpane>
+
+  <prefpane id="alertfox-pane" label="Alertfox"
+            image="chrome://imacros/skin/cloud-services.png">
+    <description maxwidth="500">
+      Extend iMacros with the use of online web based services.
+    </description>
+    
+    <spacer height="10px"/>
+    <tabbox id="web-services-tabbox">
+      <tabs  >
+        <tab id="af-tab" label="AlertFox"/>
+      </tabs>
+      <tabpanels id="web-services-tabpanels" flex="1">
+
+        <!--AlertFox panel-->
+        <tabpanel id="im-play-panel" orient="vertical">
+          <hbox>
+            <description maxwidth="500">
+              Run your macros in the cloud and monitor complete online process
+            </description>
+            <!-- <label class="text-link" -->
+            <!--        value="Find out more" -->
+            <!--        href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=af1"/> -->
+          </hbox>
+          <spacer height="15px"/>
+
+          <hbox pack="center">
+            <grid>
+              <columns>
+                <column />
+                <column flex="1"/>
+              </columns>
+              <rows>
+                <row align="center">
+                  <hbox pack="end">
+                    <label value="User name:"/>
+                  </hbox>
+                  <deck id="af-username-deck" selectedIndex="0" flex="1">
+                    <textbox flex="1" id="af-username-textbox"
+                             oninput="onAfLoginChange(event);"/>
+                    <menulist flex="1" editable="true"
+                              oncommand="onAfLoginChange(event);"
+                              id="af-username-box-list"/>
+                  </deck>
+                </row>
+                <row align="center">
+                  <hbox pack="end">
+                    <label value="Password:" />
+                  </hbox>
+                  <textbox id="af-password-box" flex="1"
+                           type="password"
+                           oninput="onAfLoginChange(event);" />
+                </row>
+              </rows>
+            </grid>
+            <button label="Check Credentials" id="af-check-credentials-btn"
+                    oncommand="checkAfCredentials()"/>
+          </hbox>
+          <spacer height="15px"/>
+          <label class="text-link"
+                 value="Sign up for an account"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=af2"/>  
+          <spacer height="10px"/>
+          <label class="text-link"
+                 value="More information"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=af3"/>
+        </tabpanel>
+      </tabpanels>
+    </tabbox>
+  </prefpane>
+  
+  
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/options.js" />
+
+</prefwindow>

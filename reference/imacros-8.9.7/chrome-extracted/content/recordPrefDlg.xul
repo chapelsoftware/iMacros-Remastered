@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+
+<!DOCTYPE window SYSTEM "chrome://imacros/locale/labels.dtd">
+
+<dialog id="clickpanel_dialog" title="Recording preferences"
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	buttons="accept"
+	ondialogaccept="do_accept();">
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/recordPrefDlg.js"/>
+  
+  <groupbox>
+    <caption label="Recording mode"/>
+    <radiogroup id="record-mode-group">
+      <radio id="auto" label="Select the best record mode automatically"/>
+      <description id="message" maxwidth="350px">&imacros.clickpanel.textbox;</description>
+      <hbox align="center">
+        <radio id="events" label="Experimental event recording mode"/>
+        <label class="text-link" value="(More info)"
+               href="http://wiki.imacros.net/EVENT"/>
+      </hbox>
+      <vbox>
+      <radio id="conventional" label="Conventional recording mode"/>
+      <hbox id="expert-mode-box">
+        <spacer width="15px"/>
+        <checkbox id="expert-mode" disabled="true"
+                  label="Expert: use complete HTML tag"/>
+      </hbox>
+      </vbox>
+      <radio id="xy" label="Use X/Y position (Useful if link URL and name are changing between two replays)"/>
+    </radiogroup>
+  </groupbox>
+  <groupbox>
+    <caption label="Extra recording options"/>
+    <description id="id-priority-message" maxwidth="350px">
+      Some web-pages use dynamically generated Ids. Uncheck the checkbox below if you have issues recording them. While in conventional recording mode, unchecking this box forces the use of the complete HTML tag.
+    </description>
+    <checkbox id="id-priority" label="Favor element Ids in selectors"/>
+  </groupbox>
+</dialog>

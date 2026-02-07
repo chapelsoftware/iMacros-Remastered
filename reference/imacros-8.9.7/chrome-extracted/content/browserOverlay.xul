@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://imacros/skin/imacros.css" type="text/css"?>
+
+<!DOCTYPE overlay SYSTEM "chrome://imacros/locale/labels.dtd" >
+
+<overlay xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/version.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/iMacros.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/MacroPlayer.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/MacroRecorder.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/ControlPanel.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/commonDialogHook.js"/>
+  <script type="application/x-javascript;version=1.7"
+          src="chrome://imacros/content/jsplayer.js"/>
+
+  <window id="main-window">
+    <panel id="imacros-info-panel" type=""
+           noautohide="true">
+      <!-- 
+           1. Replaying/Recording status
+           2. Button to stop/pause recording/replaying
+           3. Page load indicator
+           4. Tag waiting indicator
+           5. Number of recorded lines/currently replaying line number
+           6. Info/Error message
+      -->
+      <box id="imacros-info-panel-status-container"
+           onclick="iMacros.panel.onPanelClick();">
+        <hbox>
+          <box>
+            <box id="imacros-info-panel-logo"/>
+          </box>
+          <box flex="1">
+            <vbox>
+              <box>
+                <label id="imacros-info-panel-status3"
+                       value=""/>
+              </box>
+              <box>
+                <label id="imacros-info-panel-status2"
+                       value=""/>
+              </box>
+            </vbox>
+          </box>
+        </hbox>
+      </box>
+
+      <hbox id="imacros-info-panel-button-box" flex="1">
+        <spacer flex="1"/>
+        <hbox pack="center">
+          <toolbarbutton id="imacros-info-panel-stop-button"
+                         flex="1"
+                         label="Stop"
+                         oncommand="iMacros.stop()"/>
+          <toolbarbutton id="imacros-info-panel-pause-button"
+                         flex="1"
+                         icon="pause"
+                         label="Pause"
+                         oncommand="iMacros.pause()"/>
+          <toolbarbutton id="imacros-info-panel-play-button"
+                         flex="1"
+                         label="Play"
+                         oncommand="iMacros.play()"/>
+          <toolbarbutton id="imacros-info-panel-record-button"
+                         flex="1"
+                         label="Record"
+                         oncommand="iMacros.record()"/>
+        </hbox>
+        <spacer flex="1"/>
+      </hbox>
+
+      <box id="imacros-info-panel-indicator"></box>
+      <vbox id="imacros-message-box-container" collapsed="true" flex="1">
+        <box id="imacros-messages" flex="1">
+          <textbox id="imacros-message-box" flex="1"
+                   value=""
+                   class="plain"
+                   readonly="true"
+                   msgtype="message"
+                   multiline="true" />
+        </box>
+        <hbox id="imacros-message-box-buttons-container">
+          <toolbarbutton id="imacros-message-box-button-edit"
+                         oncommand="iMacros.panel.mboxEdit();"/>
+          <toolbarbutton id="imacros-message-box-button-help"
+                         oncommand="iMacros.panel.mboxHelp()"/>
+          <toolbarbutton id="imacros-message-box-button-close"
+                         oncommand="iMacros.panel.mboxClose()"/>
+        </hbox>
+      </vbox>
+    </panel>
+
+  </window>
+  <menupopup id="viewSidebarMenu">
+    <menuitem key="imacros_key_OpenPanel"
+              observes="imacros_ControlPanel"/>
+  </menupopup>
+  <keyset id="mainKeyset">
+    <key id="imacros_key_OpenPanel"
+         command="imacros_ControlPanel"
+         keycode=""/>
+  </keyset>
+  <broadcasterset id="mainBroadcasterSet">
+    <broadcaster id="imacros_ControlPanel"
+                 autoCheck="false"
+                 label="iOpus iMacros"
+		 type="checkbox"
+                 group="sidebar"
+                 sidebarurl="chrome://imacros/content/iMacrosSidebar.xul"
+		 sidebartitle="iMacros"
+                 oncommand="toggleSidebar('imacros_ControlPanel');"/>
+  </broadcasterset>
+
+  <toolbarpalette id="BrowserToolbarPalette">
+    <toolbarbutton id="imacros-toggle-button" label="iMacros"
+		   disabled="false"
+                   class="toolbarbutton-1"
+                   oncommand="toggleSidebar('imacros_ControlPanel');"
+		   tooltiptext="iOpus iMacros"/>
+  </toolbarpalette>
+  <!-- this is a hidden box to "read" localized strings from labels.dtd -->
+  <box hidden="true">
+    <!-- clear cookies dialog -->
+    <lavel id="imacros-clear-title"
+           value="&imacros.clear.title;"/>
+    <label id="imacros-clear-enter1"
+           value="&imacros.clear.enter1;"/>
+    <label id="imacros-checkbox-display-this"
+           value="&imacros.checkbox.display.this;"/>
+    <!-- add wait tag dialog -->
+    <label id="imacros-wait-title"
+           value="&imacros.wait.title;"/>
+    <label id="imacros-wait-enter1"
+           value="&imacros.wait.enter1;"/>
+    <label id="imacros-wait-enter2"
+           value="&imacros.wait.enter2;"/>
+  </box>
+</overlay>

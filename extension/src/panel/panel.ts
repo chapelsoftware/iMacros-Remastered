@@ -3,6 +3,10 @@
  * Handles the side panel interface for macro playback, recording, and management
  */
 
+// Import styles - Vite will bundle these
+import './panel.css';
+import './file-tree.css';
+
 import { createMessageId, createTimestamp } from '@shared/index';
 import { FileTree, FileTreeNode, createTreeFromPaths, FileTreeSelectionEvent } from './file-tree';
 import { statusSync, initializeStatusSync, StatusSyncEvent, ExecutionStatus, LogEntry } from './status-sync';

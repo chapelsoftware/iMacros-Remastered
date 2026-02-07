@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://browser/skin/browser.css" type="text/css"?>
+<!-- <?xml-stylesheet href="chrome://imacros/skin/imacros.css" type="text/css"?> -->
+
+<!DOCTYPE dialog [
+  <!ENTITY % imacrosDTD SYSTEM "chrome://imacros/locale/labels.dtd">
+  %imacrosDTD;
+  <!ENTITY % textcontextDTD SYSTEM "chrome://global/locale/textcontext.dtd"> 
+  %textcontextDTD;
+]>
+
+<dialog id="imacros-editor"
+        xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        height="580" width="750"
+        minheight="400" minwidth="400"
+        persist="width height"
+        buttons="extra1,cancel"
+        buttonlabelextra1="Save &amp; Close"
+        ondialogcancel="return cancel();"
+        ondialogextra1="saveAndQuit()"
+        style="padding: 0px;">
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/edit.js"/>
+  
+  <tooltip id="html-tooltip"
+           onpopupshowing="return showHTMLTooltip(document.tooltipNode);" />
+
+  <menupopup id="copy-paste-menu"
+             onpopupshowing="Editor.onContextShowing()">
+    <menuitem id="context-cut"
+              label="&cutCmd.label;"
+              accesskey="&cutCmd.accesskey;"
+              oncommand="Editor.cut();"/>
+    <menuitem id="context-copy"
+              label="&copyCmd.label;"
+              accesskey="&copyCmd.accesskey;"
+              oncommand="Editor.copy();"/>
+    <menuitem id="context-paste"
+              label="&pasteCmd.label;"
+              accesskey="&pasteCmd.accesskey;"
+              oncommand="Editor.paste();"/>
+    
+  </menupopup>
+  
+  <box flex="1" style="padding: 0px; margin: 0px">
+    <iframe id="editbox" flex="1" tooltip="html-tooltip"
+            context="copy-paste-menu"
+            src="chrome://imacros/content/editor/editarea/imacro.html"/>
+  </box>
+  
+  <hbox align="center">
+    <spacer id="spacer" width="1"/>
+    <box flex="1" pack="center">
+      <button dlgtype="extra1"/>
+      <button dlgtype="cancel"/>
+    </box>
+    <button id="help-button" label="Help" type="menu">
+      <menupopup position="before_end">
+        <menuitem label="iMacros Wiki" class="text-link"
+                  oncommand="window.open('http://wiki.imacros.net/')"/>
+        <menuitem label="Command Reference" class="text-link"
+                  oncommand="window.open('http://wiki.imacros.net/Command_Reference')"/>
+        <menuitem label="iMacros Password Tool" class="text-link"
+                  oncommand="window.open('http://www.iopus.com/imacros/support/passwordtool/')"/>
+        <menuitem label="Javascript Scripting" class="text-link"
+                  oncommand="window.open(' http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=imacrosfxjs')"/>
+        <menuitem label="AlertFox Wiki" class="text-link"
+                  oncommand="window.open('http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=alertfoxwiki')"/>
+        <menuitem label="AlertFox - Add iMacros Sensor" class="text-link"
+                  oncommand="window.open('http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=alertfoxaddsensor')"/>
+      </menupopup>
+    </button>
+  </hbox>
+  
+
+</dialog>
+

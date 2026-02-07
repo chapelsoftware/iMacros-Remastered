@@ -60,7 +60,7 @@ export default defineConfig({
         format: 'es', // ES modules required for service worker with "type": "module"
         entryFileNames: '[name].js',
         chunkFileNames: 'chunks/[name]-[hash].js',
-        assetFileNames: 'assets/[name]-[hash][extname]',
+        assetFileNames: '[name][extname]',
         // Extension scripts need to be self-contained (no code splitting for content scripts)
         manualChunks: undefined,
       },

@@ -1296,6 +1296,3 @@ body {
     background: #252D3A;
   }
 }
-
-/* Import file tree styles */
-@import url('./file-tree.css');

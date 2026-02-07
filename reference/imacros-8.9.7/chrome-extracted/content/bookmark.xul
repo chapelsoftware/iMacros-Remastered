@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/bookmark.css" ?>
+
+<!-- <!DOCTYPE dialog SYSTEM "chrome://imacros/locale/labels.dtd"> -->
+
+<!DOCTYPE dialog [
+<!ENTITY % imacrosDTD SYSTEM "chrome://imacros/locale/labels.dtd">
+%imacrosDTD;
+<!ENTITY % editBookmarkOverlayDTD SYSTEM "chrome://browser/locale/places/editBookmarkOverlay.dtd">
+%editBookmarkOverlayDTD;
+]>
+ 
+<dialog id="bookmark_window" title="&imacros.bookmark.title;"
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	ondialogaccept="do_accept();">
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/bookmark.js"/>
+  
+  <groupbox>
+    <caption label="&imacros.bookmark.label.h1;"/>
+    <command id="url-type-changed" oncommand="update()"/>
+    <command id="bookmark-type-changed" oncommand="update()"/>
+    <radiogroup id="url-type">
+      <hbox align="center">
+        <radio id="local" label="&imacros.bookmark.radio.h2;"
+               command="url-type-changed"/>
+        <hbox align="center">
+          <label value="(" style="margin-right: 0px;"/>
+          <label class="text-link" value="?" style="margin: 0px"
+                 href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=localmacro"/>
+          <label value=")" style="margin-left: 0px;"/>
+        </hbox>
+      </hbox>
+      <radio id="bookmarklet" 
+             label="Make Bookmarklet (compatible with Chrome version)"
+             command="url-type-changed"/>
+    </radiogroup>
+  </groupbox>
+  <groupbox>
+    <caption label="&imacros.bookmark.label.h2;"/>
+    <radiogroup id="bookmark-type">
+      <hbox>
+        <radio id="type-firefox" label="&imacros.bookmark.radio.h3;"
+               command="bookmark-type-changed"/>
+        <toolbarbutton id="bookmark-options"
+                       oncommand="toggleBookmarkOptions()"/>
+      </hbox>
+
+      <vbox id="bookmark-options-box" hidden="true">
+        <hbox align="center">
+          <label value="&editBookmarkOverlay.folder.label;"
+                 control="bookmark-location-menulist"/>
+          <menulist id="bookmark-location-menulist"
+                    selectedIndex="0"
+                    persist="selectedIndex"
+                    oncommand="onBookmarkLocationChanged(event)">
+            <menupopup>
+              <menuitem id="bookmark-location-menu"
+                        class="menuitem-iconic" />
+              <menuitem id="bookmark-location-toolbar"
+                        class="menuitem-iconic" />
+            </menupopup>
+          </menulist>
+          <spacer flex="1"/>
+        </hbox>
+
+        <hbox align="baseline">
+          <label value="&editBookmarkOverlay.tags.label;"/>
+          <textbox id="tags" flex="1" value="iMacros" />
+        </hbox>
+      </vbox>
+      <radio id="type-buffer" disabled="true"
+             label="&imacros.bookmark.radio.h4;"
+             command="bookmark-type-changed"/>
+    </radiogroup>
+    <grid>
+      <columns>
+	<column/>
+	<column flex="1"/>
+      </columns>
+      <rows>
+	<row align="center">
+	  <label value="&imacros.bookmark.label.h3;"/>
+	  <textbox id="title"/>
+	</row>
+	<row align="center">
+	  <label value="&imacros.bookmark.label.h4;"/>
+	  <textbox id="url" readonly="true"/>
+	</row>
+      </rows>
+    </grid>
+  </groupbox>
+
+</dialog>

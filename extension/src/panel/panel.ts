@@ -104,14 +104,24 @@ function createInlineEditor(container: HTMLElement, content: string, filePath: s
         '&': {
           height: '100%',
           fontSize: '12px',
+          backgroundColor: '#E7E7E7',
         },
         '.cm-scroller': {
           overflow: 'auto',
           fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
         },
+        '.cm-content': {
+          backgroundColor: '#E7E7E7',
+        },
         '.cm-gutters': {
-          backgroundColor: '#f5f5f5',
-          borderRight: '1px solid #ddd',
+          backgroundColor: '#E7E7E7',
+          borderRight: '1px solid #D0D0D0',
+        },
+        '.cm-activeLineGutter': {
+          backgroundColor: '#DCDCDC',
+        },
+        '.cm-activeLine': {
+          backgroundColor: 'rgba(169, 160, 235, 0.1)',
         },
       }),
     ],

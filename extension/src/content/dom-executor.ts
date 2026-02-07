@@ -36,11 +36,13 @@ import type {
   TagCommandMessage,
   ClickCommandMessage,
   EventCommandMessage,
+  SearchCommandMessage,
   ContentScriptResponse,
   ElementSelector,
   TagAction,
   ExtractType,
   DOMEventType,
+  SearchSourceType,
 } from '@shared/commands/interaction';
 
 // ===== Anchor State for Relative Positioning =====
@@ -396,31 +398,111 @@ async function resolveSelector(
 // ===== TAG Command Execution =====
 
 /**
+ * #EANF# - Extract Attribute Not Found marker
+ * Returned when an attribute doesn't exist on the element
+ */
+const EANF = '#EANF#';
+
+/**
  * Extract data from an element based on extract type
+ * Matches original iMacros behavior including #EANF# for missing attributes
  */
 function extractFromElement(element: Element, extractType: ExtractType): string {
   const type = extractType.toUpperCase();
+  const tagName = element.tagName.toLowerCase();
 
   switch (type) {
     case 'TXT':
     case 'TEXT':
+      // Handle form elements - use value property
+      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+        return element.value;
+      }
+      // Handle select - return selected option text
+      if (element instanceof HTMLSelectElement) {
+        const selectedOption = element.options[element.selectedIndex];
+        return selectedOption ? selectedOption.text : '';
+      }
+      // Handle table - return CSV format
+      if (element instanceof HTMLTableElement) {
+        const rows: string[] = [];
+        for (let i = 0; i < element.rows.length; i++) {
+          const row = element.rows[i];
+          const cells: string[] = [];
+          for (let j = 0; j < row.cells.length; j++) {
+            let field = row.cells[j].textContent || '';
+            // Escape quotes by doubling them
+            field = field.replace(/"/g, '""');
+            cells.push(field);
+          }
+          rows.push('"' + cells.join('","') + '"');
+        }
+        return rows.join('\n');
+      }
+      // Default - use textContent
+      return (element.textContent || '').trim();
+
+    case 'TXTALL':
+      // For select elements, return all options joined with [OPTION]
+      if (element instanceof HTMLSelectElement) {
+        const optionTexts: string[] = [];
+        for (let i = 0; i < element.options.length; i++) {
+          optionTexts.push(element.options[i].text);
+        }
+        return optionTexts.join('[OPTION]');
+      }
+      // For other elements, same as TXT
       return (element.textContent || '').trim();
 
     case 'HTM':
     case 'HTML':
-      return element.innerHTML;
+      // Use outerHTML and normalize whitespace (like original iMacros)
+      const htm = element.outerHTML || '';
+      return htm.replace(/[\t\n\r]/g, ' ');
 
     case 'HREF':
-      return getAttributeValue(element, 'href') || '';
+      // Check href property first (gets absolute URL), then attribute
+      if ('href' in element && typeof (element as HTMLAnchorElement).href === 'string') {
+        return (element as HTMLAnchorElement).href;
+      }
+      if (element.hasAttribute('href')) {
+        return element.getAttribute('href') || '';
+      }
+      // Fallback to src (like original iMacros)
+      if ('src' in element && typeof (element as HTMLImageElement).src === 'string') {
+        return (element as HTMLImageElement).src;
+      }
+      if (element.hasAttribute('src')) {
+        return element.getAttribute('src') || '';
+      }
+      return EANF;
 
     case 'ALT':
-      return getAttributeValue(element, 'alt') || '';
+      if ('alt' in element) {
+        return (element as HTMLImageElement).alt;
+      }
+      if (element.hasAttribute('alt')) {
+        return element.getAttribute('alt') || '';
+      }
+      return EANF;
 
     case 'TITLE':
-      return getAttributeValue(element, 'title') || '';
+      if ('title' in element && typeof (element as HTMLElement).title === 'string') {
+        return (element as HTMLElement).title;
+      }
+      if (element.hasAttribute('title')) {
+        return element.getAttribute('title') || '';
+      }
+      return EANF;
 
     case 'SRC':
-      return getAttributeValue(element, 'src') || '';
+      if ('src' in element && typeof (element as HTMLImageElement).src === 'string') {
+        return (element as HTMLImageElement).src;
+      }
+      if (element.hasAttribute('src')) {
+        return element.getAttribute('src') || '';
+      }
+      return EANF;
 
     case 'VALUE':
       if (element instanceof HTMLInputElement ||
@@ -428,7 +510,18 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
           element instanceof HTMLSelectElement) {
         return element.value;
       }
-      return getAttributeValue(element, 'value') || '';
+      if (element.hasAttribute('value')) {
+        return element.getAttribute('value') || '';
+      }
+      return EANF;
+
+    case 'CHECKED':
+      // Return YES or NO for checkbox/radio state
+      if (element instanceof HTMLInputElement &&
+          (element.type === 'checkbox' || element.type === 'radio')) {
+        return element.checked ? 'YES' : 'NO';
+      }
+      return EANF;
 
     case 'ID':
       return element.id || '';
@@ -437,11 +530,24 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
       return element.className || '';
 
     case 'NAME':
-      return getAttributeValue(element, 'name') || '';
+      if (element.hasAttribute('name')) {
+        return element.getAttribute('name') || '';
+      }
+      return EANF;
 
     default:
       // Try as a generic attribute (handles ATTR:customattr format)
-      return getAttributeValue(element, extractType.toLowerCase()) || '';
+      const attrName = extractType.toLowerCase();
+      if (element.hasAttribute(attrName)) {
+        return element.getAttribute(attrName) || '';
+      }
+      // Check if it's a property on the element
+      if (attrName in element) {
+        const val = (element as unknown as Record<string, unknown>)[attrName];
+        if (typeof val === 'string') return val;
+        if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+      }
+      return EANF;
   }
 }
 
@@ -1073,12 +1179,117 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
   }
 }
 
+// ===== SEARCH Command Execution =====
+
+/**
+ * Escape regex special characters in a string, preserving * as wildcard
+ * Matches original iMacros TagHandler.escapeChars behavior
+ */
+function escapeRegexPreserveWildcard(str: string): string {
+  // Escape all regex special chars EXCEPT * (which becomes wildcard)
+  // Original escapes: ^$.+?=!:|\/()[]{}
+  return str.replace(/[\^$.+?=!:|\\/()\[\]{}]/g, '\\$&');
+}
+
+/**
+ * Convert a TXT pattern to regex (for SEARCH SOURCE=TXT:pattern)
+ * - Escapes regex special chars except *
+ * - Converts * to match any characters including newlines
+ * - Converts space to match any whitespace
+ */
+function txtPatternToRegex(pattern: string): string {
+  let regexPattern = escapeRegexPreserveWildcard(pattern);
+  // Replace * with pattern that matches anything including newlines
+  regexPattern = regexPattern.replace(/\*/g, '(?:[\\r\\n]|.)*');
+  // Replace space with flexible whitespace matching
+  regexPattern = regexPattern.replace(/ /g, '\\s+');
+  return regexPattern;
+}
+
+/**
+ * Execute SEARCH command
+ * Searches the page's HTML content for text or regex patterns
+ */
+export async function executeSearchCommand(message: SearchCommandMessage): Promise<DOMExecutorResult> {
+  const { sourceType, pattern, ignoreCase, extractPattern } = message.payload;
+
+  try {
+    // Get the document from the currently selected frame
+    const doc = getCurrentFrameDocument() || document;
+
+    // Search in the page's HTML content (like original iMacros)
+    const content = doc.documentElement.innerHTML;
+
+    let searchRegex: RegExp;
+    const flags = ignoreCase ? 'i' : '';
+
+    if (sourceType === 'TXT') {
+      // Convert TXT pattern to regex with wildcard support
+      const regexPattern = txtPatternToRegex(pattern);
+      try {
+        searchRegex = new RegExp(regexPattern, flags);
+      } catch (e) {
+        return {
+          success: false,
+          errorCode: DOM_ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `Invalid TXT pattern: ${pattern}`,
+        };
+      }
+    } else {
+      // REGEXP - use pattern directly
+      try {
+        searchRegex = new RegExp(pattern, flags);
+      } catch (e) {
+        return {
+          success: false,
+          errorCode: DOM_ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `Invalid regular expression: ${pattern}`,
+        };
+      }
+    }
+
+    const match = searchRegex.exec(content);
+
+    if (!match) {
+      return {
+        success: false,
+        errorCode: DOM_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: `Pattern not found: ${pattern}`,
+      };
+    }
+
+    // Determine what to extract
+    let extractedValue = match[0];
+
+    if (extractPattern && sourceType === 'REGEXP') {
+      // Replace $1, $2, etc. with captured groups
+      extractedValue = extractPattern.replace(/\$(\d{1,2})/g, (_, n) => {
+        const groupIndex = parseInt(n, 10);
+        return groupIndex < match.length ? match[groupIndex] : '';
+      });
+    }
+
+    return {
+      success: true,
+      errorCode: DOM_ERROR_CODES.OK,
+      extractedData: extractedValue,
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: DOM_ERROR_CODES.EXECUTION_ERROR,
+      errorMessage: `SEARCH execution error: ${errorMessage}`,
+    };
+  }
+}
+
 // ===== Message Handler =====
 
 /**
  * Message types for DOM executor
  */
-export type DOMCommandMessage = TagCommandMessage | ClickCommandMessage | EventCommandMessage;
+export type DOMCommandMessage = TagCommandMessage | ClickCommandMessage | EventCommandMessage | SearchCommandMessage;
 
 /**
  * Handle incoming command message and execute
@@ -1093,6 +1304,9 @@ export async function handleDOMCommand(message: DOMCommandMessage): Promise<DOME
 
     case 'EVENT_COMMAND':
       return executeEventCommand(message as EventCommandMessage);
+
+    case 'SEARCH_COMMAND':
+      return executeSearchCommand(message as SearchCommandMessage);
 
     default:
       return {
@@ -1137,7 +1351,8 @@ export function setupDOMExecutorListener(): void {
     // Check if this is a DOM command message
     if (message.type === 'TAG_COMMAND' ||
         message.type === 'CLICK_COMMAND' ||
-        message.type === 'EVENT_COMMAND') {
+        message.type === 'EVENT_COMMAND' ||
+        message.type === 'SEARCH_COMMAND') {
 
       // Execute the command asynchronously
       handleDOMCommand(message as DOMCommandMessage)

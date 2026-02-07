@@ -37,7 +37,8 @@ export interface ContentScriptMessage {
 export type ContentScriptMessageType =
   | 'TAG_COMMAND'
   | 'CLICK_COMMAND'
-  | 'EVENT_COMMAND';
+  | 'EVENT_COMMAND'
+  | 'SEARCH_COMMAND';
 
 /**
  * Element selector specification for TAG command
@@ -188,13 +189,37 @@ export interface EventCommandMessage extends ContentScriptMessage {
   };
 }
 
+// Import SearchSourceType from extraction.ts to avoid duplicate definitions
+import type { SearchSourceType } from './extraction';
+
+/**
+ * Message for SEARCH command
+ */
+export interface SearchCommandMessage extends ContentScriptMessage {
+  type: 'SEARCH_COMMAND';
+  payload: {
+    /** Search source type: TXT (with wildcards) or REGEXP */
+    sourceType: SearchSourceType;
+    /** The search pattern */
+    pattern: string;
+    /** Case insensitive search */
+    ignoreCase: boolean;
+    /** Extract pattern for REGEXP (e.g., "$1") */
+    extractPattern?: string;
+  };
+}
+
+// Re-export for convenience
+export type { SearchSourceType };
+
 /**
  * Union type for all content script messages
  */
 export type InteractionMessage =
   | TagCommandMessage
   | ClickCommandMessage
-  | EventCommandMessage;
+  | EventCommandMessage
+  | SearchCommandMessage;
 
 /**
  * Response from content script after executing a command

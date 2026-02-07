@@ -177,14 +177,34 @@ export function appendExtract(ctx: CommandContext, value: string): void {
 }
 
 /**
- * Escape regex special characters in a string
+ * Escape regex special characters in a string, preserving * as wildcard
+ * Matches original iMacros TagHandler.escapeChars behavior
  */
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function escapeRegexPreserveWildcard(str: string): string {
+  // Escape all regex special chars EXCEPT * (which becomes wildcard)
+  // Original escapes: ^$.+?=!:|\/()[]{}
+  return str.replace(/[\^$.+?=!:|\\/()\[\]{}]/g, '\\$&');
 }
 
 /**
- * Search for text pattern in content
+ * Convert a TXT pattern to regex (for SEARCH SOURCE=TXT:pattern)
+ * - Escapes regex special chars except *
+ * - Converts * to match any characters including newlines
+ * - Converts space to match any whitespace
+ */
+export function txtPatternToRegex(pattern: string): string {
+  let regexPattern = escapeRegexPreserveWildcard(pattern);
+  // Replace * with pattern that matches anything including newlines
+  regexPattern = regexPattern.replace(/\*/g, '(?:[\\r\\n]|.)*');
+  // Replace space with flexible whitespace matching
+  regexPattern = regexPattern.replace(/ /g, '\\s+');
+  return regexPattern;
+}
+
+/**
+ * Search for text pattern in content (with iMacros wildcard support)
+ * - * matches any characters (including newlines)
+ * - Spaces match any whitespace
  */
 export function searchText(
   content: string,
@@ -192,16 +212,21 @@ export function searchText(
   ignoreCase: boolean = false
 ): { found: boolean; match: string | null; index: number } {
   const flags = ignoreCase ? 'i' : '';
-  const escapedPattern = escapeRegex(pattern);
-  const regex = new RegExp(escapedPattern, flags);
-  const match = content.match(regex);
+  const regexPattern = txtPatternToRegex(pattern);
 
-  if (match) {
-    return {
-      found: true,
-      match: match[0],
-      index: match.index ?? -1,
-    };
+  try {
+    const regex = new RegExp(regexPattern, flags);
+    const match = content.match(regex);
+
+    if (match) {
+      return {
+        found: true,
+        match: match[0],
+        index: match.index ?? -1,
+      };
+    }
+  } catch (e) {
+    // Invalid regex pattern
   }
 
   return { found: false, match: null, index: -1 };
@@ -310,8 +335,8 @@ export const extractHandler: CommandHandler = async (ctx): Promise<CommandResult
  *   SEARCH SOURCE=TXT:<pattern> IGNORE_CASE=YES
  *   SEARCH SOURCE=REGEXP:<pattern> EXTRACT=$1
  *
- * This is a stub that needs access to page content.
- * In the executor context, it will be replaced by a platform-specific handler.
+ * Sends SEARCH_COMMAND to content script which searches document.documentElement.innerHTML.
+ * Falls back to local search in !URLCURRENT if no content script sender is available.
  */
 export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult> => {
   const sourceParam = ctx.getParam('SOURCE');
@@ -334,14 +359,67 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
     };
   }
 
+  // Validate: EXTRACT parameter only makes sense with REGEXP
+  const extractPattern = ctx.getParam('EXTRACT');
+  if (extractPattern && parsed.type !== 'REGEXP') {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: 'EXTRACT has sense only for REGEXP search',
+    };
+  }
+
   // Get optional parameters
   const ignoreCaseParam = ctx.getParam('IGNORE_CASE');
   const ignoreCase = ignoreCaseParam?.toUpperCase() === 'YES';
 
-  const extractPattern = ctx.getParam('EXTRACT');
+  // Try to use content script sender (for browser context)
+  // Dynamically import to avoid circular dependencies
+  try {
+    const interactionModule = await import('./interaction');
+    const sender = interactionModule.getContentScriptSender();
 
-  // For now, since we don't have DOM access, we'll search in a placeholder
-  // This will be overridden by the browser-specific implementation
+    // Check if we have a real sender (not the noop)
+    // The noop sender is used when no content script is available
+    const message = {
+      id: `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      type: 'SEARCH_COMMAND' as const,
+      timestamp: Date.now(),
+      payload: {
+        sourceType: parsed.type,
+        pattern: parsed.pattern,
+        ignoreCase,
+        extractPattern: extractPattern || undefined,
+      },
+    };
+
+    ctx.log('debug', `SEARCH: type=${parsed.type}, pattern=${parsed.pattern}, ignoreCase=${ignoreCase}`);
+
+    const response = await sender.sendMessage(message as any);
+
+    if (response.success && response.extractedData !== undefined) {
+      appendExtract(ctx, response.extractedData);
+      return {
+        success: true,
+        errorCode: IMACROS_ERROR_CODES.OK,
+        output: response.extractedData,
+      };
+    }
+
+    if (!response.success) {
+      ctx.log('warn', `SEARCH pattern not found: ${parsed.pattern}`);
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: response.error || `Pattern not found: ${parsed.pattern}`,
+      };
+    }
+  } catch (e) {
+    // Content script sender not available, fall back to local search
+    ctx.log('debug', 'SEARCH: Content script sender not available, using local fallback');
+  }
+
+  // Fallback: search in !URLCURRENT (for non-browser contexts or testing)
   const content = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
 
   let result: { found: boolean; match: string | null };
@@ -349,7 +427,7 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
   if (parsed.type === 'TXT') {
     result = searchText(content, parsed.pattern, ignoreCase);
   } else {
-    const regexResult = searchRegexp(content, parsed.pattern, ignoreCase, extractPattern);
+    const regexResult = searchRegexp(content, parsed.pattern, ignoreCase, extractPattern || undefined);
     result = { found: regexResult.found, match: regexResult.match };
   }
 

@@ -21,6 +21,7 @@ import {
   parseSearchSource,
   searchText,
   searchRegexp,
+  txtPatternToRegex,
   EXTRACT_DELIMITER,
 } from '@shared/commands/extraction';
 import {
@@ -472,6 +473,64 @@ describe('searchText', () => {
     expect(result.found).toBe(true);
     expect(result.match).toBe('function(arg)');
   });
+
+  // ----- Wildcard (*) support tests -----
+
+  it('supports * wildcard to match any characters', () => {
+    const wildcardContent = 'Order ID: ORD-12345-ABC completed';
+    const result = searchText(wildcardContent, 'ORD-*-ABC');
+    expect(result.found).toBe(true);
+    expect(result.match).toBe('ORD-12345-ABC');
+  });
+
+  it('supports * wildcard at end of pattern', () => {
+    const wildcardContent = 'Product: Widget Pro 2000 available';
+    const result = searchText(wildcardContent, 'Product:*');
+    expect(result.found).toBe(true);
+    expect(result.match).toContain('Product:');
+  });
+
+  it('supports * wildcard at start of pattern', () => {
+    const wildcardContent = 'Email: user@example.com';
+    const result = searchText(wildcardContent, '*@example.com');
+    expect(result.found).toBe(true);
+    expect(result.match).toContain('@example.com');
+  });
+
+  it('supports multiple * wildcards in pattern', () => {
+    const wildcardContent = 'REF-ABC-123-XYZ-456';
+    const result = searchText(wildcardContent, 'REF-*-XYZ-*');
+    expect(result.found).toBe(true);
+    expect(result.match).toBe('REF-ABC-123-XYZ-456');
+  });
+
+  it('matches across newlines with * wildcard', () => {
+    const multilineContent = 'Start\nMiddle\nEnd';
+    const result = searchText(multilineContent, 'Start*End');
+    expect(result.found).toBe(true);
+    expect(result.match).toContain('Start');
+    expect(result.match).toContain('End');
+  });
+
+  it('treats space as flexible whitespace matcher', () => {
+    const spacedContent = 'hello     world';
+    const result = searchText(spacedContent, 'hello world');
+    expect(result.found).toBe(true);
+    expect(result.match).toBe('hello     world');
+  });
+
+  it('matches space with tab or newline', () => {
+    const tabContent = 'hello\tworld';
+    const result = searchText(tabContent, 'hello world');
+    expect(result.found).toBe(true);
+    expect(result.match).toBe('hello\tworld');
+  });
+
+  it('combines wildcard and space matching', () => {
+    const complexContent = 'Order:   ABC-123   status: complete';
+    const result = searchText(complexContent, 'Order: * status: *');
+    expect(result.found).toBe(true);
+  });
 });
 
 // ===== searchRegexp Unit Tests =====
@@ -547,5 +606,94 @@ describe('searchRegexp', () => {
     expect(result.found).toBe(true);
     // $5 is out of range, so it should be replaced with empty string
     expect(result.match).toBe('user-');
+  });
+});
+
+// ===== txtPatternToRegex Unit Tests =====
+
+describe('txtPatternToRegex', () => {
+  it('escapes regex special characters except *', () => {
+    const pattern = txtPatternToRegex('$100.00');
+    expect(pattern).toContain('\\$');
+    expect(pattern).toContain('\\.');
+    // Should be able to create a valid regex
+    expect(() => new RegExp(pattern)).not.toThrow();
+  });
+
+  it('converts * to match-any pattern', () => {
+    const pattern = txtPatternToRegex('hello*world');
+    expect(pattern).toContain('(?:[\\r\\n]|.)*');
+    expect(pattern).not.toContain('\\*');
+  });
+
+  it('converts space to flexible whitespace matcher', () => {
+    const pattern = txtPatternToRegex('hello world');
+    expect(pattern).toContain('\\s+');
+    expect(pattern).not.toContain(' ');
+  });
+
+  it('handles patterns with multiple * wildcards', () => {
+    const pattern = txtPatternToRegex('*foo*bar*');
+    const regex = new RegExp(pattern);
+    expect(regex.test('prefix foo middle bar suffix')).toBe(true);
+    expect(regex.test('foo bar')).toBe(true);
+    expect(regex.test('foo only')).toBe(false);
+  });
+
+  it('handles patterns with special chars and wildcards', () => {
+    const pattern = txtPatternToRegex('Price: $* (USD)');
+    const regex = new RegExp(pattern);
+    expect(regex.test('Price: $100.00 (USD)')).toBe(true);
+    expect(regex.test('Price:  $999  (USD)')).toBe(true);
+  });
+
+  it('preserves * as wildcard, not literal asterisk', () => {
+    const pattern = txtPatternToRegex('file*');
+    const regex = new RegExp(pattern);
+    expect(regex.test('file.txt')).toBe(true);
+    expect(regex.test('filename')).toBe(true);
+    expect(regex.test('files123')).toBe(true);
+  });
+});
+
+// ===== EXTRACT parameter validation tests =====
+
+describe('SEARCH EXTRACT parameter validation', () => {
+  let executor: MacroExecutor;
+
+  beforeEach(() => {
+    const setup = createTestExecutor();
+    executor = setup.executor;
+  });
+
+  afterEach(() => {
+    setBrowserBridge(null as unknown as BrowserBridge);
+  });
+
+  it('returns error when EXTRACT is used with SOURCE=TXT', async () => {
+    const script = buildSearchScript(
+      'https://example.com/test',
+      'SEARCH SOURCE=TXT:test EXTRACT=$1'
+    );
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toContain('EXTRACT has sense only for REGEXP');
+  });
+
+  it('allows EXTRACT with SOURCE=REGEXP', async () => {
+    const script = buildSearchScript(
+      'https://user@domain.com/path',
+      'SEARCH SOURCE=REGEXP:(\\w+)@(\\w+) EXTRACT=$1'
+    );
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.extractData).toContain('user');
   });
 });

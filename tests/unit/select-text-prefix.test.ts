@@ -32,8 +32,11 @@ describe('Select by visible text ($prefix)', () => {
       expect(matchesSelectTextPattern('UNITED STATES', 'united*')).toBe(true);
     });
 
-    it('is case sensitive for exact match', () => {
-      expect(matchesSelectTextPattern('United States', 'united states')).toBe(false);
+    // Original iMacros uses case-insensitive matching for all $ text patterns (MacroPlayer.js:2943)
+    it('is case insensitive for exact match (matches original iMacros)', () => {
+      expect(matchesSelectTextPattern('United States', 'united states')).toBe(true);
+      expect(matchesSelectTextPattern('CANADA', 'canada')).toBe(true);
+      expect(matchesSelectTextPattern('germany', 'GERMANY')).toBe(true);
     });
   });
 

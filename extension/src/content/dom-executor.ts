@@ -580,21 +580,32 @@ export function parseMultiSelectValues(content: string): string[] {
 /**
  * Check if an option text matches a select text pattern (used with $ prefix)
  * Supports wildcard (*) matching and exact matching
+ * Matches original iMacros behavior where * matches any characters including newlines
  */
 export function matchesSelectTextPattern(optionText: string, pattern: string): boolean {
   if (pattern.includes('*')) {
     const regexPattern = pattern
       .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/\*/g, '.*');
-    return new RegExp(`^${regexPattern}$`, 'i').test(optionText);
+      .replace(/\*/g, '(?:[\\r\\n]|.)*');  // Match newlines like original iMacros
+    return new RegExp(`^\\s*${regexPattern}\\s*$`, 'i').test(optionText);
   }
-  return optionText === pattern;
+  // Case-insensitive exact match with whitespace tolerance (like original)
+  return optionText.trim().toLowerCase() === pattern.trim().toLowerCase();
+}
+
+/**
+ * Result of setElementContent operation
+ */
+interface SetContentResult {
+  success: boolean;
+  errorMessage?: string;
 }
 
 /**
  * Set content on a form element
+ * Returns detailed result for error propagation to UI logger
  */
-function setElementContent(element: Element, content: string): boolean {
+function setElementContent(element: Element, content: string): SetContentResult {
   // Handle EVENT: prefix commands
   if (content.toUpperCase().startsWith('EVENT:')) {
     const eventCommand = content.substring(6).toUpperCase();
@@ -603,8 +614,7 @@ function setElementContent(element: Element, content: string): boolean {
       // Get the download URL from the element
       const url = element.getAttribute('href') || element.getAttribute('src') || '';
       if (!url) {
-        console.warn('[iMacros] EVENT:SAVETARGETAS - no href or src on element');
-        return false;
+        return { success: false, errorMessage: 'EVENT:SAVETARGETAS - no href or src on element' };
       }
 
       // Try to download via temporary anchor click
@@ -637,12 +647,11 @@ function setElementContent(element: Element, content: string): boolean {
         });
       }
 
-      return true;
+      return { success: true };
     }
 
     // Unknown EVENT: command
-    console.warn(`[iMacros] Unknown EVENT command: ${eventCommand}`);
-    return false;
+    return { success: false, errorMessage: `Unknown EVENT command: ${eventCommand}` };
   }
 
   // Handle input elements
@@ -658,13 +667,12 @@ function setElementContent(element: Element, content: string): boolean {
       element.checked = shouldCheck;
       dispatchInputEvent(element, 'input');
       element.dispatchEvent(new Event('change', { bubbles: true }));
-      return true;
+      return { success: true };
     }
 
     // Handle file input (not supported in content script)
     if (inputType === 'file') {
-      console.warn('[iMacros] File input not supported in content script');
-      return false;
+      return { success: false, errorMessage: 'File input not supported in content script' };
     }
 
     // Handle other input types (text, password, email, etc.)
@@ -672,7 +680,7 @@ function setElementContent(element: Element, content: string): boolean {
     element.value = content;
     dispatchInputEvent(element, 'input');
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
+    return { success: true };
   }
 
   // Handle textarea
@@ -681,7 +689,7 @@ function setElementContent(element: Element, content: string): boolean {
     element.value = content;
     dispatchInputEvent(element, 'input');
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
+    return { success: true };
   }
 
   // Handle select
@@ -690,7 +698,7 @@ function setElementContent(element: Element, content: string): boolean {
     if (content.includes(':%') && element.multiple) {
       // Multi-select: %"val1":%"val2":%"val3"
       const values = parseMultiSelectValues(content);
-      // Deselect all first
+      // Deselect all first (like original iMacros)
       for (let i = 0; i < element.options.length; i++) {
         element.options[i].selected = false;
       }
@@ -703,13 +711,31 @@ function setElementContent(element: Element, content: string): boolean {
     } else if (content.startsWith('%')) {
       // Select by value
       const value = content.substring(1);
-      element.value = value;
+      // Check if value exists (like original iMacros error code 924)
+      let found = false;
+      for (let i = 0; i < element.options.length; i++) {
+        if (element.options[i].value === value) {
+          element.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return {
+          success: false,
+          errorMessage: `Selected entry not available: '%${value}' [Box has ${element.options.length} entries]`
+        };
+      }
     } else if (content.startsWith('#')) {
       // Select by index (1-based)
       const index = parseInt(content.substring(1), 10) - 1;
-      if (index >= 0 && index < element.options.length) {
-        element.selectedIndex = index;
+      if (index < 0 || index >= element.options.length) {
+        return {
+          success: false,
+          errorMessage: `Selected entry not available: ${index + 1} [Box has ${element.options.length} entries]`
+        };
       }
+      element.selectedIndex = index;
     } else if (content.startsWith('$')) {
       // Select by visible text with optional wildcard
       const textPattern = content.substring(1);
@@ -723,19 +749,31 @@ function setElementContent(element: Element, content: string): boolean {
         }
       }
       if (!found) {
-        console.warn(`[iMacros] No option matching text pattern: ${textPattern}`);
+        // Match original iMacros error behavior (error code 924)
+        return {
+          success: false,
+          errorMessage: `Selected entry not available: '$${textPattern}' [Box has ${element.options.length} entries]`
+        };
       }
     } else {
       // Select by visible text (plain)
+      let found = false;
       for (let i = 0; i < element.options.length; i++) {
         if (element.options[i].text === content || element.options[i].value === content) {
           element.selectedIndex = i;
+          found = true;
           break;
         }
       }
+      if (!found) {
+        return {
+          success: false,
+          errorMessage: `Selected entry not available: '${content}' [Box has ${element.options.length} entries]`
+        };
+      }
     }
     element.dispatchEvent(new Event('change', { bubbles: true }));
-    return true;
+    return { success: true };
   }
 
   // Handle contenteditable
@@ -743,17 +781,16 @@ function setElementContent(element: Element, content: string): boolean {
     focusElement(element);
     element.textContent = content;
     dispatchInputEvent(element, 'input');
-    return true;
+    return { success: true };
   }
 
   // For other elements, try clicking (links, buttons, etc.)
   if (element instanceof HTMLAnchorElement || element instanceof HTMLButtonElement) {
     dispatchClick(element);
-    return true;
+    return { success: true };
   }
 
-  console.warn('[iMacros] Cannot set content on element:', element.tagName);
-  return false;
+  return { success: false, errorMessage: `Cannot set content on element: ${element.tagName}` };
 }
 
 /**
@@ -848,12 +885,12 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
 
     // Handle content setting
     if (action.content !== undefined) {
-      const setSuccess = setElementContent(element, action.content);
-      if (!setSuccess) {
+      const setResult = setElementContent(element, action.content);
+      if (!setResult.success) {
         return {
           success: false,
           errorCode: DOM_ERROR_CODES.EXECUTION_ERROR,
-          errorMessage: 'Failed to set element content',
+          errorMessage: setResult.errorMessage || 'Failed to set element content',
           elementInfo: getElementInfo(element),
         };
       }

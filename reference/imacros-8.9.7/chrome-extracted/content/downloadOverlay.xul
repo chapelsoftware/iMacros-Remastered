@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/commdlg.css" type="text/css"?>
+
+<overlay id="imacros-download-dialog-overlay" 
+         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/utils.js" />
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/downloadOverlay.js" />
+
+        
+</overlay>

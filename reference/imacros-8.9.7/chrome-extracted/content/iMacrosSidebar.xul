@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/sidebar.css" type="text/css"?>
+
+<!DOCTYPE window SYSTEM "chrome://imacros/locale/labels.dtd">
+
+<window id="Recorder" title="&imacros.window.recorder;" 
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+        >
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/version.js" />
+  <!-- TreeView control code -->
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/iMacrosSidebar.js" />
+
+  <!-- Popup menu -->
+  <menupopup id="my_popup" onpopupshowing="MPopup_onShowing(event);">
+    <menuitem id="addbookmark" label="&imacros.menuitem.addbookmark;"
+	      oncommand="MPopup_AddBookmark('0');"
+              flex="1" />
+    <menuitem id="editmacro" label="&imacros.button.edit.macro;"
+	      oncommand="MPopup_EditMacro();"
+              flex="1" />
+    <menuitem id="newfolder"
+              label="&imacros.menuitem.new.folder;"
+	      oncommand="MPopup_CreateFolder();"
+              flex="1" />
+    <menuitem id="renameitem"
+              label="&imacros.menuitem.rename;"
+	      oncommand="MPopup_renameItem();"
+              flex="1" />
+    <menuitem id="remove"
+              label="&imacros.menuitem.remove;"
+	      oncommand="MPopup_removeItem();"
+              flex="1" />    
+  </menupopup>
+
+  <deck id="tree-box-deck" selectedIndex="0"
+        flex="1">
+    <vbox id="tree-box">
+      <tree id="treeview"
+            seltype="single"
+            hidecolumnpicker="true"
+            flex="1"
+            onselect="MTree_onSelect(event);"
+            ondblclick="MTree_onDblClick(event);"
+            >
+        <treecols>
+          <treecol id="ims-mtree-col"
+                   hideheader="true"
+                   flex="1"
+                   primary="true"
+                   />
+        </treecols>
+        <treechildren flex="1"
+                      contextmenu="my_popup"
+                      >
+          <treeitem container="true"
+                    open="true">
+            <treerow>
+              <treecell id="ims-mtree-root"
+                        label="&imacros.treecell.favorites;" />
+            </treerow>
+            <treechildren flex="1" id="favtree"/>
+          </treeitem>
+        </treechildren>
+        
+      </tree>
+
+      <!--Rename option	-->
+      <hbox>
+        <textbox id="editname"
+                 onkeypress="onEditKeypress(event)"
+                 flex="1" collapsed="true" />
+        <button id="im-rename-button" label="&imacros.button.rename;"
+                collapsed="true"
+                oncommand="MTree_renameItem();"  />
+      </hbox>
+    </vbox>
+
+    <vbox id="boxlistbox" flex="1">
+      <vbox id="boxstat" height="32">
+        <label id="replaystat" value="" flex="1"/>
+        <label id="delaystat" value="" flex="1"/>
+      </vbox>
+      <listbox id="listbox" flex="1"/>
+    </vbox>
+
+    <vbox id="path-error-dialog" flex="1">
+      <description id="path-error-text"
+                   class="plain small-margin"
+                   readonly="true"
+                   multiline="true" >
+        Can not open $path$ directory to read macros.
+        Would you like to open preference dialog to correct
+        path settings?
+      </description>
+      <hbox>
+        <spacer flex="1"/>
+        <button label="&imacros.keydlg6.button.yes;"
+                oncommand="correctPathSettings()"/>
+        <spacer flex="1"/>
+      </hbox>
+    </vbox>
+    
+  </deck>
+  
+  <splitter state="open"
+            collapse="after"
+            resizebefore="flex"
+            resizeafter="closest"/>
+  
+  <!--Main tabs	-->
+  <hbox id="mainpanel">
+    <vbox flex="1">
+      <tabbox id="im-tabbox">
+	<tabs id="im-tabs" >
+	  <tab id="im-play-tab" label="&imacros.tab.play;" flex="1"/>
+	  <tab id="im-record-tab" label="&imacros.tab.rec;" flex="1"/>
+	  <tab id="im-edit-tab" label="Manage" flex="1"/>
+	</tabs>
+	<tabpanels id="im-tabpanels" flex="1">
+
+	  <!--Play panel-->
+	  <tabpanel id="im-play-panel" orient="vertical">
+            <stack >
+              <box id="im-play-button-decoration"/>
+	      <button id="im-play-button"
+	              label="&imacros.button.play;"
+                      disabled="true"
+                      oncommand="mainwindow.iMacros.play();" />
+            </stack>
+	    <button id="im-pause-button"
+                    label="&imacros.button.pause;"
+                    oncommand="mainwindow.iMacros.pause();"
+                    disabled="true"/>
+	    <button id="im-stopplay-button"
+                    label="&imacros.button.stop;"
+                    oncommand="mainwindow.iMacros.stop();"
+                    disabled="true"/>
+            <separator class="thin"/>
+            <vbox>
+              <label value="&imacros.label.repeat.macro;"/>
+              <grid flex="1">
+                <columns>
+                  <column flex="1"/>
+                  <column flex="1"/>
+                </columns>
+                <rows>
+                  <row>
+                    <label value="&imacros.label.current;"/>
+                    <label value="&imacros.label.max;"/>
+                  </row>
+                  <row>
+                    <textbox id="im-curloop-textbox"
+                             value="1" disabled="true"/>
+                    <textbox id="im-loopval-textbox" value="3"
+                             maxlength="5"
+                             oninput="mainwindow.iMacros.panel.onLoopValueInput();"
+                             onchange="mainwindow.iMacros.panel.onLoopValueChange();"
+                             />
+                  </row>
+                </rows>
+              </grid>
+              <button id="im-playloop-button"
+                      label="&imacros.button.play.loop;"
+                      oncommand="mainwindow.iMacros.playLoop();"
+                      disabled="true"/>
+            </vbox>
+            <spacer height="10px"/>
+            <deck id="logo-message-deck" selectedIndex="1">
+              <vbox id="message-box-container" flex="1">
+                <box id="imacros-messages" flex="1">
+                  <textbox id="imacros-message-box" flex="1"
+                             value="&imacros.message.error;"
+                             class="plain"
+                             readonly="true"
+                             msgtype="message"
+                             multiline="true" />
+                </box>
+                <hbox id="message-box-buttons-container">
+                  <toolbarbutton id="message-box-button-edit"
+                                 oncommand="mainwindow.iMacros.panel.mboxEdit();"/>
+                  <toolbarbutton id="message-box-button-help"
+                                 oncommand="mainwindow.iMacros.panel.mboxHelp()"/>
+                  <toolbarbutton id="message-box-button-close"
+                                 oncommand="mainwindow.iMacros.panel.mboxClose()"/>
+                </hbox>
+              </vbox>
+              <vbox id="imacros-ad-container">
+			
+			    <hbox pack="center" id="imacros-ad-text-container" collapsed="true">
+			      <label id="imacros-ad-text"
+					 class="text-link"
+					 value=""
+					 href=""/>
+			    </hbox>
+			   
+ 			    <hbox pack="center">
+	              <image id="imacros-ad-image"/>
+	            </hbox>
+              </vbox>
+	    </deck>
+            
+	  </tabpanel>
+
+	  <!--Record panel -->
+	  <tabpanel id="im-record-panel" orient="vertical">
+            <stack>
+              <box id="im-record-button-decoration"/>
+	      <button id="im-record-button"
+                      label="&imacros.button.record;"
+                      oncommand="mainwindow.iMacros.record();" />
+            </stack>
+	    <button id="im-save-button" label="&imacros.button.save;"
+                    oncommand="mainwindow.iMacros.saveMacroAs();"
+                    disabled="true"/>
+	    <button id="im-stoprecord-button" label="&imacros.button.stop;"
+                    oncommand="mainwindow.iMacros.stop();"
+                    disabled="true"/>
+	    <spacer flex="1" />
+	    <vbox>
+	      <hbox>
+		<button id="im-recorddlg-button" flex="1"
+                        label="Record options"
+                        oncommand="mainwindow.iMacros.openRecordPrefDlg();" />
+		<!-- <vbox align="center" pack="center"> -->
+		<!--   <label id="im-recordmode-label" value="Auto"/> -->
+		<!-- </vbox> -->
+	      </hbox>
+	      <button id="im-saveas-button" label="&imacros.button.saveas;"
+                      oncommand="mainwindow.iMacros.savePageAs();"/>
+              <button id="im-screenshot-button" label="Take Screenshot"
+                      oncommand="mainwindow.iMacros.takeScreenshot();"/>
+	      <button id="im-cleancache-button"
+                      label="&imacros.button.del.cache.c1;"
+                      oncommand="mainwindow.iMacros.clearCookies();"/>
+              <button id="im-waitreplay-button"
+                      label="&imacros.button.wait.during0;"
+                      oncommand="mainwindow.iMacros.addWaitCommand();"
+                      disabled="true"/>
+	    </vbox>
+	  </tabpanel>
+	  <!-- Manage panel -->
+	  <tabpanel id="im-edit-panel" orient="vertical">
+	    <button id="im-edit-button"
+                    label="&imacros.button.edit.macro;"
+                    disabled="true"
+                    oncommand="mainwindow.iMacros.editSelectedMacro();"/>
+	    <button id="im-share-button"
+                    label="&imacros.button.share.macro;"
+                    disabled="true"
+                    oncommand="mainwindow.iMacros.share();"/>
+	    <button id="im-refresh-button" crop="end"
+                    label="&imacros.button.refresh.mac2;"
+                    oncommand="mainwindow.iMacros.panel.updateMacroTree();"/>
+	    <!--spacer height="5"/> -->
+	    <button id="im-preferences-button"
+                    label="&imacros.button.options;"
+                    oncommand="mainwindow.iMacros.showPrefDialog();"/>
+	    <button id="im-help-button" label="&imacros.button.help;"
+                    oncommand="mainwindow.iMacros.addTab('http://wiki.imacros.net/iMacros_for_Firefox');"/>
+	    <spacer flex="1"/>
+            <groupbox >
+              <caption label="Alertfox"/>
+              <vbox>
+              <button id="im-local-test-button"
+                      label="&imacros.button.af.local.test;"
+                      disabled="true"
+                      oncommand="mainwindow.iMacros.runLocalTest();"/>
+              <hbox>
+              <checkbox id="im-test-for-idrone"
+                        label="&imacros.label.af.idrone.test;" />
+              <label id="im-test-for-idrone-link"
+                     align="center"
+	             value="(?)"
+                     class="text-link"
+                     href="http://wiki.imacros.net/AlertFox_allowed_iMacros_commands"/>
+              </hbox>
+              <button id="im-online-test-button"
+                      label="&imacros.button.af.online.test;"
+                      disabled="true"
+                      oncommand="mainwindow.iMacros.uploadMacro(false);"/>
+              <button id="im-af-upload-button"
+                      label="&imacros.button.af.upload;"
+                      disabled="true"
+                      oncommand="mainwindow.iMacros.uploadMacro(true);"/>
+              </vbox>
+            </groupbox>
+	    <!-- <vbox> -->
+	    <!--   <hbox> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--     <label align="center" -->
+            <!--            value="&imacros.label.imacros.for.3;"/> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--   </hbox> -->
+	    <!--   <hbox> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--     <image id="mainlogo_1"/> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--   </hbox> -->
+	    <!--   <hbox> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--     <label align="center" -->
+	    <!--            value="&imacros.label.home.page;" -->
+            <!--            class="text-link" -->
+            <!--            href="http://www.iopus.com/imacros/firefox/?ref=fxhome" -->
+            <!--            /> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--   </hbox> -->
+	    <!--   <hbox> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--     <label align="center" -->
+            <!--            value="&imacros.label.about.iopus;" -->
+            <!--            class="text-link" -->
+            <!--            href="http://forum.iopus.com/viewforum.php?f=11"/> -->
+	    <!--     <spacer flex="1"/> -->
+	    <!--   </hbox> -->
+	    <!-- </vbox> -->
+	  </tabpanel>
+	</tabpanels>
+      </tabbox>
+    </vbox>
+  </hbox>
+
+</window>

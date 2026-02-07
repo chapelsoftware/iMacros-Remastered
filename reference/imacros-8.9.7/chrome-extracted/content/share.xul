@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="chrome://global/skin/" type="text/css"?>
+<?xml-stylesheet href="chrome://imacros/skin/imacros.css" type="text/css"?>
+
+<!DOCTYPE dialog SYSTEM "chrome://imacros/locale/labels.dtd">
+
+<dialog id="share_window" title="&imacros.share.title;"
+	xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+	buttons="cancel"
+	buttonlabelcancel="&imacros.button.close;"
+	ondialogcancel="close();">
+
+  <script type="application/x-javascript"
+          src="chrome://imacros/content/share.js"/>
+  
+
+
+  <description id="text" maxwidth="500">
+    &imacros.share.label.h1;
+    <hbox>
+      <label value="(" style="margin-right: 0px;"/>
+      <label class="text-link" value="?" style="margin: 0px"
+             href="http://rd.imacros.net/redirect.aspx?type=FX&amp;helpid=sharemacros"/>
+      <label value=")" style="margin-left: 0px;"/>
+    </hbox>
+  </description>
+
+  <vbox >
+    <groupbox>
+      <vbox>
+        <label value="&imacros.share.label.h2;"/>
+      <hbox pack="center">
+        <button id="copy-to-clipboard-btn"
+                minwidth="200" oncommand="link0();" >
+          <label value="&imacros.share.clipboard;"/>
+          <spacer width="5px"/>
+          <image src="chrome://imacros/skin/clipboard.png"/>
+        </button>
+      </hbox>
+      </vbox>
+      <hbox pack="center">
+        <textbox id="link" value=""
+                 onclick="link0();"
+                 readonly="true"
+                 multiline="true"
+                 maxwidth="450"
+                 flex="1" />
+      </hbox>
+      <description id="text2" maxwidth="490">
+        &imacros.share.label.h3;
+      </description>
+      
+      <hbox pack="center" >
+        <label class="text-link"
+               value="&imacros.share.top5url;"
+               href="http://www.iopus.com/guides/best-short-url.htm"/>
+      </hbox>
+    </groupbox>
+  </vbox>
+
+  <groupbox>
+    <vbox>
+      <label value="&imacros.share.label.h4;"/>
+    <hbox align="center" pack="center" >
+      <button minwidth="200" oncommand="link2();">
+        <label value="&imacros.share.email;"/>
+        <spacer width="5px"/>
+        <image src="chrome://imacros/skin/sendmail.png"/>
+      </button>
+    </hbox>
+    </vbox>
+  </groupbox>
+
+  <groupbox>
+    <vbox>
+      <label value="&imacros.share.label.h5;"/>
+    <hbox  pack="center">
+      <button minwidth="200" oncommand="link3();">
+        <label value="&imacros.share.bookmark;"/>
+        <spacer width="5px"/>
+        <image src="chrome://imacros/skin/bookmark.png"/>
+      </button>
+    </hbox>
+    </vbox>
+  </groupbox>
+
+</dialog>

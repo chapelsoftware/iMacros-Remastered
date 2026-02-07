@@ -241,9 +241,17 @@ function createBrowserHandlers(bridge) {
      * TAG CSS=.submit-btn EXTRACT=TXT
      */
     TAG: async (ctx) => {
-      // Get timeout from state variables
-      const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
-      const timeout = typeof timeoutStep === 'number' ? timeoutStep * 1000 : 30000;
+      // Get timeout from state variables (!TIMEOUT_TAG is specifically for TAG element wait)
+      const timeoutTag = ctx.state.getVariable('!TIMEOUT_TAG');
+      let timeout = 6000; // Default: 6 seconds (matches iMacros default)
+      if (typeof timeoutTag === 'number') {
+        timeout = timeoutTag * 1000;
+      } else if (typeof timeoutTag === 'string') {
+        const parsed = parseFloat(timeoutTag);
+        if (!isNaN(parsed)) {
+          timeout = parsed * 1000;
+        }
+      }
 
       // Parse position (may be relative)
       const posResult = parsePos(ctx.getParam('POS'));

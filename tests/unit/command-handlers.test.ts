@@ -523,18 +523,18 @@ describe('command-handlers', () => {
       expect(params.extract).toBe('TXT');
     });
 
-    it('uses default timeout of 30000ms when !TIMEOUT_STEP is not set', async () => {
+    it('uses default timeout of 6000ms when !TIMEOUT_TAG is not set', async () => {
       const ctx = createMockCtx([{ key: 'POS', value: '1' }]);
       await handlers.TAG(ctx);
 
       const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.timeout).toBe(30000);
+      expect(params.timeout).toBe(6000);
     });
 
-    it('uses !TIMEOUT_STEP * 1000 as timeout when set', async () => {
+    it('uses !TIMEOUT_TAG * 1000 as timeout when set', async () => {
       const ctx = createMockCtx(
         [{ key: 'POS', value: '1' }],
-        { '!TIMEOUT_STEP': 10 },
+        { '!TIMEOUT_TAG': 10 },
       );
       await handlers.TAG(ctx);
 
@@ -542,15 +542,26 @@ describe('command-handlers', () => {
       expect(params.timeout).toBe(10000);
     });
 
-    it('uses default timeout when !TIMEOUT_STEP is a string (non-number)', async () => {
+    it('uses default timeout when !TIMEOUT_TAG is a string (non-number)', async () => {
       const ctx = createMockCtx(
         [{ key: 'POS', value: '1' }],
-        { '!TIMEOUT_STEP': 'not-a-number' },
+        { '!TIMEOUT_TAG': 'not-a-number' },
       );
       await handlers.TAG(ctx);
 
       const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.timeout).toBe(30000);
+      expect(params.timeout).toBe(6000);
+    });
+
+    it('parses !TIMEOUT_TAG when set as string number (e.g., "5")', async () => {
+      const ctx = createMockCtx(
+        [{ key: 'POS', value: '1' }],
+        { '!TIMEOUT_TAG': '5' },
+      );
+      await handlers.TAG(ctx);
+
+      const params = bridge.executeTag.mock.calls[0][0];
+      expect(params.timeout).toBe(5000);
     });
 
     // ----- CONTENT with special values -----

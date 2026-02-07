@@ -1331,9 +1331,9 @@ describe('TAG Command Handler Integration (with mock ContentScriptSender)', () =
       expect(msg.payload.action.content).toBe('my\tquery');
     });
 
-    it('should send correct timeout from !TIMEOUT_STEP variable', async () => {
+    it('should send correct timeout from !TIMEOUT_TAG variable', async () => {
       const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT ATTR=NAME:q CONTENT=hello');
-      ctx.state.setVariable('!TIMEOUT_STEP', 10);
+      ctx.state.setVariable('!TIMEOUT_TAG', 10);
       const result = await tagHandler(ctx);
 
       expect(result.success).toBe(true);
@@ -1341,14 +1341,14 @@ describe('TAG Command Handler Integration (with mock ContentScriptSender)', () =
       expect(msg.payload.timeout).toBe(10000);
     });
 
-    it('should use default timeout of 30000ms when !TIMEOUT_STEP is not a number', async () => {
+    it('should use default timeout of 6000ms when !TIMEOUT_TAG is not a number', async () => {
       const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT ATTR=NAME:q CONTENT=hello');
-      ctx.state.setVariable('!TIMEOUT_STEP', 'invalid');
+      ctx.state.setVariable('!TIMEOUT_TAG', 'invalid');
       const result = await tagHandler(ctx);
 
       expect(result.success).toBe(true);
       const msg = sentMessages[0] as TagCommandMessage;
-      expect(msg.payload.timeout).toBe(30000);
+      expect(msg.payload.timeout).toBe(6000);
     });
   });
 

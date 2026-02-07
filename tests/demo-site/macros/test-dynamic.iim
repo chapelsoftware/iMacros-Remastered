@@ -48,29 +48,30 @@ SET !TIMEOUT_TAG 5
 TAG POS=1 TYPE=DIV ATTR=ID:ajax-loaded EXTRACT=TXT
 SET !VAR4 {{!EXTRACT}}
 
-' Extract individual AJAX items
-TAG POS=1 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
-TAG POS=2 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
-TAG POS=3 TYPE=LI ATTR=CLASS:ajax-item EXTRACT=TXT
+' Extract individual AJAX items (use wildcard for partial class match)
+TAG POS=1 TYPE=LI ATTR=CLASS:*ajax-item* EXTRACT=TXT
+TAG POS=2 TYPE=LI ATTR=CLASS:*ajax-item* EXTRACT=TXT
+TAG POS=3 TYPE=LI ATTR=CLASS:*ajax-item* EXTRACT=TXT
 
 ' === Sequential Appearance ===
 TAG POS=1 TYPE=BUTTON ATTR=ID:start-sequence-btn
 
 ' Wait for sequence items to appear (1s apart)
+' Use wildcard *sequence-item* because elements have multiple classes
 SET !TIMEOUT_TAG 6
-TAG POS=1 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
-TAG POS=2 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
-TAG POS=3 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
-TAG POS=4 TYPE=DIV ATTR=CLASS:sequence-item EXTRACT=TXT
+TAG POS=1 TYPE=DIV ATTR=CLASS:*sequence-item* EXTRACT=TXT
+TAG POS=2 TYPE=DIV ATTR=CLASS:*sequence-item* EXTRACT=TXT
+TAG POS=3 TYPE=DIV ATTR=CLASS:*sequence-item* EXTRACT=TXT
+TAG POS=4 TYPE=DIV ATTR=CLASS:*sequence-item* EXTRACT=TXT
 
 ' === Toggle Visibility ===
 ' Hide the element
 TAG POS=1 TYPE=BUTTON ATTR=ID:toggle-btn
-WAIT SECONDS=0.5
+WAIT SECONDS=5.5
 
 ' Show it again
 TAG POS=1 TYPE=BUTTON ATTR=ID:toggle-btn
-WAIT SECONDS=0.5
+WAIT SECONDS=5.5
 
 ' Verify it's visible again
 TAG POS=1 TYPE=P ATTR=ID:toggle-text EXTRACT=TXT

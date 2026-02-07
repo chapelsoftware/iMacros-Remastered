@@ -51,6 +51,26 @@ const DOWNLOADS_DIR = path.join(os.homedir(), 'Documents', 'iMacros', 'Downloads
   }
 });
 
+/**
+ * Load datasource content from file path.
+ * Resolves relative paths against DATASOURCES_DIR.
+ * @param {string} dsPath - Datasource file path (absolute or relative)
+ * @returns {string} CSV content
+ */
+function loadDatasource(dsPath) {
+  let resolvedPath = dsPath;
+  if (!path.isAbsolute(dsPath)) {
+    resolvedPath = path.join(DATASOURCES_DIR, dsPath);
+  }
+  log(`Loading datasource: ${resolvedPath}`);
+  if (!fs.existsSync(resolvedPath)) {
+    const errorMsg = `Datasource file not found: ${resolvedPath} (SET !DATASOURCE path: "${dsPath}", resolved to: "${resolvedPath}")`;
+    log(`ERROR: ${errorMsg}`);
+    throw new Error(errorMsg);
+  }
+  return stripBOM(fs.readFileSync(resolvedPath, 'utf8'));
+}
+
 // Log to a file for debugging
 const logFile = fs.createWriteStream(path.join(__dirname, 'native-host.log'), { flags: 'a' });
 function log(...args) {
@@ -242,6 +262,380 @@ async function nativeEval(expression) {
 }
 
 /**
+ * Execute a JavaScript macro file with iMacros JS API
+ *
+ * @param {string} macroPath - Path to the .js macro file
+ * @param {number} tabId - Browser tab ID
+ * @returns {Promise<{success: boolean, errorCode?: number, errorMessage?: string}>}
+ */
+async function playJsMacro(macroPath, tabId) {
+  try {
+    // Load the JavaScript file
+    const fullPath = path.isAbsolute(macroPath)
+      ? macroPath
+      : path.join(MACROS_DIR, macroPath);
+
+    if (!fs.existsSync(fullPath)) {
+      return {
+        success: false,
+        errorCode: -1,
+        errorMessage: `JavaScript macro file not found: ${macroPath}`
+      };
+    }
+
+    const content = stripBOM(fs.readFileSync(fullPath, 'utf8'));
+    log('Loaded JS macro, length:', content.length);
+
+    // Update status
+    updateTrayStatus('playing');
+    sendMessage({
+      type: 'STATUS_UPDATE',
+      payload: { status: 'playing', macro: macroPath }
+    });
+
+    // State for the iMacros JS API
+    let lastError = 0;
+    let lastErrorMessage = '';
+    let lastExtract = [];
+    let lastPerformance = 0;
+    const jsVariables = {};
+
+    // Create the iMacros JS API
+    const iMacrosApi = {
+      // iimPlay - play a macro file
+      iimPlay: async function(macroName) {
+        // Resolve macro path
+        let resolvedPath = macroName;
+        if (!macroName.includes('.')) {
+          resolvedPath = macroName + '.iim';
+        }
+
+        // Make path relative to macros dir
+        if (!path.isAbsolute(resolvedPath)) {
+          // Check if it's relative to current macro's directory
+          const macroDir = path.dirname(fullPath);
+          const relativePath = path.join(macroDir, resolvedPath);
+          if (fs.existsSync(relativePath)) {
+            resolvedPath = relativePath;
+          } else {
+            resolvedPath = path.join(MACROS_DIR, resolvedPath);
+          }
+        }
+
+        log('iimPlay called:', macroName, '->', resolvedPath);
+
+        // Create browser bridge if needed
+        if (!browserBridge) {
+          browserBridge = createBrowserBridge(sendMessage, createMessageId);
+        }
+        if (tabId) {
+          browserBridge.setActiveTab(tabId);
+        }
+
+        // Check if it's a .js file
+        if (resolvedPath.toLowerCase().endsWith('.js')) {
+          const result = await playJsMacro(resolvedPath, tabId);
+          lastError = result.success ? 1 : result.errorCode || -1;
+          lastErrorMessage = result.errorMessage || '';
+          if (result.extractData) {
+            lastExtract = result.extractData;
+          }
+          return lastError;
+        }
+
+        // Load and execute the .iim macro
+        if (!fs.existsSync(resolvedPath)) {
+          lastError = -1;
+          lastErrorMessage = `Macro file not found: ${macroName}`;
+          return lastError;
+        }
+
+        const macroContent = stripBOM(fs.readFileSync(resolvedPath, 'utf8'));
+
+        // Create executor
+        const executor = new sharedLib.MacroExecutor({
+          macroName: macroName,
+          maxLoops: 1,
+          onLog: (level, msg) => {
+            log(`[${level}] ${msg}`);
+          },
+          onNativeEval: nativeEval,
+          onDatasourceLoad: loadDatasource,
+        });
+
+        // Copy JS variables to executor
+        for (const [key, value] of Object.entries(jsVariables)) {
+          executor.state.setVariable(key, value);
+        }
+
+        // Register browser handlers
+        const handlers = createBrowserHandlers(browserBridge);
+        executor.registerHandlers(handlers);
+
+        // Register datasource handlers
+        sharedLib.registerDatasourceHandlers((type, handler) => executor.registerHandler(type, handler));
+
+        // Execute
+        const startTime = Date.now();
+        executor.loadMacro(macroContent);
+        const result = await executor.execute();
+        lastPerformance = Date.now() - startTime;
+
+        lastError = result.success ? 1 : (result.errorCode || -1);
+        lastErrorMessage = result.errorMessage || '';
+
+        // Store extracted data
+        if (result.extractData && result.extractData.length > 0) {
+          lastExtract = result.extractData;
+        }
+
+        return lastError;
+      },
+
+      // iimSet - set a variable
+      iimSet: function(varName, value) {
+        jsVariables[varName] = value;
+        log('iimSet:', varName, '=', value);
+        return 1;
+      },
+
+      // iimGetLastExtract - get extracted data
+      iimGetLastExtract: function(index) {
+        if (index === undefined || index === 0) {
+          return lastExtract.join('#NEXT#');
+        }
+        return lastExtract[index - 1] || '';
+      },
+
+      // iimGetLastError - get last error code
+      iimGetLastError: function() {
+        return lastError;
+      },
+
+      // iimGetLastErrorMsg - get last error message
+      iimGetLastErrorMsg: function() {
+        return lastErrorMessage;
+      },
+
+      // iimGetLastPerformance - get execution time in ms
+      iimGetLastPerformance: function() {
+        return lastPerformance;
+      },
+
+      // iimDisplay - display a message
+      iimDisplay: function(message) {
+        log('iimDisplay:', message);
+        sendMessage({
+          type: 'DISPLAY_MESSAGE',
+          payload: { message: String(message) }
+        });
+        return 1;
+      },
+
+      // iimExit - stop script execution
+      iimExit: function(exitCode) {
+        const err = new Error('iimExit called');
+        err.exitCode = exitCode || 0;
+        err.isExit = true;
+        throw err;
+      },
+
+      // iimInit - initialize (no-op for now)
+      iimInit: function() {
+        return 1;
+      },
+
+      // iimPlayCode - execute macro code directly
+      iimPlayCode: async function(macroCode) {
+        log('iimPlayCode called, code length:', macroCode.length);
+
+        // Create browser bridge if needed
+        if (!browserBridge) {
+          browserBridge = createBrowserBridge(sendMessage, createMessageId);
+        }
+        if (tabId) {
+          browserBridge.setActiveTab(tabId);
+        }
+
+        // Create executor
+        const executor = new sharedLib.MacroExecutor({
+          macroName: 'inline',
+          maxLoops: 1,
+          onLog: (level, msg) => {
+            log(`[${level}] ${msg}`);
+          },
+          onNativeEval: nativeEval,
+          onDatasourceLoad: loadDatasource,
+        });
+
+        // Copy JS variables to executor
+        for (const [key, value] of Object.entries(jsVariables)) {
+          executor.state.setVariable(key, value);
+        }
+
+        // Register browser handlers
+        const handlers = createBrowserHandlers(browserBridge);
+        executor.registerHandlers(handlers);
+
+        // Register datasource handlers
+        sharedLib.registerDatasourceHandlers((type, handler) => executor.registerHandler(type, handler));
+
+        // Execute
+        const startTime = Date.now();
+        executor.loadMacro(macroCode);
+        const result = await executor.execute();
+        lastPerformance = Date.now() - startTime;
+
+        lastError = result.success ? 1 : (result.errorCode || -1);
+        lastErrorMessage = result.errorMessage || '';
+
+        // Store extracted data
+        if (result.extractData && result.extractData.length > 0) {
+          lastExtract = result.extractData;
+        }
+
+        return lastError;
+      },
+
+      // iimGetErrorText - get error text for error code
+      iimGetErrorText: function(errorCode) {
+        // Return generic error messages
+        const errorTexts = {
+          1: 'OK',
+          0: 'Unknown error',
+          '-1': 'General error',
+          '-802': 'Timeout',
+          '-920': 'Element not found',
+          '-921': 'Frame not found',
+        };
+        return errorTexts[errorCode] || 'Error ' + errorCode;
+      },
+    };
+
+    // Create sandbox with iMacros API and safe globals
+    const sandbox = {
+      ...iMacrosApi,
+      // Standard JS globals
+      console: {
+        log: (...args) => log('JS console.log:', ...args),
+        error: (...args) => log('JS console.error:', ...args),
+        warn: (...args) => log('JS console.warn:', ...args),
+      },
+      Math: Math,
+      Date: Date,
+      parseInt: parseInt,
+      parseFloat: parseFloat,
+      String: String,
+      Number: Number,
+      Boolean: Boolean,
+      Array: Array,
+      Object: Object,
+      JSON: JSON,
+      isNaN: isNaN,
+      isFinite: isFinite,
+      encodeURIComponent: encodeURIComponent,
+      decodeURIComponent: decodeURIComponent,
+      encodeURI: encodeURI,
+      decodeURI: decodeURI,
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      clearTimeout: clearTimeout,
+      // Allow require for path only
+      require: (mod) => {
+        if (mod === 'path') return path;
+        throw new Error('require is not allowed for module: ' + mod);
+      },
+    };
+
+    const context = vm.createContext(sandbox);
+
+    // Transform the code to automatically await iimPlay/iimPlayCode calls
+    // This makes the API behave synchronously like the original iMacros
+    let transformedContent = content
+      // Add await before iimPlay( unless already awaited
+      .replace(/(?<!await\s+)iimPlay\s*\(/g, 'await iimPlay(')
+      // Add await before iimPlayCode( unless already awaited
+      .replace(/(?<!await\s+)iimPlayCode\s*\(/g, 'await iimPlayCode(');
+
+    log('Transformed JS macro code');
+
+    // Wrap the script to handle async/await
+    const wrappedCode = `
+      (async function() {
+        ${transformedContent}
+      })();
+    `;
+
+    // Execute the JavaScript macro
+    const startTime = Date.now();
+    try {
+      await vm.runInNewContext(wrappedCode, context, {
+        timeout: 3600000, // 1 hour timeout for long-running macros
+        displayErrors: true,
+        filename: macroPath,
+      });
+    } catch (error) {
+      if (error.isExit) {
+        // Normal exit via iimExit
+        lastError = error.exitCode;
+      } else {
+        throw error;
+      }
+    }
+    lastPerformance = Date.now() - startTime;
+
+    log('JS macro execution complete');
+
+    // Send completion message
+    sendMessage({
+      type: 'MACRO_COMPLETE',
+      payload: {
+        success: lastError >= 0,
+        errorCode: lastError,
+        errorMessage: lastErrorMessage,
+        executionTimeMs: lastPerformance,
+        extractData: lastExtract,
+        macro: macroPath,
+      }
+    });
+
+    // Update status
+    updateTrayStatus('idle');
+    sendMessage({
+      type: 'STATUS_UPDATE',
+      payload: { status: 'idle' }
+    });
+
+    return {
+      success: lastError >= 0,
+      errorCode: lastError,
+      errorMessage: lastErrorMessage,
+      extractData: lastExtract,
+    };
+
+  } catch (error) {
+    log('JS macro execution error:', error.message);
+    sendMessage({
+      type: 'MACRO_ERROR',
+      payload: {
+        error: error.message,
+        macro: macroPath,
+      }
+    });
+    updateTrayStatus('idle');
+    sendMessage({
+      type: 'STATUS_UPDATE',
+      payload: { status: 'idle' }
+    });
+
+    return {
+      success: false,
+      errorCode: -1,
+      errorMessage: error.message,
+    };
+  }
+}
+
+/**
  * Clean up resources
  */
 function cleanup() {
@@ -319,6 +713,11 @@ async function playMacro(macroPath, tabId, loop = false) {
     return;
   }
 
+  // Check if this is a JavaScript macro
+  if (macroPath.toLowerCase().endsWith('.js')) {
+    return playJsMacro(macroPath, tabId);
+  }
+
   try {
     // Load the macro file
     const fullPath = path.isAbsolute(macroPath)
@@ -385,6 +784,8 @@ async function playMacro(macroPath, tabId, loop = false) {
       },
       // Enable JavaScript EVAL support via Node's vm module
       onNativeEval: nativeEval,
+      // Enable datasource loading from file
+      onDatasourceLoad: loadDatasource,
     });
 
     activeExecutor = executor;
@@ -392,6 +793,9 @@ async function playMacro(macroPath, tabId, loop = false) {
     // Register browser handlers
     const handlers = createBrowserHandlers(browserBridge);
     executor.registerHandlers(handlers);
+
+    // Register datasource handlers
+    sharedLib.registerDatasourceHandlers((type, handler) => executor.registerHandler(type, handler));
 
     // Load and execute the macro
     executor.loadMacro(content);

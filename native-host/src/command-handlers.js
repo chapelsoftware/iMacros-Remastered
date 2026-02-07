@@ -460,6 +460,75 @@ function createBrowserHandlers(bridge) {
       return createBrowserHandlers(bridge).EVENT(ctx);
     },
 
+    // ===== Dialog Commands =====
+
+    /**
+     * ONDIALOG command handler
+     * ONDIALOG POS=1 BUTTON=OK
+     * ONDIALOG POS=1 BUTTON=CANCEL
+     * ONDIALOG POS=1 BUTTON=YES CONTENT=response
+     */
+    ONDIALOG: async (ctx) => {
+      const posStr = ctx.getParam('POS');
+      const buttonStr = ctx.getParam('BUTTON');
+
+      if (!posStr || !buttonStr) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.MISSING_PARAMETER,
+          errorMessage: 'ONDIALOG command requires POS and BUTTON parameters',
+        };
+      }
+
+      const pos = parseInt(ctx.expand(posStr), 10);
+      if (isNaN(pos) || pos < 1) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `Invalid POS value: ${posStr}`,
+        };
+      }
+
+      // Parse button - normalize to uppercase
+      const buttonUpper = ctx.expand(buttonStr).toUpperCase().trim();
+      let button;
+      switch (buttonUpper) {
+        case 'OK':
+        case 'YES':
+        case 'NO':
+        case 'CANCEL':
+          button = buttonUpper;
+          break;
+        default:
+          button = 'OK';
+      }
+
+      const contentParam = ctx.getParam('CONTENT');
+      const content = contentParam ? ctx.expand(contentParam) : undefined;
+
+      ctx.log('info', `Configuring dialog handler: POS=${pos}, BUTTON=${button}${content ? `, CONTENT=${content}` : ''}`);
+
+      try {
+        const result = await bridge.configureDialog({ pos, button, content });
+
+        if (!result.success) {
+          return {
+            success: false,
+            errorCode: ERROR_CODES.SCRIPT_ERROR,
+            errorMessage: result.error || 'Failed to configure dialog handler',
+          };
+        }
+
+        return { success: true, errorCode: ERROR_CODES.OK };
+      } catch (error) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.SCRIPT_ERROR,
+          errorMessage: error.message || 'ONDIALOG command failed',
+        };
+      }
+    },
+
     // ===== File Commands =====
 
     /**

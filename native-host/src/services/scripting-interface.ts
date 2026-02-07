@@ -220,7 +220,7 @@ export class ExecutorMacroHandler implements MacroHandler {
 
       // Register extraction handlers (EXTRACT, SEARCH) by default
       // These are essential for the SI round-trip to work
-      registerExtractionHandlers(executor.registerHandler.bind(executor));
+      registerExtractionHandlers((type, handler) => executor.registerHandler(type as any, handler));
 
       // Register any additional command handlers
       for (const [type, handler] of this.commandHandlers) {

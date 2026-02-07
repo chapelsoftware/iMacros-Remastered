@@ -4,11 +4,12 @@
  */
 
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Extension } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
 import { lintGutter, linter, Diagnostic } from '@codemirror/lint';
+import { javascript } from '@codemirror/lang-javascript';
 import { createMessageId, createTimestamp, parseMacro, ParseError } from '@shared/index';
 import { iim, getCommandCompletions, getParameterCompletions, getVariableCompletions, COMMANDS } from './iim-mode';
 
@@ -34,6 +35,50 @@ const state: EditorAppState = {
 
 let editorView: EditorView | null = null;
 const languageConf = new Compartment();
+const linterConf = new Compartment();
+const completionConf = new Compartment();
+
+/**
+ * Detect file type from path
+ */
+function getFileType(path: string | null): 'iim' | 'js' {
+  if (!path) return 'iim';
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.js')) return 'js';
+  return 'iim';
+}
+
+/**
+ * Get language extension for file type
+ */
+function getLanguageExtension(fileType: 'iim' | 'js'): Extension {
+  if (fileType === 'js') {
+    return javascript();
+  }
+  return iim();
+}
+
+/**
+ * Get linter extension for file type
+ */
+function getLinterExtension(fileType: 'iim' | 'js'): Extension {
+  if (fileType === 'js') {
+    return []; // No linting for JS files
+  }
+  return linter(iimLinter);
+}
+
+/**
+ * Get completion extension for file type
+ */
+function getCompletionExtension(fileType: 'iim' | 'js'): Extension {
+  if (fileType === 'js') {
+    return []; // No iim completions for JS files
+  }
+  return autocompletion({
+    override: [iimCompletions],
+  });
+}
 
 /**
  * Send a message to the background script
@@ -134,18 +179,16 @@ function iimLinter(view: EditorView): Diagnostic[] {
 /**
  * Create the CodeMirror editor instance
  */
-function createEditor(container: HTMLElement, initialContent: string = ''): EditorView {
+function createEditor(container: HTMLElement, initialContent: string = '', fileType: 'iim' | 'js' = 'iim'): EditorView {
   const startState = EditorState.create({
     doc: initialContent,
     extensions: [
       basicSetup,
       keymap.of([indentWithTab]),
-      languageConf.of(iim()),
-      autocompletion({
-        override: [iimCompletions],
-      }),
+      languageConf.of(getLanguageExtension(fileType)),
+      completionConf.of(getCompletionExtension(fileType)),
       lintGutter(),
-      linter(iimLinter),
+      linterConf.of(getLinterExtension(fileType)),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const content = update.state.doc.toString();
@@ -232,13 +275,22 @@ async function loadMacro(path: string): Promise<void> {
     state.isModified = false;
     state.isNewMacro = false;
 
+    // Detect file type and reconfigure editor
+    const fileType = getFileType(path);
+
     if (editorView) {
+      // Update content and reconfigure language/linter/completions
       editorView.dispatch({
         changes: {
           from: 0,
           to: editorView.state.doc.length,
           insert: content,
         },
+        effects: [
+          languageConf.reconfigure(getLanguageExtension(fileType)),
+          linterConf.reconfigure(getLinterExtension(fileType)),
+          completionConf.reconfigure(getCompletionExtension(fileType)),
+        ],
       });
     }
 

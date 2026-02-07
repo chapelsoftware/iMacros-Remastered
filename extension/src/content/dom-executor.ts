@@ -376,7 +376,8 @@ async function resolveSelector(
       parts.push(`TYPE=${selector.type}`);
     }
     if (selector.attr) {
-      parts.push(`ATTR:${selector.attr}`);
+      // Quote the attr value to preserve spaces during tokenization
+      parts.push(`ATTR="${selector.attr}"`);
     }
     selectorString = parts.join(' ');
   } else {

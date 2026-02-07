@@ -17,6 +17,10 @@ import {
 import {
   initializeMacroRecorder,
   setupRecordingMessageListener,
+  getMacroRecorder,
+  handleRecordStartMessage,
+  handleRecordStopMessage,
+  handleRecordStatusMessage,
 } from './content/macro-recorder';
 import { initializeDOMExecutor } from './content/dom-executor';
 import { initializeFrameHandler, getFrameHandler } from './content/frame-handler';
@@ -108,6 +112,107 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       error: result.errorMessage,
       frameId: result.success ? handler.getCurrentFrameIndex() : undefined,
     });
+    return true;
+  }
+
+  // Handle recording messages directly
+  if (message.type === 'RECORD_START') {
+    try {
+      handleRecordStartMessage(message.payload?.config);
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_STOP') {
+    try {
+      const result = handleRecordStopMessage();
+      sendResponse({ success: true, ...result });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_STATUS') {
+    try {
+      const status = handleRecordStatusMessage();
+      sendResponse({ success: true, ...status });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_CLEAR') {
+    try {
+      const recorder = getMacroRecorder();
+      recorder.clearEvents();
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_GET_MACRO') {
+    try {
+      const recorder = getMacroRecorder();
+      const macro = recorder.generateMacro();
+      sendResponse({ success: true, macro });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_TAB_EVENT') {
+    try {
+      const recorder = getMacroRecorder();
+      if (!recorder.isRecording()) {
+        sendResponse({ success: false, error: 'Not recording' });
+        return true;
+      }
+      const payload = message.payload as { action: 'open' | 'close' | 'switch'; tabIndex?: number };
+      let command = '';
+      switch (payload.action) {
+        case 'open': command = 'TAB OPEN'; break;
+        case 'close': command = 'TAB CLOSE'; break;
+        case 'switch': if (payload.tabIndex !== undefined) command = `TAB T=${payload.tabIndex}`; break;
+      }
+      if (command) {
+        recorder.recordTabEvent(command);
+      }
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  if (message.type === 'RECORD_NAVIGATION_EVENT') {
+    try {
+      const recorder = getMacroRecorder();
+      if (!recorder.isRecording()) {
+        sendResponse({ success: false, error: 'Not recording' });
+        return true;
+      }
+      const payload = message.payload as { action: 'refresh' | 'back' | 'forward' };
+      let command = '';
+      switch (payload.action) {
+        case 'refresh': command = 'REFRESH'; break;
+        case 'back': command = 'BACK'; break;
+        case 'forward': command = 'BACK BACK=NO'; break;
+      }
+      if (command) {
+        recorder.recordTabEvent(command);
+      }
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
     return true;
   }
 

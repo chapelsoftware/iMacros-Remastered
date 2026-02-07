@@ -63,12 +63,47 @@ body {
   opacity: 0.8;
 }
 
-/* Main content area with file tree */
+/* Main content area with file tree and editor */
 .panel-content {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   padding: 8px;
+}
+
+/* Split container */
+.split-container {
+  display: flex;
+  height: 100%;
+  gap: 0;
+}
+
+.split-left {
+  width: 50%;
+  min-width: 120px;
+  max-width: calc(100% - 120px);
+  height: 100%;
+  overflow: hidden;
+}
+
+.split-right {
+  flex: 1;
+  min-width: 120px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.split-resizer {
+  width: 5px;
+  background: #c8d4e4;
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.split-resizer:hover,
+.split-resizer.dragging {
+  background: #4a90d9;
 }
 
 .file-tree-wrapper {
@@ -77,6 +112,106 @@ body {
   border: 1px solid #bbb;
   border-radius: 3px;
   overflow: hidden;
+}
+
+/* Inline editor */
+.inline-editor-wrapper {
+  height: 100%;
+  background: white;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #999;
+  font-style: italic;
+  font-size: 13px;
+}
+
+.inline-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  background: #f8f8f8;
+  border-bottom: 1px solid #ddd;
+  flex-shrink: 0;
+}
+
+.inline-editor-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-editor-title.modified::after {
+  content: ' *';
+  color: #e67340;
+}
+
+.inline-editor-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.inline-editor-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.inline-editor-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+  border-color: #999;
+  color: #333;
+}
+
+.inline-editor-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.inline-editor-btn.save-btn:not(:disabled) {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.inline-editor-btn.save-btn:hover:not(:disabled) {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.inline-editor-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.inline-editor-content .cm-editor {
+  height: 100%;
+}
+
+.inline-editor-content .cm-scroller {
+  overflow: auto;
 }
 
 /* Tab bar */
@@ -917,6 +1052,180 @@ body {
 .status-text.clickable:hover {
   color: #1a5fb4;
 }
+
+/* Recording Preferences Dialog Styles */
+.recording-prefs-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.recording-prefs-dialog {
+  background: linear-gradient(to bottom, #fff 0%, #f8f8f8 100%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 280px;
+  max-width: 90%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  animation: slideDown 0.2s ease-out;
+  overflow: hidden;
+}
+
+.recording-prefs-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding: 16px 20px;
+  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
+  color: white;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+  margin: 0;
+}
+
+.recording-prefs-dialog-content {
+  padding: 16px 20px;
+}
+
+.recording-prefs-dialog-field {
+  margin-bottom: 8px;
+}
+
+.recording-prefs-dialog-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.recording-prefs-dialog-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.recording-prefs-dialog-select:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.15);
+}
+
+.recording-prefs-dialog-description {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+  margin-top: 6px;
+  margin-bottom: 12px;
+  padding-left: 2px;
+}
+
+.recording-prefs-dialog-divider {
+  height: 1px;
+  background: #ddd;
+  margin: 12px 0;
+}
+
+.recording-prefs-dialog-checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.recording-prefs-dialog-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #4a90d9;
+}
+
+.recording-prefs-dialog-checkbox-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.recording-prefs-dialog-expert-options {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border: 1px solid #e0e5eb;
+  border-radius: 4px;
+}
+
+.recording-prefs-dialog-expert-options .recording-prefs-dialog-checkbox-field {
+  margin-bottom: 8px;
+}
+
+.recording-prefs-dialog-expert-options .recording-prefs-dialog-checkbox-field:last-child {
+  margin-bottom: 0;
+}
+
+.recording-prefs-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #f8f8f8;
+}
+
+.recording-prefs-dialog-btn {
+  padding: 8px 18px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  color: #333;
+  transition: all 0.15s ease;
+}
+
+.recording-prefs-dialog-btn:hover {
+  background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+  border-color: #aaa;
+}
+
+.recording-prefs-dialog-btn:active {
+  background: linear-gradient(to bottom, #e8e8e8 0%, #ddd 100%);
+}
+
+.recording-prefs-dialog-btn-cancel {
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  border-color: #ccc;
+  color: #555;
+}
+
+.recording-prefs-dialog-btn-save {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.recording-prefs-dialog-btn-save:hover {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.recording-prefs-dialog-btn-save:active {
+  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+}
   </style>
 </head>
 <body>
@@ -933,10 +1242,22 @@ body {
       <span class="header-version">v1.0.0</span>
     </header>
 
-    <!-- Main content area with file tree -->
+    <!-- Main content area with file tree and editor -->
     <section class="panel-content">
-      <!-- File tree -->
-      <div id="file-tree" class="file-tree-wrapper"></div>
+      <div class="split-container">
+        <!-- File tree (left) -->
+        <div class="split-left">
+          <div id="file-tree" class="file-tree-wrapper"></div>
+        </div>
+        <!-- Resizer -->
+        <div class="split-resizer" id="split-resizer"></div>
+        <!-- Editor (right) -->
+        <div class="split-right">
+          <div id="inline-editor" class="inline-editor-wrapper">
+            <div class="editor-placeholder">Select a macro to view/edit</div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Tab bar -->

@@ -415,5 +415,346 @@ body {
   }
 }
 
+/* Dialog overlay */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 60px;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dialog {
+  background: linear-gradient(to bottom, #fff 0%, #f8f8f8 100%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 300px;
+  max-width: 90%;
+  padding: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  animation: slideDown 0.2s ease-out;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.dialog-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dialog-icon.warning {
+  background: linear-gradient(to bottom, #fff3cd 0%, #ffe69c 100%);
+  border: 1px solid #e6c057;
+  color: #856404;
+}
+
+.dialog-icon.danger {
+  background: linear-gradient(to bottom, #fee2e2 0%, #fecaca 100%);
+  border: 1px solid #f87171;
+  color: #b91c1c;
+}
+
+.dialog-icon.info {
+  background: linear-gradient(to bottom, #dbeafe 0%, #bfdbfe 100%);
+  border: 1px solid #60a5fa;
+  color: #1d4ed8;
+}
+
+.dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.dialog-message {
+  font-size: 13px;
+  color: #4a4a4a;
+  margin-bottom: 16px;
+  line-height: 1.5;
+  padding-left: 44px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 16px;
+  background: #fff;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-left: 44px;
+}
+
+.dialog-btn {
+  padding: 8px 18px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  color: #333;
+  transition: all 0.15s ease;
+}
+
+.dialog-btn:hover {
+  background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+  border-color: #aaa;
+}
+
+.dialog-btn:active {
+  background: linear-gradient(to bottom, #e8e8e8 0%, #ddd 100%);
+}
+
+.dialog-btn-ok {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.dialog-btn-ok:hover {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.dialog-btn-ok:active {
+  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+}
+
+.dialog-btn-danger {
+  background: linear-gradient(to bottom, #ef4444 0%, #dc2626 100%);
+  border-color: #b91c1c;
+  color: white;
+}
+
+.dialog-btn-danger:hover {
+  background: linear-gradient(to bottom, #f87171 0%, #ef4444 100%);
+}
+
+.dialog-btn-danger:active {
+  background: linear-gradient(to bottom, #dc2626 0%, #b91c1c 100%);
+}
+
+/* Recording Preferences Dialog Styles */
+.recording-prefs-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+  z-index: 10000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.recording-prefs-dialog {
+  background: linear-gradient(to bottom, #fff 0%, #f8f8f8 100%);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 280px;
+  max-width: 90%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  animation: slideDown 0.2s ease-out;
+  overflow: hidden;
+}
+
+.recording-prefs-dialog-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1a1a1a;
+  padding: 16px 20px;
+  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
+  color: white;
+  text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+  margin: 0;
+}
+
+.recording-prefs-dialog-content {
+  padding: 16px 20px;
+}
+
+.recording-prefs-dialog-field {
+  margin-bottom: 8px;
+}
+
+.recording-prefs-dialog-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.recording-prefs-dialog-select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.recording-prefs-dialog-select:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 2px rgba(74, 144, 217, 0.15);
+}
+
+.recording-prefs-dialog-description {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+  margin-top: 6px;
+  margin-bottom: 12px;
+  padding-left: 2px;
+}
+
+.recording-prefs-dialog-divider {
+  height: 1px;
+  background: #ddd;
+  margin: 12px 0;
+}
+
+.recording-prefs-dialog-checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.recording-prefs-dialog-checkbox {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: #4a90d9;
+}
+
+.recording-prefs-dialog-checkbox-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.recording-prefs-dialog-expert-options {
+  margin-top: 8px;
+  padding: 12px;
+  background: #f5f7fa;
+  border: 1px solid #e0e5eb;
+  border-radius: 4px;
+}
+
+.recording-prefs-dialog-expert-options .recording-prefs-dialog-checkbox-field {
+  margin-bottom: 8px;
+}
+
+.recording-prefs-dialog-expert-options .recording-prefs-dialog-checkbox-field:last-child {
+  margin-bottom: 0;
+}
+
+.recording-prefs-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px 16px;
+  border-top: 1px solid #e8e8e8;
+  background: #f8f8f8;
+}
+
+.recording-prefs-dialog-btn {
+  padding: 8px 18px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  color: #333;
+  transition: all 0.15s ease;
+}
+
+.recording-prefs-dialog-btn:hover {
+  background: linear-gradient(to bottom, #fff 0%, #e8e8e8 100%);
+  border-color: #aaa;
+}
+
+.recording-prefs-dialog-btn:active {
+  background: linear-gradient(to bottom, #e8e8e8 0%, #ddd 100%);
+}
+
+.recording-prefs-dialog-btn-cancel {
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  border-color: #ccc;
+  color: #555;
+}
+
+.recording-prefs-dialog-btn-save {
+  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
+  border-color: #1a5aa9;
+  color: white;
+}
+
+.recording-prefs-dialog-btn-save:hover {
+  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+}
+
+.recording-prefs-dialog-btn-save:active {
+  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+}
+
 /* Import file tree styles */
 @import url('./file-tree.css');

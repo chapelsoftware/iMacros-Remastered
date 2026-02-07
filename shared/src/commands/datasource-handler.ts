@@ -1,12 +1,21 @@
 /**
  * Datasource (DS) Command Handler for iMacros
  *
- * Implements the DS command for reading data from CSV datasources.
- * Supports CMD=NEXT, CMD=RESET, CMD=READ operations and populates
- * !COL1-10 variables with column data.
+ * NOTE: The DS command is an ENHANCEMENT over original iMacros 8.9.7,
+ * which throws UnsupportedCommand("DS"). This implementation provides
+ * convenient datasource navigation while maintaining original behavior.
  *
- * Uses the existing DatasourceManager from shared/src/datasource.ts
- * for CSV parsing (papaparse-backed).
+ * Original iMacros behavior (fully supported):
+ * - SET !DATASOURCE file.csv  → loads CSV
+ * - SET !DATASOURCE_LINE n    → sets which row to read
+ * - {{!COL1}}                 → reads column 1 from row !DATASOURCE_LINE
+ *
+ * Enhancement (DS commands):
+ * - DS CMD=NEXT  → increments !DATASOURCE_LINE
+ * - DS CMD=RESET → resets !DATASOURCE_LINE to 1
+ * - DS CMD=READ  → validates datasource is loaded (no-op)
+ *
+ * Uses DatasourceManager from shared/src/datasource.ts for CSV parsing.
  */
 
 import {
@@ -67,23 +76,22 @@ export function loadDatasourceFromContent(
 }
 
 /**
- * Populate !COL1-10 and datasource metadata variables from the current row.
- */
-function populateColVariables(ctx: CommandContext, manager: DatasourceManager): void {
-  manager.populateVariables(ctx.variables);
-}
-
-/**
- * DS command handler
+ * DS command handler (Enhancement over original iMacros)
+ *
+ * NOTE: Original iMacros 8.9.7 does NOT support the DS command - it throws
+ * UnsupportedCommand("DS"). This implementation is an enhancement that
+ * provides convenient datasource navigation while maintaining compatibility
+ * with original behavior ({{!COL1}} reads from !DATASOURCE_LINE).
  *
  * Syntax:
- * - DS CMD=NEXT  - Move to next row and populate !COL variables
- * - DS CMD=RESET - Reset to beginning (first row)
- * - DS CMD=READ  - Read current row (auto-advances on first call)
+ * - DS CMD=NEXT  - Increment !DATASOURCE_LINE to next row
+ * - DS CMD=RESET - Reset !DATASOURCE_LINE to 1
+ * - DS CMD=READ  - Validate datasource is loaded (no-op, for compatibility)
  *
- * Populates !COL1-10 variables with column values from the current row.
- * Requires datasource to be loaded via loadDatasourceFromContent() or
- * SET !DATASOURCE with an onDatasourceLoad callback.
+ * Unlike our previous implementation, this modifies !DATASOURCE_LINE directly
+ * so that {{!COL1}} (which reads dynamically from that line) works correctly.
+ *
+ * Requires datasource to be loaded via SET !DATASOURCE.
  */
 export const dsCommandHandler: CommandHandler = async (
   ctx: CommandContext
@@ -99,10 +107,17 @@ export const dsCommandHandler: CommandHandler = async (
   }
 
   const cmd = ctx.expand(cmdParam).toUpperCase();
-  const manager = ensureDatasourceManager();
 
-  // Check if datasource is loaded
-  if (!manager.isLoaded()) {
+  // Sync datasource rows from manager to VariableContext if needed
+  // This handles the case where loadDatasourceFromContent was called directly
+  const manager = getDatasourceManager();
+  if (manager?.isLoaded() && ctx.variables.getDatasourceRowCount() === 0) {
+    ctx.variables.setDatasourceRows(manager.getAllRows());
+  }
+
+  // Check if datasource is loaded by checking if rows exist
+  const rowCount = ctx.variables.getDatasourceRowCount();
+  if (rowCount === 0) {
     return {
       success: false,
       errorCode: IMACROS_ERROR_CODES.DATASOURCE_ERROR,
@@ -110,14 +125,16 @@ export const dsCommandHandler: CommandHandler = async (
     };
   }
 
+  // Get current line number (may be stored as string or number)
+  const currentLine = ctx.variables.get('!DATASOURCE_LINE');
+  const lineNum = typeof currentLine === 'number' ? currentLine : parseInt(String(currentLine), 10) || 1;
+
   switch (cmd) {
     case 'NEXT': {
-      const hasNext = manager.nextRow();
-      if (!hasNext) {
-        // Check if we're already on the last row (first NEXT advances from row 1 to row 2).
-        // If nextRow returns false, we may be at end OR it could be a single-row file
-        // where we're already on the only row. In original iMacros, NEXT past last row
-        // signals end-of-datasource.
+      const nextLine = lineNum + 1;
+
+      // Check if next line would be past end
+      if (nextLine > rowCount) {
         return {
           success: false,
           errorCode: IMACROS_ERROR_CODES.DATASOURCE_END,
@@ -125,43 +142,35 @@ export const dsCommandHandler: CommandHandler = async (
         };
       }
 
-      // Populate !COL variables from the new current row
-      populateColVariables(ctx, manager);
+      // Increment !DATASOURCE_LINE - {{!COL1}} will now read from next row
+      ctx.variables.setDatasourceLine(nextLine);
 
-      ctx.log(
-        'debug',
-        `DS NEXT: line ${manager.getCurrentLineNumber()} of ${manager.getRowCount()}`
-      );
+      ctx.log('debug', `DS NEXT: line ${nextLine} of ${rowCount}`);
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     }
 
     case 'RESET': {
-      manager.reset();
-      // Populate !COL variables with the first row (reset goes back to row 1)
-      populateColVariables(ctx, manager);
+      // Reset !DATASOURCE_LINE to 1
+      ctx.variables.setDatasourceLine(1);
 
-      ctx.log('debug', 'DS RESET: position reset to line 1');
+      ctx.log('debug', 'DS RESET: !DATASOURCE_LINE reset to 1');
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     }
 
     case 'READ': {
-      // READ populates !COL variables with the current row.
-      // On the very first READ call, the manager starts at row 1 (index 0).
-      const rowResult = manager.getCurrentRow();
-      if (!rowResult.success) {
+      // READ is a no-op - just validates datasource is loaded
+      // {{!COL1}} already reads dynamically from !DATASOURCE_LINE
+      const line = lineNum;
+
+      if (line < 1 || line > rowCount) {
         return {
           success: false,
           errorCode: IMACROS_ERROR_CODES.DATASOURCE_END,
-          errorMessage: rowResult.error || 'Datasource is empty or at end',
+          errorMessage: `Datasource line ${line} is out of range (1-${rowCount})`,
         };
       }
 
-      populateColVariables(ctx, manager);
-
-      ctx.log(
-        'debug',
-        `DS READ: line ${manager.getCurrentLineNumber()} of ${manager.getRowCount()}`
-      );
+      ctx.log('debug', `DS READ: line ${line} of ${rowCount}`);
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     }
 

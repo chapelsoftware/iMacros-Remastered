@@ -52,7 +52,11 @@ export type RequestMessageType =
   | 'browse_folder'
   | 'get_settings'
   | 'get_macros'
-  | 'browser_command_response';
+  | 'browser_command_response'
+  | 'create_folder'
+  | 'rename_file'
+  | 'delete_file'
+  | 'move_file';
 
 export type ResponseMessageType =
   | 'pong'

@@ -366,10 +366,18 @@ export class MacroExecutor {
         try {
           const content = await this.onDatasourceLoad(String(result.newValue));
           if (content) {
-            const { loadDatasourceFromContent } = await import(
+            const { loadDatasourceFromContent, getDatasourceManager } = await import(
               './commands/datasource-handler'
             );
             loadDatasourceFromContent(content, String(result.newValue));
+
+            // Set raw rows on VariableContext for dynamic !COL resolution
+            // This enables original iMacros behavior where {{!COL1}} reads
+            // directly from datasource based on !DATASOURCE_LINE
+            const manager = getDatasourceManager();
+            if (manager) {
+              ctx.variables.setDatasourceRows(manager.getAllRows());
+            }
           }
         } catch (e) {
           ctx.log(

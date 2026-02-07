@@ -8,6 +8,13 @@
  * These options help users see what the macro is doing in real-time.
  */
 
+// ===== Browser Environment Check =====
+
+/** Check if we're in a browser environment with DOM access (checked at call time) */
+function isBrowser(): boolean {
+  return typeof window !== 'undefined' && typeof document !== 'undefined';
+}
+
 // ===== Types =====
 
 export interface HighlightOptions {
@@ -94,6 +101,7 @@ const HIGHLIGHT_STYLES = `
  * Inject the highlight styles into the document
  */
 function ensureStylesInjected(): void {
+  if (!isBrowser()) return;
   if (document.getElementById('imacros-highlight-styles')) {
     return;
   }
@@ -107,7 +115,10 @@ function ensureStylesInjected(): void {
 /**
  * Get the bounding rect of an element relative to the document
  */
-function getElementDocumentRect(element: Element): DOMRect {
+function getElementDocumentRect(element: Element): DOMRect | null {
+  if (!isBrowser()) {
+    return null;
+  }
   const rect = element.getBoundingClientRect();
   const scrollX = window.scrollX || document.documentElement.scrollLeft;
   const scrollY = window.scrollY || document.documentElement.scrollTop;
@@ -152,6 +163,8 @@ export function scrollToElement(
   element: Element,
   behavior: ScrollBehavior = 'smooth'
 ): void {
+  if (!isBrowser()) return;
+
   // Check if element is already in viewport
   const rect = element.getBoundingClientRect();
   const isInViewport = (
@@ -180,6 +193,8 @@ export function highlightElement(
   element: Element,
   options: HighlightOptions = {}
 ): void {
+  if (!isBrowser()) return;
+
   const {
     duration = 1500,
     color = '#ff6b00',
@@ -198,7 +213,11 @@ export function highlightElement(
 
   // Small delay to allow scroll to complete
   setTimeout(() => {
+    // Re-check browser environment in case it changed during timeout
+    if (!isBrowser()) return;
+
     const rect = getElementDocumentRect(element);
+    if (!rect) return;
 
     // Create highlight overlay
     const overlay = document.createElement('div');
@@ -297,6 +316,7 @@ export function highlightElementError(
  * Clear the current element highlight
  */
 export function clearElementHighlight(): void {
+  if (!isBrowser()) return;
   removeCurrentHighlight();
 }
 

@@ -6,18 +6,38 @@
 import { createMessageId, createTimestamp } from '@shared/index';
 import { FileTree, FileTreeNode, createTreeFromPaths, FileTreeSelectionEvent } from './file-tree';
 import { statusSync, initializeStatusSync, StatusSyncEvent, ExecutionStatus, LogEntry } from './status-sync';
+import { EditorView, basicSetup } from 'codemirror';
+import { EditorState, Compartment } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
+import { indentWithTab } from '@codemirror/commands';
+import { javascript } from '@codemirror/lang-javascript';
+import { iim } from '../editor/iim-mode';
+import {
+  showRecordingPrefsDialog,
+  loadRecordingPreferences,
+  saveRecordingPreferences,
+  RecordingPreferences,
+} from './recording-prefs-dialog';
 
 // Panel state (selection and UI state not managed by StatusSync)
 interface PanelState {
   selectedMacro: string | null;
+  editorContent: string;
+  originalContent: string;
+  isModified: boolean;
 }
 
 // Global state
 let state: PanelState = {
   selectedMacro: null,
+  editorContent: '',
+  originalContent: '',
+  isModified: false,
 };
 
 let fileTree: FileTree | null = null;
+let inlineEditor: EditorView | null = null;
+const languageConf = new Compartment();
 
 /**
  * Send a message to the background script
@@ -41,6 +61,249 @@ function sendToBackground(type: string, payload?: unknown): Promise<unknown> {
     );
   });
 }
+
+// ============================================================================
+// Inline Editor Functions
+// ============================================================================
+
+/**
+ * Get file type from path
+ */
+function getFileType(path: string | null): 'iim' | 'js' {
+  if (!path) return 'iim';
+  const lower = path.toLowerCase();
+  if (lower.endsWith('.js')) return 'js';
+  return 'iim';
+}
+
+/**
+ * Create or update the inline editor
+ */
+function createInlineEditor(container: HTMLElement, content: string, filePath: string): EditorView {
+  const fileType = getFileType(filePath);
+  const lang = fileType === 'js' ? javascript() : iim();
+
+  const startState = EditorState.create({
+    doc: content,
+    extensions: [
+      basicSetup,
+      keymap.of([indentWithTab]),
+      languageConf.of(lang),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          state.editorContent = update.state.doc.toString();
+          state.isModified = state.editorContent !== state.originalContent;
+          updateEditorUI();
+        }
+      }),
+      EditorView.theme({
+        '&': {
+          height: '100%',
+          fontSize: '12px',
+        },
+        '.cm-scroller': {
+          overflow: 'auto',
+          fontFamily: "'Consolas', 'Monaco', 'Courier New', monospace",
+        },
+        '.cm-gutters': {
+          backgroundColor: '#f5f5f5',
+          borderRight: '1px solid #ddd',
+        },
+      }),
+    ],
+  });
+
+  return new EditorView({
+    state: startState,
+    parent: container,
+  });
+}
+
+/**
+ * Update editor UI (title, save button state)
+ */
+function updateEditorUI(): void {
+  const titleEl = document.querySelector('.inline-editor-title');
+  const saveBtn = document.getElementById('inline-save-btn') as HTMLButtonElement;
+
+  if (titleEl) {
+    titleEl.classList.toggle('modified', state.isModified);
+  }
+
+  if (saveBtn) {
+    saveBtn.disabled = !state.isModified;
+  }
+}
+
+/**
+ * Load macro into inline editor
+ */
+async function loadMacroIntoEditor(macroPath: string): Promise<void> {
+  const wrapper = document.getElementById('inline-editor');
+  if (!wrapper) return;
+
+  try {
+    const response = await sendToBackground('LOAD_MACRO', { path: macroPath }) as {
+      success: boolean;
+      content?: string;
+      error?: string;
+    };
+
+    if (!response.success) {
+      wrapper.innerHTML = `<div class="editor-placeholder" style="color: #c00;">Error: ${response.error || 'Failed to load'}</div>`;
+      return;
+    }
+
+    const content = response.content || '';
+    const fileName = macroPath.split('/').pop() || macroPath;
+
+    // Update state
+    state.editorContent = content;
+    state.originalContent = content;
+    state.isModified = false;
+
+    // Create editor UI
+    wrapper.innerHTML = `
+      <div class="inline-editor-header">
+        <span class="inline-editor-title">${fileName}</span>
+        <div class="inline-editor-actions">
+          <button id="inline-save-btn" class="inline-editor-btn save-btn" title="Save (Ctrl+S)" disabled>
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M13 1H3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V4l-2-3zM8 13a2 2 0 110-4 2 2 0 010 4zm2-8H4V3h6v2z"/>
+            </svg>
+          </button>
+          <button id="inline-open-btn" class="inline-editor-btn" title="Open in Editor">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 9v4a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1h4"/>
+              <path d="M9 2h5v5"/>
+              <path d="M14 2L7 9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="inline-editor-content" id="inline-editor-content"></div>
+    `;
+
+    const editorContainer = document.getElementById('inline-editor-content');
+    if (editorContainer) {
+      // Destroy old editor if exists
+      if (inlineEditor) {
+        inlineEditor.destroy();
+      }
+
+      // Create new editor
+      inlineEditor = createInlineEditor(editorContainer, content, macroPath);
+    }
+
+    // Setup button handlers
+    document.getElementById('inline-save-btn')?.addEventListener('click', saveInlineEditor);
+    document.getElementById('inline-open-btn')?.addEventListener('click', () => {
+      sendToBackground('EDIT_MACRO', { path: macroPath });
+    });
+
+  } catch (error) {
+    wrapper.innerHTML = `<div class="editor-placeholder" style="color: #c00;">Error: ${String(error)}</div>`;
+  }
+}
+
+/**
+ * Save inline editor content
+ */
+async function saveInlineEditor(): Promise<void> {
+  if (!state.selectedMacro || !state.isModified || !inlineEditor) return;
+
+  try {
+    const content = inlineEditor.state.doc.toString();
+
+    const response = await sendToBackground('SAVE_MACRO', {
+      path: state.selectedMacro,
+      content,
+    }) as { success: boolean; error?: string };
+
+    if (!response.success) {
+      setStatus('error', response.error || 'Failed to save');
+      return;
+    }
+
+    state.originalContent = content;
+    state.isModified = false;
+    updateEditorUI();
+    setStatus('idle', 'Saved');
+  } catch (error) {
+    setStatus('error', `Save error: ${String(error)}`);
+  }
+}
+
+/**
+ * Clear the inline editor
+ */
+function clearInlineEditor(): void {
+  const wrapper = document.getElementById('inline-editor');
+  if (wrapper) {
+    wrapper.innerHTML = '<div class="editor-placeholder">Select a macro to view/edit</div>';
+  }
+
+  if (inlineEditor) {
+    inlineEditor.destroy();
+    inlineEditor = null;
+  }
+
+  state.editorContent = '';
+  state.originalContent = '';
+  state.isModified = false;
+}
+
+/**
+ * Setup split resizer
+ */
+function setupSplitResizer(): void {
+  const resizer = document.getElementById('split-resizer');
+  const leftPane = document.querySelector('.split-left') as HTMLElement;
+
+  if (!resizer || !leftPane) return;
+
+  let isResizing = false;
+
+  resizer.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    resizer.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+
+    const container = leftPane.parentElement;
+    if (!container) return;
+
+    const containerRect = container.getBoundingClientRect();
+    const newWidth = e.clientX - containerRect.left;
+    const containerWidth = containerRect.width;
+
+    // Constrain to min/max widths
+    const minWidth = 120;
+    const maxWidth = containerWidth - 125; // Leave room for right pane
+
+    if (newWidth >= minWidth && newWidth <= maxWidth) {
+      leftPane.style.width = `${newWidth}px`;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      resizer.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    }
+  });
+}
+
+// ============================================================================
+// Dialog Functions
+// ============================================================================
 
 /**
  * Show an input dialog (replacement for prompt() which doesn't work in panels)
@@ -206,8 +469,12 @@ function setStatus(status: ExecutionStatus, message: string): void {
 function onMacroSelect(event: FileTreeSelectionEvent): void {
   if (event.node.isDirectory) {
     state.selectedMacro = null;
+    clearInlineEditor();
   } else {
     state.selectedMacro = event.node.path;
+
+    // Load macro into inline editor
+    loadMacroIntoEditor(event.node.path);
 
     if (event.action === 'play') {
       playMacro();
@@ -303,6 +570,29 @@ async function stopExecution(): Promise<void> {
 }
 
 /**
+ * Open recording options dialog
+ */
+async function openRecordingOptionsDialog(): Promise<void> {
+  try {
+    // Load current preferences from storage
+    const currentPreferences = await loadRecordingPreferences();
+
+    // Show the dialog with current preferences
+    const result = await showRecordingPrefsDialog({
+      currentPreferences,
+    });
+
+    // If user confirmed, save the new preferences
+    if (result.confirmed && result.preferences) {
+      await saveRecordingPreferences(result.preferences);
+      setStatus('idle', 'Recording options saved');
+    }
+  } catch (error) {
+    setStatus('error', `Error: ${String(error)}`);
+  }
+}
+
+/**
  * Start recording
  */
 async function startRecording(): Promise<void> {
@@ -323,8 +613,44 @@ async function startRecording(): Promise<void> {
  */
 async function saveRecording(): Promise<void> {
   try {
-    await sendToBackground('SAVE_RECORDING');
-    setStatus('idle', 'Macro saved');
+    // Prompt user for filename
+    let filename = await showInputDialog(
+      'Save Recording',
+      'Enter a name for your macro:',
+      'Recording.iim'
+    );
+
+    // User cancelled
+    if (filename === null) {
+      return;
+    }
+
+    // Trim whitespace
+    filename = filename.trim();
+
+    // Validate filename is not empty
+    if (!filename) {
+      setStatus('error', 'Filename cannot be empty');
+      return;
+    }
+
+    // Add .iim extension if missing
+    if (!filename.toLowerCase().endsWith('.iim')) {
+      filename += '.iim';
+    }
+
+    // Send save request with filename
+    const response = await sendToBackground('SAVE_RECORDING', { filename }) as {
+      success: boolean;
+      error?: string;
+    };
+
+    if (!response || !response.success) {
+      setStatus('error', response?.error || 'Failed to save recording');
+      return;
+    }
+
+    setStatus('idle', `Macro saved: ${filename}`);
     updateUI();
 
     // Refresh file tree
@@ -429,9 +755,7 @@ function setupEventListeners(): void {
   document.getElementById('btn-stop-record')?.addEventListener('click', stopExecution);
 
   // Record options buttons
-  document.getElementById('btn-record-options')?.addEventListener('click', () => {
-    setStatus('idle', 'Record options not yet implemented');
-  });
+  document.getElementById('btn-record-options')?.addEventListener('click', openRecordingOptionsDialog);
   document.getElementById('btn-save-page')?.addEventListener('click', () => {
     setStatus('idle', 'Save page not yet implemented');
   });
@@ -670,6 +994,20 @@ function initializePanel(): void {
 
   // Setup log viewer
   setupLogViewer();
+
+  // Setup split resizer
+  setupSplitResizer();
+
+  // Setup keyboard shortcuts for inline editor
+  document.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + S = Save inline editor
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if (state.isModified && inlineEditor) {
+        e.preventDefault();
+        saveInlineEditor();
+      }
+    }
+  });
 
   // Initial UI update
   updateUI();

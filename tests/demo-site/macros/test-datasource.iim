@@ -5,6 +5,8 @@ URL GOTO=http://localhost:8080/forms.html
 
 ' Set the datasource file
 SET !DATASOURCE sample-data.csv
+' Skip header row (line 1 contains column names)
+SET !DATASOURCE_LINE 2
 
 ' === DS CMD=READ - Read First Row ===
 DS CMD=READ
@@ -32,18 +34,20 @@ DS CMD=NEXT
 SET !VAR4 {{!COL1}}
 SET !VAR5 {{!COL3}}
 
-' === DS CMD=RESET - Go Back to First Row ===
+' === DS CMD=RESET - Go Back to Line 1 ===
 DS CMD=RESET
-DS CMD=READ
+' RESET sets !DATASOURCE_LINE to 1, which is the header row
+' Skip header again to get back to Alice (line 2)
+SET !DATASOURCE_LINE 2
 ' Should be back to Alice
 SET !VAR6 {{!COL1}}
 
-' Verify we're back to first row
+' Verify we're back to first data row
 TAG POS=1 TYPE=INPUT ATTR=NAME:username CONTENT={{!COL1}}
 
 ' === Loop Through All Rows ===
 DS CMD=RESET
-DS CMD=READ
+SET !DATASOURCE_LINE 2
 TAG POS=1 TYPE=TEXTAREA ATTR=NAME:message CONTENT={{!COL1}}<SP>-<SP>{{!COL4}}
 
 DS CMD=NEXT

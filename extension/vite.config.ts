@@ -7,7 +7,6 @@ import { viteStaticCopy, Target } from 'vite-plugin-static-copy';
 const extensionEntries: Record<string, string> = {
   background: resolve(__dirname, 'src/background.ts'),
   content: resolve(__dirname, 'src/content.ts'),
-  sidepanel: resolve(__dirname, 'src/sidepanel.ts'),
   panel: resolve(__dirname, 'src/panel/panel.ts'),
   editor: resolve(__dirname, 'src/editor/editor.ts'),
   options: resolve(__dirname, 'src/options/options.ts'),

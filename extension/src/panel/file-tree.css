@@ -11,7 +11,7 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: var(--color-white, #FFFFFF);
+  background: var(--color-platinum, #E7E7E7);
   border: 1px solid var(--color-platinum, #E7E7E7);
   border-radius: var(--radius-md, 8px);
   overflow: hidden;
@@ -23,8 +23,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  background: #F8F9FA;
-  border-bottom: 1px solid var(--color-platinum, #E7E7E7);
+  background: var(--color-platinum, #E7E7E7);
+  border-bottom: 1px solid #D0D0D0;
 }
 
 .file-tree-title {
@@ -226,7 +226,7 @@
   border: 2px solid var(--color-lavender-shade1, #8377D1);
   border-radius: var(--radius-sm, 4px);
   outline: none;
-  background: var(--color-white, #FFFFFF);
+  background: var(--color-platinum, #E7E7E7);
   color: var(--color-charcoal, #324155);
   min-width: 80px;
 }

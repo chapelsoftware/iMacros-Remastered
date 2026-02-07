@@ -133,8 +133,8 @@ body {
 
 .file-tree-wrapper {
   height: 100%;
-  background: var(--color-white);
-  border: 1px solid var(--color-platinum);
+  background: var(--color-platinum);
+  border: 1px solid #D0D0D0;
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
@@ -143,8 +143,8 @@ body {
 /* Inline editor */
 .inline-editor-wrapper {
   height: 100%;
-  background: var(--color-white);
-  border: 1px solid var(--color-platinum);
+  background: var(--color-platinum);
+  border: 1px solid #D0D0D0;
   border-radius: var(--radius-md);
   overflow: hidden;
   display: flex;
@@ -167,8 +167,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #F8F9FA;
-  border-bottom: 1px solid var(--color-platinum);
+  background: var(--color-platinum);
+  border-bottom: 1px solid #D0D0D0;
   flex-shrink: 0;
 }
 
@@ -452,17 +452,17 @@ body {
 .loop-input {
   width: 100%;
   padding: 8px 10px;
-  border: 1px solid var(--color-platinum);
+  border: 1px solid #D0D0D0;
   border-radius: var(--radius-sm);
   font-size: 13px;
   text-align: center;
-  background: var(--color-white);
+  background: var(--color-platinum);
   color: var(--color-charcoal);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .loop-input:read-only {
-  background: #F8F9FA;
+  background: var(--color-platinum);
   color: var(--color-slate);
 }
 
@@ -701,11 +701,11 @@ body {
 .dialog-input {
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid var(--color-platinum);
+  border: 1px solid #D0D0D0;
   border-radius: var(--radius-md);
   font-size: 14px;
   margin-bottom: 20px;
-  background: var(--color-white);
+  background: var(--color-platinum);
   color: var(--color-charcoal);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -936,10 +936,10 @@ body {
 .recording-prefs-dialog-select {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid var(--color-platinum);
+  border: 1px solid #D0D0D0;
   border-radius: var(--radius-sm);
   font-size: 13px;
-  background: var(--color-white);
+  background: var(--color-platinum);
   color: var(--color-charcoal);
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;

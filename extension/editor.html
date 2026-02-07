@@ -7,6 +7,10 @@
   <style>
 /**
  * iMacros Macro Editor Styles
+ * Brand Colors:
+ * - Relentless Yellow: #D0FF25
+ * - Lavender: #A9A0EB / #8377D1 / #6656D0 / #5436CC
+ * - Charcoal: #324155, Slate: #58636E, Platinum: #E7E7E7
  */
 
 /* Reset */
@@ -26,8 +30,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   font-size: 13px;
   line-height: 1.4;
-  color: #333;
-  background: #f0f0f0;
+  color: #E8E8E8;
+  background: #1E2530;
 }
 
 /* Editor container */
@@ -43,8 +47,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
-  border-bottom: 1px solid #1a4080;
+  background: #324155;
+  border-bottom: 3px solid #D0FF25;
   color: white;
 }
 
@@ -77,6 +81,11 @@ body {
   align-items: center;
 }
 
+.toolbar-logo svg circle {
+  fill: #6656D0;
+  stroke: #5436CC;
+}
+
 #editor-title {
   font-size: 14px;
   font-weight: 500;
@@ -84,6 +93,7 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: #A9A0EB;
 }
 
 /* Toolbar buttons */
@@ -93,23 +103,23 @@ body {
   justify-content: center;
   gap: 6px;
   padding: 6px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 4px;
+  border: 1px solid #3D4A5C;
+  border-radius: 6px;
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s ease;
-  background: rgba(255, 255, 255, 0.1);
-  color: white;
+  background: #3D4A5C;
+  color: #E8E8E8;
 }
 
 .toolbar-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.5);
+  background: #4D5A6C;
+  border-color: #A9A0EB;
 }
 
 .toolbar-btn:active:not(:disabled) {
-  background: rgba(0, 0, 0, 0.1);
+  background: #2D3644;
 }
 
 .toolbar-btn:disabled {
@@ -121,34 +131,40 @@ body {
   flex-shrink: 0;
 }
 
-/* Primary button style */
+/* Primary button style (Save) */
 .toolbar-btn-primary {
-  background: rgba(255, 255, 255, 0.2);
-  border-color: rgba(255, 255, 255, 0.4);
+  background: #6656D0;
+  border-color: #5436CC;
+  color: white;
 }
 
 .toolbar-btn-primary:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.3);
+  background: #8377D1;
+  border-color: #6656D0;
 }
 
-/* Success button style (for Run) */
+/* Success button style (Run) */
 .toolbar-btn-success {
-  background: linear-gradient(to bottom, #4caf50 0%, #388e3c 100%);
-  border-color: #2e7d32;
+  background: #D0FF25;
+  border-color: #B8E020;
+  color: #324155;
+  font-weight: 600;
 }
 
 .toolbar-btn-success:hover:not(:disabled) {
-  background: linear-gradient(to bottom, #66bb6a 0%, #43a047 100%);
+  background: #DBFF4D;
+  border-color: #D0FF25;
 }
 
-/* Danger button style (for Close) */
+/* Danger button style (Close) */
 .toolbar-btn-danger {
-  background: rgba(255, 100, 100, 0.2);
-  border-color: rgba(255, 100, 100, 0.4);
+  background: #58636E;
+  border-color: #4D5660;
 }
 
 .toolbar-btn-danger:hover:not(:disabled) {
-  background: rgba(255, 100, 100, 0.3);
+  background: #EF4444;
+  border-color: #DC2626;
 }
 
 /* Editor container */
@@ -156,11 +172,12 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: white;
+  background: #324155;
 }
 
 #editor-container .cm-editor {
   height: 100%;
+  background: #324155;
 }
 
 /* Status bar */
@@ -169,8 +186,8 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 6px 12px;
-  background: linear-gradient(to bottom, #e8eef5 0%, #d8e2ed 100%);
-  border-top: 1px solid #a8b8cc;
+  background: #252D3A;
+  border-top: 1px solid #3D4A5C;
   font-size: 11px;
 }
 
@@ -184,7 +201,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: #666;
+  color: #8B95A5;
 }
 
 #status-message {
@@ -193,20 +210,20 @@ body {
 }
 
 .status-message.status-info {
-  color: #1976d2;
+  color: #A9A0EB;
 }
 
 .status-message.status-success {
-  color: #388e3c;
+  color: #6EE7B7;
 }
 
 .status-message.status-error {
-  color: #d32f2f;
+  color: #F87171;
 }
 
 /* Keyboard shortcuts hint */
 .shortcuts-hint {
-  color: #888;
+  color: #6B7784;
   font-size: 10px;
 }
 
@@ -215,11 +232,10 @@ body {
   padding: 2px 5px;
   font-family: inherit;
   font-size: 10px;
-  color: #555;
-  background: #f0f0f0;
-  border: 1px solid #ccc;
+  color: #A9A0EB;
+  background: #3D4A5C;
+  border: 1px solid #4D5A6C;
   border-radius: 3px;
-  box-shadow: 0 1px 0 #aaa;
 }
 
 /* CodeMirror customizations */
@@ -230,25 +246,38 @@ body {
 }
 
 .cm-editor .cm-gutters {
-  background: #f5f5f5;
-  border-right: 1px solid #ddd;
-  color: #999;
+  background: #2A3544;
+  border-right: 1px solid #3D4A5C;
+  color: #8B95A5;
 }
 
 .cm-editor .cm-activeLineGutter {
-  background: #e8f2ff;
+  background: #3D4A5C;
 }
 
 .cm-editor .cm-activeLine {
-  background: #f5faff;
+  background: rgba(169, 160, 235, 0.15);
+}
+
+.cm-editor .cm-content {
+  background: #324155;
+  caret-color: #FFFFFF;
+}
+
+.cm-editor .cm-cursor {
+  border-left-color: #FFFFFF;
 }
 
 .cm-editor .cm-selectionBackground {
-  background: #b3d7ff !important;
+  background: rgba(169, 160, 235, 0.3) !important;
 }
 
 .cm-editor.cm-focused .cm-selectionBackground {
-  background: #b3d7ff !important;
+  background: rgba(169, 160, 235, 0.4) !important;
+}
+
+.cm-editor .cm-line {
+  color: #E8E8E8;
 }
 
 /* Lint gutter markers */
@@ -260,14 +289,18 @@ body {
 .cm-tooltip-autocomplete {
   font-family: 'Consolas', 'Monaco', 'Menlo', 'Courier New', monospace;
   font-size: 13px;
+  background: #252D3A;
+  border: 1px solid #3D4A5C;
+  border-radius: 6px;
 }
 
 .cm-tooltip-autocomplete > ul > li {
   padding: 4px 8px;
+  color: #E8E8E8;
 }
 
 .cm-tooltip-autocomplete > ul > li[aria-selected] {
-  background: #1976d2;
+  background: #6656D0;
   color: white;
 }
 
@@ -295,7 +328,7 @@ body {
         <div class="toolbar-title">
           <div class="toolbar-logo">
             <svg width="24" height="24" viewBox="0 0 24 24">
-              <circle cx="12" cy="12" r="11" fill="#1a5fb4" stroke="#0d3b82" stroke-width="1"/>
+              <circle cx="12" cy="12" r="11" stroke-width="1"/>
               <text x="12" y="16" text-anchor="middle" font-size="11" fill="white" font-weight="bold">iM</text>
             </svg>
           </div>

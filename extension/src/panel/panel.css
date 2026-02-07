@@ -231,12 +231,12 @@ body {
 .inline-editor-content {
   flex: 1;
   overflow: hidden;
-  background: var(--color-platinum);
+  background: var(--color-charcoal);
 }
 
 .inline-editor-content .cm-editor {
   height: 100%;
-  background: var(--color-platinum);
+  background: var(--color-charcoal);
 }
 
 .inline-editor-content .cm-scroller {

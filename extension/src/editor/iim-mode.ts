@@ -194,16 +194,17 @@ export const iimLanguage = StreamLanguage.define({
  * Highlight style for iMacros
  */
 export const iimHighlightStyle = HighlightStyle.define([
-  { tag: t.keyword, color: '#0000ff', fontWeight: 'bold' },
-  { tag: t.comment, color: '#008000', fontStyle: 'italic' },
-  { tag: t.string, color: '#a31515' },
-  { tag: t.number, color: '#098658' },
-  { tag: t.propertyName, color: '#001080' },
-  { tag: t.variableName, color: '#795e26' },
-  { tag: t.special(t.variableName), color: '#0070c1', fontWeight: 'bold' },
-  { tag: t.operator, color: '#000000' },
-  { tag: t.punctuation, color: '#000000' },
-  { tag: t.url, color: '#0070c1', textDecoration: 'underline' },
+  // Modern VS Code-inspired color scheme
+  { tag: t.keyword, color: '#AF00DB', fontWeight: '600' },           // Purple for commands
+  { tag: t.comment, color: '#6A9955', fontStyle: 'italic' },         // Green for comments
+  { tag: t.string, color: '#A31515' },                               // Red for strings
+  { tag: t.number, color: '#098658' },                               // Teal for numbers
+  { tag: t.propertyName, color: '#0451A5' },                         // Blue for parameters
+  { tag: t.variableName, color: '#001080' },                         // Dark blue for variables
+  { tag: t.special(t.variableName), color: '#E06C00', fontWeight: '600' }, // Orange for system vars
+  { tag: t.operator, color: '#383A42' },                             // Dark gray for operators
+  { tag: t.punctuation, color: '#383A42' },                          // Dark gray for punctuation
+  { tag: t.url, color: '#0070C1', textDecoration: 'underline' },     // Blue underlined for URLs
 ]);
 
 /**

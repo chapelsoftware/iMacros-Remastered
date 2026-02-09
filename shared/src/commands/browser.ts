@@ -26,6 +26,7 @@ export type BrowserCommandMessageType =
   | 'clearData'
   | 'setFilter'
   | 'setProxy'
+  | 'restoreProxy'
   | 'screenshot';
 
 /**
@@ -126,6 +127,19 @@ export interface SetProxyMessage extends BrowserCommandMessage {
   password?: string;
   /** List of hosts to bypass proxy for */
   bypass?: string[];
+  /** Whether to append bypass entries to existing list (vs replace) */
+  bypassAppend?: boolean;
+  /** Protocol prefix for per-protocol proxy (e.g. 'http' or 'https') */
+  protocol?: 'http' | 'https';
+  /** Whether to backup current proxy settings before applying (first use in macro) */
+  backupFirst?: boolean;
+}
+
+/**
+ * Restore proxy settings message (sent at macro end)
+ */
+export interface RestoreProxyMessage extends BrowserCommandMessage {
+  type: 'restoreProxy';
 }
 
 // ===== SCREENSHOT Command Types =====
@@ -170,6 +184,7 @@ export type BrowserCommandOperationMessage =
   | ClearDataMessage
   | SetFilterMessage
   | SetProxyMessage
+  | RestoreProxyMessage
   | ScreenshotMessage;
 
 /**
@@ -257,6 +272,13 @@ type SetProxyPayload = {
   username?: string;
   password?: string;
   bypass?: string[];
+  bypassAppend?: boolean;
+  protocol?: 'http' | 'https';
+  backupFirst?: boolean;
+};
+
+type RestoreProxyPayload = {
+  type: 'restoreProxy';
 };
 
 type ScreenshotPayload = {
@@ -273,6 +295,7 @@ type BrowserCommandPayload =
   | ClearDataPayload
   | SetFilterPayload
   | SetProxyPayload
+  | RestoreProxyPayload
   | ScreenshotPayload;
 
 /**
@@ -511,12 +534,32 @@ export const filterHandler: CommandHandler = async (ctx: CommandContext): Promis
 // ===== PROXY Command Handler =====
 
 /**
- * Parse proxy address string into host and port
+ * Parse proxy address string into host, port, and optional protocol prefix.
+ * Supports formats:
+ * - host:port
+ * - host (defaults to port 8080)
+ * - http=host:port (protocol-specific proxy)
+ * - https=host:port (protocol-specific proxy)
  */
-function parseProxyAddress(address: string): { host: string; port: number } | null {
+function parseProxyAddress(address: string): { host: string; port: number; protocol?: 'http' | 'https' } | null {
   // Handle empty address (direct connection)
   if (!address || address === '' || address === 'DIRECT') {
     return null;
+  }
+
+  // Handle special addresses
+  if (/^__default__$/i.test(address) || /^__none__$/i.test(address)) {
+    return null;
+  }
+
+  // Parse protocol=host:port format (e.g. http=proxy:8080, https=proxy:443)
+  const protoMatch = address.match(/^(https?)\s*=\s*([\w.]+):(\d+)\s*$/);
+  if (protoMatch) {
+    return {
+      host: protoMatch[2],
+      port: parseInt(protoMatch[3], 10),
+      protocol: protoMatch[1].toLowerCase() as 'http' | 'https',
+    };
   }
 
   // Parse host:port format
@@ -567,11 +610,45 @@ function determineProxyType(ctx: CommandContext, address: string): ProxyType {
   }
 
   // Default to direct if no address, otherwise http
-  if (!address || address === '' || address.toUpperCase() === 'DIRECT') {
+  if (!address || address === '' || address.toUpperCase() === 'DIRECT' || /^__none__$/i.test(address)) {
     return 'direct';
   }
 
+  // __default__ restores browser defaults (system proxy)
+  if (/^__default__$/i.test(address)) {
+    return 'system';
+  }
+
   return 'http';
+}
+
+/** Track whether proxy settings have been backed up during this macro execution */
+let proxySettingsBackedUp = false;
+
+/**
+ * Reset proxy backup state (called when macro execution starts)
+ */
+export function resetProxyBackupState(): void {
+  proxySettingsBackedUp = false;
+}
+
+/**
+ * Check if proxy settings have been backed up
+ */
+export function hasProxyBackup(): boolean {
+  return proxySettingsBackedUp;
+}
+
+/**
+ * Restore proxy settings to pre-macro state.
+ * Should be called at macro end if proxy was used during execution.
+ */
+export async function restoreProxySettings(ctx: CommandContext): Promise<void> {
+  if (!proxySettingsBackedUp) return;
+
+  ctx.log('info', 'Restoring original proxy settings');
+  await sendBrowserCommandMessage({ type: 'restoreProxy' }, ctx);
+  proxySettingsBackedUp = false;
 }
 
 /**
@@ -582,7 +659,12 @@ function determineProxyType(ctx: CommandContext, address: string): ProxyType {
  * - PROXY ADDRESS=host:port TYPE=SOCKS5 - Set SOCKS5 proxy
  * - PROXY ADDRESS= - Clear proxy (direct connection)
  * - PROXY ADDRESS=DIRECT - Clear proxy (direct connection)
- * - PROXY ADDRESS=host:port BYPASS=localhost,127.0.0.1 - Set proxy with bypass list
+ * - PROXY ADDRESS=__default__ - Restore browser default proxy settings
+ * - PROXY ADDRESS=__none__ - Disable proxy (direct connection)
+ * - PROXY ADDRESS=http=host:port - Set HTTP-only proxy
+ * - PROXY ADDRESS=https=host:port - Set HTTPS-only proxy
+ * - PROXY ADDRESS=host:port BYPASS=localhost,127.0.0.1 - Append to bypass list
+ * - PROXY ADDRESS=host:port BYPASS=null - Clear bypass list
  * - PROXY ADDRESS=host:port USER=username PASSWORD=password - Authenticated proxy
  *
  * Uses browser.proxy API in the extension.
@@ -603,15 +685,70 @@ export const proxyHandler: CommandHandler = async (ctx: CommandContext): Promise
   }
 
   const address = ctx.expand(addressParam);
+
+  // Handle __default__: restore browser defaults and return
+  if (/^__default__$/i.test(address)) {
+    ctx.log('info', 'Restoring browser default proxy settings');
+    const response = await sendBrowserCommandMessage(
+      { type: 'setProxy', proxyType: 'system' },
+      ctx
+    );
+    if (!response.success) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+        errorMessage: response.error || 'Failed to restore default proxy settings',
+      };
+    }
+    ctx.log('info', 'Browser default proxy settings restored');
+    return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+  }
+
+  // Handle __none__: disable proxy entirely
+  if (/^__none__$/i.test(address)) {
+    ctx.log('info', 'Disabling proxy (direct connection)');
+    const response = await sendBrowserCommandMessage(
+      { type: 'setProxy', proxyType: 'direct' },
+      ctx
+    );
+    if (!response.success) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+        errorMessage: response.error || 'Failed to disable proxy',
+      };
+    }
+    ctx.log('info', 'Proxy disabled, using direct connection');
+    return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+  }
+
   const proxyType = determineProxyType(ctx, address);
 
-  // Parse address
+  // Parse address (may include protocol prefix)
   const parsed = parseProxyAddress(address);
 
-  // Parse bypass list
-  const bypass = bypassParam
-    ? ctx.expand(bypassParam).split(',').map(h => h.trim())
-    : undefined;
+  // Validate address for non-direct types
+  if (proxyType !== 'direct' && proxyType !== 'system' && !parsed) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: 'PROXY ADDRESS requires server name or IP address with port number',
+    };
+  }
+
+  // Parse bypass list: "null" clears, otherwise appends to existing
+  let bypass: string[] | undefined;
+  let bypassAppend = false;
+  if (bypassParam) {
+    const bypassValue = ctx.expand(bypassParam);
+    if (/^null$/i.test(bypassValue)) {
+      // null clears the bypass list
+      bypass = [];
+    } else {
+      bypass = bypassValue.split(',').map(h => h.trim());
+      bypassAppend = true; // Append to existing list per original behavior
+    }
+  }
 
   // Get credentials
   const username = userParam ? ctx.expand(userParam) : undefined;
@@ -621,6 +758,12 @@ export const proxyHandler: CommandHandler = async (ctx: CommandContext): Promise
     ctx.log('info', 'Setting direct connection (no proxy)');
   } else {
     ctx.log('info', `Setting ${proxyType} proxy: ${address}`);
+  }
+
+  // Backup proxy settings on first use in this macro execution
+  const backupFirst = !proxySettingsBackedUp;
+  if (backupFirst) {
+    proxySettingsBackedUp = true;
   }
 
   const response = await sendBrowserCommandMessage(
@@ -633,6 +776,9 @@ export const proxyHandler: CommandHandler = async (ctx: CommandContext): Promise
       username,
       password,
       bypass,
+      bypassAppend,
+      protocol: parsed?.protocol,
+      backupFirst,
     },
     ctx
   );
@@ -648,7 +794,7 @@ export const proxyHandler: CommandHandler = async (ctx: CommandContext): Promise
   if (proxyType === 'direct') {
     ctx.log('info', 'Proxy cleared, using direct connection');
   } else {
-    ctx.log('info', `Proxy set to ${proxyType}://${address}`);
+    ctx.log('info', `Proxy set to ${proxyType}://${parsed?.host}:${parsed?.port}`);
   }
 
   return {

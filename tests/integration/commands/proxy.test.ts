@@ -16,6 +16,8 @@ import {
   BrowserCommandOperationMessage,
   BrowserCommandResponse,
   SetProxyMessage,
+  RestoreProxyMessage,
+  resetProxyBackupState,
 } from '@shared/commands/browser';
 
 describe('PROXY Command Integration Tests', () => {
@@ -25,6 +27,7 @@ describe('PROXY Command Integration Tests', () => {
 
   beforeEach(() => {
     sentMessages = [];
+    resetProxyBackupState();
     mockBridge = {
       sendMessage: vi.fn(async (message: BrowserCommandOperationMessage): Promise<BrowserCommandResponse> => {
         sentMessages.push(message);
@@ -272,6 +275,153 @@ describe('PROXY Command Integration Tests', () => {
       expect(msg.host).toBe('proxy.example.com');
       expect(msg.port).toBe(9090);
       expect(msg.address).toBe('proxy.example.com:9090');
+    });
+  });
+
+  // ===== __default__ and __none__ Support =====
+
+  describe('__default__ and __none__ addresses', () => {
+    it('should send proxyType=system when ADDRESS=__default__', async () => {
+      executor.loadMacro('PROXY ADDRESS=__default__');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = getProxyMessage();
+      expect(msg.type).toBe('setProxy');
+      expect(msg.proxyType).toBe('system');
+    });
+
+    it('should handle __default__ case-insensitively', async () => {
+      executor.loadMacro('PROXY ADDRESS=__DEFAULT__');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.proxyType).toBe('system');
+    });
+
+    it('should send proxyType=direct when ADDRESS=__none__', async () => {
+      executor.loadMacro('PROXY ADDRESS=__none__');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = getProxyMessage();
+      expect(msg.type).toBe('setProxy');
+      expect(msg.proxyType).toBe('direct');
+    });
+
+    it('should handle __none__ case-insensitively', async () => {
+      executor.loadMacro('PROXY ADDRESS=__NONE__');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.proxyType).toBe('direct');
+    });
+  });
+
+  // ===== Protocol-Prefixed Addresses =====
+
+  describe('Protocol-prefixed addresses', () => {
+    it('should parse http=host:port syntax', async () => {
+      executor.loadMacro('PROXY ADDRESS=http=proxy.example.com:8080');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = getProxyMessage();
+      expect(msg.type).toBe('setProxy');
+      expect(msg.proxyType).toBe('http');
+      expect(msg.host).toBe('proxy.example.com');
+      expect(msg.port).toBe(8080);
+      expect(msg.protocol).toBe('http');
+    });
+
+    it('should parse https=host:port syntax', async () => {
+      executor.loadMacro('PROXY ADDRESS=https=proxy.example.com:443');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = getProxyMessage();
+      expect(msg.type).toBe('setProxy');
+      expect(msg.proxyType).toBe('http');
+      expect(msg.host).toBe('proxy.example.com');
+      expect(msg.port).toBe(443);
+      expect(msg.protocol).toBe('https');
+    });
+  });
+
+  // ===== Bypass List Append and Null Clearing =====
+
+  describe('BYPASS append and null clearing', () => {
+    it('should set bypassAppend=true for normal bypass values', async () => {
+      executor.loadMacro('PROXY ADDRESS=proxy:3128 BYPASS=localhost,127.0.0.1');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.bypass).toEqual(['localhost', '127.0.0.1']);
+      expect(msg.bypassAppend).toBe(true);
+    });
+
+    it('should send empty bypass array when BYPASS=null (clear bypass list)', async () => {
+      executor.loadMacro('PROXY ADDRESS=proxy:3128 BYPASS=null');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.bypass).toEqual([]);
+      expect(msg.bypassAppend).toBe(false);
+    });
+
+    it('should handle BYPASS=NULL case-insensitively', async () => {
+      executor.loadMacro('PROXY ADDRESS=proxy:3128 BYPASS=NULL');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.bypass).toEqual([]);
+      expect(msg.bypassAppend).toBe(false);
+    });
+  });
+
+  // ===== Proxy Settings Backup/Restore Lifecycle =====
+
+  describe('Proxy settings backup/restore lifecycle', () => {
+    it('should set backupFirst=true on first proxy command in a macro', async () => {
+      executor.loadMacro('PROXY ADDRESS=proxy:8080');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getProxyMessage();
+      expect(msg.backupFirst).toBe(true);
+    });
+
+    it('should set backupFirst=false on subsequent proxy commands', async () => {
+      const script = [
+        'PROXY ADDRESS=proxy1:8080',
+        'PROXY ADDRESS=proxy2:9090',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(2);
+
+      const msgs = sentMessages.filter(m => m.type === 'setProxy') as SetProxyMessage[];
+      expect(msgs[0].backupFirst).toBe(true);
+      expect(msgs[1].backupFirst).toBe(false);
     });
   });
 });

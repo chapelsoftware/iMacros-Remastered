@@ -66,6 +66,15 @@ if (typeof globalThis.window === 'undefined') {
   (globalThis as any).window = _polyfillDom.window;
 }
 
+// Mock chrome.runtime.getURL used at module top-level in dialog-interceptor.ts
+if (typeof globalThis.chrome === 'undefined') {
+  (globalThis as any).chrome = {
+    runtime: {
+      getURL: (path: string) => `chrome-extension://test-id/${path}`,
+    },
+  };
+}
+
 // Ensure window has alert/confirm/prompt
 if (typeof (globalThis as any).window.alert !== 'function') {
   (globalThis as any).window.alert = () => {};

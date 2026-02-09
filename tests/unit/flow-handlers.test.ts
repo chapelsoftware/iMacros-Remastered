@@ -350,24 +350,29 @@ describe('Flow Control Handlers', () => {
   // ===== 3. PROMPT Handler =====
 
   describe('PROMPT handler', () => {
-    it('should return empty string output with default UI when no DEFAULT given', async () => {
+    it('should show alert-only when MESSAGE given without VAR (no input)', async () => {
+      const customUI: FlowControlUI = {
+        showPause: vi.fn().mockResolvedValue(undefined),
+        showPrompt: vi.fn().mockResolvedValue('ignored'),
+        showAlert: vi.fn().mockResolvedValue(undefined),
+      };
+      setFlowControlUI(customUI);
+
       const ctx = buildMockCtx(executor, {}, {
         type: 'PROMPT',
-        params: [{ key: 'MESSAGE', value: 'Enter name:' }],
-        raw: 'PROMPT MESSAGE="Enter name:"',
+        params: [{ key: 'MESSAGE', value: 'Hello!' }],
+        raw: 'PROMPT MESSAGE="Hello!"',
       });
 
       const result = await promptHandler(ctx);
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      // Default UI returns defaultValue ?? '' (no default given, so '')
-      expect(result.output).toBe('');
-      // The handler calls ctx.state.setVariable('!INPUT', '') which stores
-      // in our mock state
-      expect(ctx.state.getVariable('!INPUT')).toBe('');
+      expect(result.output).toBeUndefined();
+      expect(customUI.showAlert).toHaveBeenCalledWith('Hello!');
+      expect(customUI.showPrompt).not.toHaveBeenCalled();
     });
 
-    it('should prompt with MESSAGE and store in !INPUT by default', async () => {
+    it('should prompt with MESSAGE+VAR and store in specified variable', async () => {
       const customUI: FlowControlUI = {
         showPause: vi.fn().mockResolvedValue(undefined),
         showPrompt: vi.fn().mockResolvedValue('user-answer'),
@@ -375,17 +380,20 @@ describe('Flow Control Handlers', () => {
       };
       setFlowControlUI(customUI);
 
-      const ctx = buildMockCtx(executor, {}, {
+      const ctx = buildCtx(executor, {
         type: 'PROMPT',
-        params: [{ key: 'MESSAGE', value: 'question' }],
-        raw: 'PROMPT MESSAGE=question',
+        params: [
+          { key: 'MESSAGE', value: 'question' },
+          { key: 'VAR', value: '!VAR1' },
+        ],
+        raw: 'PROMPT MESSAGE=question VAR=!VAR1',
+        expand: (t: string) => t,
       });
 
       const result = await promptHandler(ctx);
       expect(result.success).toBe(true);
       expect(result.output).toBe('user-answer');
-      // Stored via mock state
-      expect(ctx.state.getVariable('!INPUT')).toBe('user-answer');
+      expect(executor.getState().getVariable('!VAR1')).toBe('user-answer');
       expect(customUI.showPrompt).toHaveBeenCalledWith('question', undefined);
     });
 
@@ -416,14 +424,15 @@ describe('Flow Control Handlers', () => {
       expect(customUI.showPrompt).toHaveBeenCalledWith('question', 'answer');
     });
 
-    it('should return default value from default UI when DEFAULT is set', async () => {
-      const ctx = buildMockCtx(executor, {}, {
+    it('should return default value from default UI when DEFAULT and VAR are set', async () => {
+      const ctx = buildCtx(executor, {
         type: 'PROMPT',
         params: [
           { key: 'MESSAGE', value: 'question' },
           { key: 'DEFAULT', value: 'my-default' },
+          { key: 'VAR', value: '!VAR1' },
         ],
-        raw: 'PROMPT MESSAGE=question DEFAULT=my-default',
+        raw: 'PROMPT MESSAGE=question DEFAULT=my-default VAR=!VAR1',
         expand: (t: string) => t,
       });
 
@@ -431,11 +440,10 @@ describe('Flow Control Handlers', () => {
       expect(result.success).toBe(true);
       // Default UI returns defaultValue when provided
       expect(result.output).toBe('my-default');
-      // Stored via mock state into !INPUT
-      expect(ctx.state.getVariable('!INPUT')).toBe('my-default');
+      expect(executor.getState().getVariable('!VAR1')).toBe('my-default');
     });
 
-    it('should return USER_ABORT and store empty string when user cancels', async () => {
+    it('should continue silently without storing when user cancels', async () => {
       const customUI: FlowControlUI = {
         showPause: vi.fn().mockResolvedValue(undefined),
         showPrompt: vi.fn().mockRejectedValue(new Error('User cancelled')),
@@ -443,18 +451,26 @@ describe('Flow Control Handlers', () => {
       };
       setFlowControlUI(customUI);
 
-      const ctx = buildMockCtx(executor, {}, {
+      const ctx = buildCtx(executor, {
         type: 'PROMPT',
-        params: [{ key: 'MESSAGE', value: 'Enter something' }],
-        raw: 'PROMPT MESSAGE="Enter something"',
+        params: [
+          { key: 'MESSAGE', value: 'Enter something' },
+          { key: 'VAR', value: '!VAR1' },
+        ],
+        raw: 'PROMPT MESSAGE="Enter something" VAR=!VAR1',
+        expand: (t: string) => t,
       });
 
+      // Set a pre-existing value to verify it's not overwritten on cancel
+      executor.getState().setVariable('!VAR1', 'original');
+
       const result = await promptHandler(ctx);
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.USER_ABORT);
-      expect(result.stopExecution).toBe(true);
-      // Should store empty string on cancel via mock state
-      expect(ctx.state.getVariable('!INPUT')).toBe('');
+      // Cancel continues silently
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(result.stopExecution).toBeUndefined();
+      // Value should NOT be changed on cancel
+      expect(executor.getState().getVariable('!VAR1')).toBe('original');
     });
 
     it('should return MISSING_PARAMETER when no message is provided', async () => {
@@ -469,7 +485,7 @@ describe('Flow Control Handlers', () => {
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
     });
 
-    it('should use the first positional param key as message when MESSAGE is not given', async () => {
+    it('should show alert when positional message is given without variable', async () => {
       const customUI: FlowControlUI = {
         showPause: vi.fn().mockResolvedValue(undefined),
         showPrompt: vi.fn().mockResolvedValue('response'),
@@ -489,11 +505,39 @@ describe('Flow Control Handlers', () => {
 
       const result = await promptHandler(ctx);
       expect(result.success).toBe(true);
-      // The handler uses params[0].value || params[0].key as message
-      expect(customUI.showPrompt).toHaveBeenCalledWith('What is your name?', undefined);
+      // Alert-only mode: no variable, so showAlert is called
+      expect(customUI.showAlert).toHaveBeenCalledWith('What is your name?');
+      expect(customUI.showPrompt).not.toHaveBeenCalled();
     });
 
-    it('should store empty string in custom VAR when user cancels', async () => {
+    it('should use positional syntax: PROMPT message varname default', async () => {
+      const customUI: FlowControlUI = {
+        showPause: vi.fn().mockResolvedValue(undefined),
+        showPrompt: vi.fn().mockResolvedValue('typed'),
+        showAlert: vi.fn().mockResolvedValue(undefined),
+      };
+      setFlowControlUI(customUI);
+
+      // Simulate: PROMPT "Enter name" !VAR1 DefaultName
+      const ctx = buildCtx(executor, {
+        type: 'PROMPT',
+        params: [
+          { key: 'Enter name', value: '' },
+          { key: '!VAR1', value: '' },
+          { key: 'DefaultName', value: '' },
+        ],
+        raw: 'PROMPT "Enter name" !VAR1 DefaultName',
+        expand: (t: string) => t,
+      });
+
+      const result = await promptHandler(ctx);
+      expect(result.success).toBe(true);
+      expect(result.output).toBe('typed');
+      expect(executor.getState().getVariable('!VAR1')).toBe('typed');
+      expect(customUI.showPrompt).toHaveBeenCalledWith('Enter name', 'DefaultName');
+    });
+
+    it('should not store value in custom VAR when user cancels', async () => {
       const customUI: FlowControlUI = {
         showPause: vi.fn().mockResolvedValue(undefined),
         showPrompt: vi.fn().mockRejectedValue(new Error('cancelled')),
@@ -512,11 +556,15 @@ describe('Flow Control Handlers', () => {
         expand: (t: string) => t,
       });
 
+      // Pre-set a value to verify it's untouched on cancel
+      executor.getState().setVariable('!VAR2', 'existing');
+
       const result = await promptHandler(ctx);
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.USER_ABORT);
-      // !VAR2 is recognized, so state.setVariable stores it
-      expect(executor.getState().getVariable('!VAR2')).toBe('');
+      // Cancel continues silently
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      // Value should NOT be overwritten on cancel
+      expect(executor.getState().getVariable('!VAR2')).toBe('existing');
     });
 
     it('should store user input in custom VAR when prompt succeeds', async () => {

@@ -1,19 +1,16 @@
 /**
  * PROMPT Command Integration Tests
  *
- * Tests the PROMPT command from flow.ts which displays a message to the user
- * and stores the response in a variable.
+ * Tests the PROMPT command from flow.ts with iMacros 8.9.7 compatible behavior:
  *
- * - PROMPT MESSAGE="text" shows a prompt and stores input in !INPUT (default)
- * - PROMPT MESSAGE="text" VAR=!VAR1 stores input in the specified variable
- * - PROMPT MESSAGE="text" DEFAULT="val" passes a default to the prompt UI
- * - Variable expansion is supported in the message text
- * - Cancelling the prompt stores '' and returns USER_ABORT with stopExecution
- * - PROMPT without a message returns MISSING_PARAMETER error
+ * Positional syntax: PROMPT message [varname] [default]
+ * Named syntax:      PROMPT MESSAGE="text" [VAR=!VARx] [DEFAULT="value"]
  *
- * NOTE: The default storage variable '!INPUT' is not a registered system variable
- * in the VariableContext, so setVariable('!INPUT', ...) silently fails. Tests
- * that need to verify stored values use explicit VAR=!VARx parameters instead.
+ * Behavior:
+ * - When no variable is specified, shows an alert-only dialog (no input field)
+ * - When a variable is specified, shows an input prompt and stores the result
+ * - Cancel continues execution silently without storing any value
+ * - No default variable (no automatic !INPUT storage)
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
@@ -42,12 +39,13 @@ function createPromptExecutor(): MacroExecutor {
  * Helper: build a mock FlowControlUI with configurable showPrompt behavior.
  */
 function createMockUI(
-  showPromptImpl: FlowControlUI['showPrompt'] = vi.fn().mockResolvedValue('')
-): FlowControlUI & { showPrompt: ReturnType<typeof vi.fn> } {
+  showPromptImpl: FlowControlUI['showPrompt'] = vi.fn().mockResolvedValue(''),
+  showAlertImpl: FlowControlUI['showAlert'] = vi.fn().mockResolvedValue(undefined),
+): FlowControlUI & { showPrompt: ReturnType<typeof vi.fn>; showAlert: ReturnType<typeof vi.fn> } {
   return {
     showPause: vi.fn().mockResolvedValue(undefined),
     showPrompt: showPromptImpl as unknown as ReturnType<typeof vi.fn>,
-    showAlert: vi.fn().mockResolvedValue(undefined),
+    showAlert: showAlertImpl as unknown as ReturnType<typeof vi.fn>,
   };
 }
 
@@ -59,36 +57,36 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// A. Basic PROMPT with MESSAGE param -- calls showPrompt correctly
+// A. Alert-only mode -- MESSAGE without VAR calls showAlert
 // ---------------------------------------------------------------------------
-describe('PROMPT with MESSAGE param calls showPrompt and returns success', () => {
-  it('should call showPrompt with the message text and succeed', async () => {
-    const mockUI = createMockUI(vi.fn().mockResolvedValue('Alice'));
+describe('PROMPT alert-only mode (no variable specified)', () => {
+  it('should call showAlert when MESSAGE is given without VAR', async () => {
+    const mockUI = createMockUI();
     setFlowControlUI(mockUI);
 
     const executor = createPromptExecutor();
-    executor.loadMacro('PROMPT MESSAGE="Enter your name:"');
+    executor.loadMacro('PROMPT MESSAGE="Hello user!"');
 
     const result = await executor.execute();
 
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-    expect(mockUI.showPrompt).toHaveBeenCalledTimes(1);
-    expect(mockUI.showPrompt).toHaveBeenCalledWith('Enter your name:', undefined);
+    expect(mockUI.showAlert).toHaveBeenCalledTimes(1);
+    expect(mockUI.showPrompt).not.toHaveBeenCalled();
   });
 
-  it('should succeed even when the user submits empty input', async () => {
-    const mockUI = createMockUI(vi.fn().mockResolvedValue(''));
+  it('should call showAlert with positional message-only syntax', async () => {
+    const mockUI = createMockUI();
     setFlowControlUI(mockUI);
 
     const executor = createPromptExecutor();
-    executor.loadMacro('PROMPT MESSAGE="Enter something:"');
+    executor.loadMacro('PROMPT "Just a message"');
 
     const result = await executor.execute();
 
     expect(result.success).toBe(true);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-    expect(mockUI.showPrompt).toHaveBeenCalledTimes(1);
+    expect(mockUI.showAlert).toHaveBeenCalledTimes(1);
+    expect(mockUI.showPrompt).not.toHaveBeenCalled();
   });
 });
 
@@ -224,10 +222,10 @@ describe('PROMPT with variable expansion in message', () => {
 });
 
 // ---------------------------------------------------------------------------
-// E. PROMPT cancel -- user rejects the prompt
+// E. PROMPT cancel -- continues silently without storing value
 // ---------------------------------------------------------------------------
 describe('PROMPT cancel behavior', () => {
-  it('should return USER_ABORT when prompt is cancelled', async () => {
+  it('should continue silently when prompt is cancelled', async () => {
     const mockUI = createMockUI(
       vi.fn().mockRejectedValue(new Error('User cancelled'))
     );
@@ -238,13 +236,12 @@ describe('PROMPT cancel behavior', () => {
 
     const result = await executor.execute();
 
-    expect(result.success).toBe(false);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.USER_ABORT);
-    // On cancel the handler stores '' in the target variable
-    expect(result.variables['!VAR1']).toBe('');
+    // Cancel continues silently — success, no value stored
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
   });
 
-  it('should store empty string in specified VAR on cancel', async () => {
+  it('should not overwrite existing variable value on cancel', async () => {
     const mockUI = createMockUI(
       vi.fn().mockRejectedValue(new Error('cancelled'))
     );
@@ -255,33 +252,27 @@ describe('PROMPT cancel behavior', () => {
 
     const result = await executor.execute();
 
-    expect(result.success).toBe(false);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.USER_ABORT);
-    expect(result.variables['!VAR5']).toBe('');
+    expect(result.success).toBe(true);
+    // Original value should be preserved since cancel doesn't store
+    expect(result.variables['!VAR5']).toBe('original');
   });
 
-  it('should stop execution after cancel (stopExecution flag)', async () => {
+  it('should continue execution after cancel', async () => {
     const mockUI = createMockUI(
       vi.fn().mockRejectedValue(new Error('cancelled'))
     );
     setFlowControlUI(mockUI);
 
     const executor = createPromptExecutor();
-    // PROMPT cancel sets stopExecution=true so SET !VAR2 should NOT run.
-    // However, the executor sees !success first and (without errorIgnore)
-    // returns the error immediately, so SET !VAR2 is never reached either way.
-    // !VAR1 gets '' from the cancel handler. !VAR2 stays at its default ''.
-    executor.loadMacro('PROMPT MESSAGE="Cancel me" VAR=!VAR1\nSET !VAR2 should_not_run');
+    // Cancel should NOT stop execution — SET !VAR2 should still run
+    executor.loadMacro('PROMPT MESSAGE="Cancel me" VAR=!VAR1\nSET !VAR2 should_run');
 
     const result = await executor.execute();
 
-    expect(result.success).toBe(false);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.USER_ABORT);
-    // !VAR1 was set to '' by the cancel handler
-    expect(result.variables['!VAR1']).toBe('');
-    // !VAR2 should still be at its default '' -- NOT 'should_not_run'
-    expect(result.variables['!VAR2']).toBe('');
-    expect(result.variables['!VAR2']).not.toBe('should_not_run');
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    // !VAR2 should have been set because execution continued
+    expect(result.variables['!VAR2']).toBe('should_run');
   });
 });
 
@@ -374,5 +365,37 @@ describe('PROMPT in multi-command macros', () => {
     expect(mockUI.showPrompt).toHaveBeenCalledTimes(2);
     expect(result.variables['!VAR1']).toBe('first');
     expect(result.variables['!VAR2']).toBe('second');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// H. Positional syntax: PROMPT message varname default
+// ---------------------------------------------------------------------------
+describe('PROMPT positional syntax', () => {
+  it('should support PROMPT "message" !VAR1 syntax', async () => {
+    const mockUI = createMockUI(vi.fn().mockResolvedValue('answer'));
+    setFlowControlUI(mockUI);
+
+    const executor = createPromptExecutor();
+    executor.loadMacro('PROMPT "Enter name" !VAR1');
+
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.variables['!VAR1']).toBe('answer');
+  });
+
+  it('should support PROMPT "message" !VAR1 defaultValue syntax', async () => {
+    const mockUI = createMockUI(vi.fn().mockResolvedValue('typed'));
+    setFlowControlUI(mockUI);
+
+    const executor = createPromptExecutor();
+    executor.loadMacro('PROMPT "Enter a Page Name" !VAR1 NoName');
+
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(mockUI.showPrompt).toHaveBeenCalledWith('Enter a Page Name', 'NoName');
+    expect(result.variables['!VAR1']).toBe('typed');
   });
 });

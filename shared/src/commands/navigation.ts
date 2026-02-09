@@ -272,7 +272,13 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
 
   if (gotoParam) {
     // URL GOTO=<url> - navigate to URL
-    const url = ctx.expand(gotoParam);
+    let url = ctx.expand(gotoParam);
+
+    // Auto-prefix http:// for URLs without a scheme (iMacros 8.9.7 compat)
+    if (url && !url.includes('://') && !url.startsWith('about:')) {
+      url = 'http://' + url;
+    }
+
     ctx.log('info', `Navigating to: ${url}`);
 
     const response = await sendBrowserMessage({ type: 'navigate', url }, ctx);

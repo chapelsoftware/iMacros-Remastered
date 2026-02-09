@@ -515,6 +515,59 @@ describe('URL Handler via MacroExecutor (with mock BrowserBridge)', () => {
     expect(result.variables['!URLCURRENT']).toBe('https://example.com');
   });
 
+  it('URL GOTO auto-prefixes http:// when URL has no scheme', async () => {
+    executor.loadMacro('URL GOTO=example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify the bridge received the prefixed URL
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('navigate');
+    expect((msg as { url: string }).url).toBe('http://example.com');
+
+    // !URLCURRENT should contain the prefixed URL
+    expect(result.variables['!URLCURRENT']).toBe('http://example.com');
+  });
+
+  it('URL GOTO preserves existing http:// scheme', async () => {
+    executor.loadMacro('URL GOTO=http://example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('http://example.com');
+  });
+
+  it('URL GOTO preserves existing https:// scheme', async () => {
+    executor.loadMacro('URL GOTO=https://example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('https://example.com');
+  });
+
+  it('URL GOTO does not prefix about: URLs', async () => {
+    executor.loadMacro('URL GOTO=about:blank');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('about:blank');
+  });
+
+  it('URL GOTO auto-prefixes URL with path but no scheme', async () => {
+    executor.loadMacro('URL GOTO=example.com/path?q=test');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('http://example.com/path?q=test');
+  });
+
   it('URL GOTO with variable expansion resolves variable before navigating', async () => {
     const script = [
       'SET !VAR1 https://expanded.example.com',

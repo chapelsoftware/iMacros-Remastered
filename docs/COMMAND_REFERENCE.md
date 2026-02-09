@@ -1028,13 +1028,13 @@ FILEDELETE NAME={{!FOLDER_DOWNLOAD}}output.csv
 | -913 | Missing required parameter |
 | -920 | Element not found |
 | -921 | Element not visible |
-| -922 | Element not enabled |
+| -922 | Frame not found |
 | -923 | Multiple elements matched |
+| -924 | Element not enabled |
 | -930 | Timeout |
 | -931 | Page load timeout |
 | -932 | Step timeout |
 | -940 | Frame error |
-| -941 | Frame not found |
 | -950 | Download error |
 | -951 | Download failed |
 | -952 | Download timeout |

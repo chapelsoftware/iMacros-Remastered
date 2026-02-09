@@ -485,11 +485,79 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
 // ===== FRAME Command Handler =====
 
 /**
+ * Helper to sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Get the timeout in seconds for frame retry from !TIMEOUT_STEP variable.
+ * Returns 0 if the variable is not set or invalid (no retry).
+ */
+function getFrameRetryTimeout(ctx: CommandContext): number {
+  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
+  if (typeof timeoutStep === 'number') return timeoutStep;
+  if (typeof timeoutStep === 'string') {
+    const parsed = parseFloat(timeoutStep);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Attempt to select a frame with retry logic.
+ * Retries every 500ms up to !TIMEOUT_STEP seconds.
+ * On failure, resets to main frame (iMacros 8.9.7 compat).
+ */
+async function selectFrameWithRetry(
+  message: SelectFramePayload,
+  ctx: CommandContext,
+  errorLabel: string
+): Promise<CommandResult> {
+  const timeoutSeconds = getFrameRetryTimeout(ctx);
+  const retryIntervalMs = 500;
+  const deadline = Date.now() + timeoutSeconds * 1000;
+
+  // First attempt
+  let response = await sendBrowserMessage(message, ctx);
+  if (response.success) {
+    return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+  }
+
+  // Retry until timeout
+  while (Date.now() < deadline) {
+    ctx.log('debug', `Frame not found, retrying... (${Math.ceil((deadline - Date.now()) / 1000)}s remaining)`);
+    await sleep(retryIntervalMs);
+    response = await sendBrowserMessage(message, ctx);
+    if (response.success) {
+      return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+    }
+  }
+
+  // Failed: reset to main frame (iMacros 8.9.7 compat)
+  ctx.log('debug', 'Frame selection failed, resetting to main frame');
+  await sendBrowserMessage({ type: 'selectFrame', frameIndex: 0 }, ctx);
+
+  return {
+    success: false,
+    errorCode: IMACROS_ERROR_CODES.FRAME_NOT_FOUND,
+    errorMessage: response.error || errorLabel,
+  };
+}
+
+/**
  * Handler for FRAME command
  *
  * Syntax:
  * - FRAME F=<n> - Select frame by index (0 = main document)
- * - FRAME NAME=<name> - Select frame by name
+ * - FRAME NAME=<name> - Select frame by name (supports * wildcard)
+ *
+ * iMacros 8.9.7 compatibility:
+ * - Wildcards (*) in NAME are auto-converted to regex
+ * - Retries with polling up to !TIMEOUT_STEP seconds
+ * - Resets to main frame on failure
+ * - Uses error code -922 for frame not found
  */
 export const frameHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const fParam = ctx.getParam('F');
@@ -509,20 +577,11 @@ export const frameHandler: CommandHandler = async (ctx: CommandContext): Promise
 
     ctx.log('info', frameIndex === 0 ? 'Selecting main document' : `Selecting frame ${frameIndex}`);
 
-    const response = await sendBrowserMessage({ type: 'selectFrame', frameIndex }, ctx);
-
-    if (!response.success) {
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.FRAME_NOT_FOUND,
-        errorMessage: response.error || `Frame ${frameIndex} not found`,
-      };
-    }
-
-    return {
-      success: true,
-      errorCode: IMACROS_ERROR_CODES.OK,
-    };
+    return selectFrameWithRetry(
+      { type: 'selectFrame', frameIndex },
+      ctx,
+      `Frame ${frameIndex} not found`
+    );
   }
 
   if (nameParam) {
@@ -531,20 +590,11 @@ export const frameHandler: CommandHandler = async (ctx: CommandContext): Promise
 
     ctx.log('info', `Selecting frame by name: ${frameName}`);
 
-    const response = await sendBrowserMessage({ type: 'selectFrame', frameName }, ctx);
-
-    if (!response.success) {
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.FRAME_NOT_FOUND,
-        errorMessage: response.error || `Frame "${frameName}" not found`,
-      };
-    }
-
-    return {
-      success: true,
-      errorCode: IMACROS_ERROR_CODES.OK,
-    };
+    return selectFrameWithRetry(
+      { type: 'selectFrame', frameName },
+      ctx,
+      `Frame "${frameName}" not found`
+    );
   }
 
   return {

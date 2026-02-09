@@ -4,6 +4,7 @@
 #
 # Automatically picks up the next ready issue from beads and works on it
 # until completion, then closes the issue and moves to the next one.
+# When no issues are ready, polls every 30 seconds until work becomes available.
 #
 # Usage:
 #   ./ralph.sh [options]
@@ -14,10 +15,12 @@
 #   --single                 Only complete one issue, then exit
 #   --issue ID               Work on a specific issue instead of next ready
 #   --dry-run                Show what would be done without running
+#   --daemon                 Keep running and poll for issues every 5 minutes
+#   --poll-interval N        Poll interval in minutes when in daemon mode (default: 5)
 #
 # Example:
 #   ./ralph.sh --max-iterations 20
-#   ./ralph.sh --issue ScriptureCipher-o6i
+#   ./ralph.sh --issue usg-kl5.1
 #
 
 set -e
@@ -29,6 +32,38 @@ MODEL="opus"
 SINGLE_ISSUE=false
 SPECIFIC_ISSUE=""
 DRY_RUN=false
+
+# jq filters for streaming JSON output
+JQ_STREAM_TEXT='select(.type == "assistant").message.content[]? | select(.type == "text").text // empty | gsub("\n"; "\r\n") | . + "\r\n\n"'
+JQ_FINAL_RESULT='select(.type == "result").result // empty'
+
+# Logging setup
+LOG_DIR=".ralph"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/ralph_$(date +%Y%m%d).log"
+
+# Find bd executable (prefer local ./bd, then bd in PATH)
+if [[ -x "./bd" ]]; then
+    BD="./bd"
+elif command -v bd &> /dev/null; then
+    BD="bd"
+else
+    echo "Error: bd executable not found. Install beads or place bd in current directory."
+    exit 1
+fi
+
+# Logging function - writes to both console and log file
+log() {
+    local msg="[$(date '+%Y-%m-%d %H:%M:%S')] $*"
+    echo "$msg" >> "$LOG_FILE"
+}
+
+log_both() {
+    local msg="$*"
+    echo -e "$msg"
+    # Strip ANSI color codes for log file
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $(echo -e "$msg" | sed 's/\x1b\[[0-9;]*m//g')" >> "$LOG_FILE"
+}
 
 # Colors for output
 RED='\033[0;31m'
@@ -65,6 +100,7 @@ while [[ $# -gt 0 ]]; do
             echo "Ralph Wiggum Method - Autonomous Claude Code Loop with Beads"
             echo ""
             echo "Automatically picks up ready issues from beads and works on them."
+            echo "Polls every 30 seconds when no issues are ready."
             echo ""
             echo "Usage: ./ralph.sh [options]"
             echo ""
@@ -79,7 +115,7 @@ while [[ $# -gt 0 ]]; do
             echo "Examples:"
             echo "  ./ralph.sh                           # Process all ready issues"
             echo "  ./ralph.sh --single                  # Process one issue"
-            echo "  ./ralph.sh --issue ScriptureCipher-o6i  # Process specific issue"
+            echo "  ./ralph.sh --issue usg-kl5.1         # Process specific issue"
             exit 0
             ;;
         -*)
@@ -103,12 +139,12 @@ get_next_issue() {
 
     # Get the first ready issue ID
     local ready_output
-    ready_output=$(bd ready 2>/dev/null || true)
+    ready_output=$($BD ready 2>/dev/null || true)
 
-    # Extract first issue ID (format: "1. [● P2] [task] prefix-xxx: Title")
-    # Pattern matches any prefix followed by alphanumeric IDs with optional dots for hierarchy
+    # Extract first issue ID — grabs the token after "] " and before ":"
+    # Works with any beads prefix
     local issue_id
-    issue_id=$(echo "$ready_output" | grep -oE '[A-Za-z0-9_-]+-[a-z0-9.]+' | head -1)
+    issue_id=$(echo "$ready_output" | grep -oP '(?<=\] )[^\s:]+(?=:)' | head -1)
 
     if [[ -z "$issue_id" ]]; then
         return 1
@@ -117,49 +153,58 @@ get_next_issue() {
     echo "$issue_id"
 }
 
-# Function to get issue details
-get_issue_details() {
+# Function to get issue details as JSON
+get_issue_json() {
     local issue_id="$1"
-    bd show "$issue_id" 2>/dev/null
+    $BD show "$issue_id" --json 2>/dev/null
 }
 
-# Function to extract title from issue details
+# Function to extract title from JSON (simple grep approach - no jq needed)
 get_issue_title() {
-    local details="$1"
-    echo "$details" | grep -E "^Title:" | sed 's/^Title: *//'
+    local json="$1"
+    echo "$json" | grep -oP '"title":\s*"\K[^"]+' | head -1
 }
 
-# Function to extract description from issue details
+# Function to extract description from JSON
 get_issue_description() {
-    local details="$1"
-    # Extract everything after "Description:" until the next section
-    echo "$details" | sed -n '/^Description:/,/^[A-Z][a-z]*:/p' | tail -n +2 | head -n -1
+    local json="$1"
+    # Extract description field, then unescape newlines
+    echo "$json" | grep -oP '"description":\s*"\K[^"]+(?:\\.[^"]*)*' | head -1 | sed 's/\\n/\n/g'
+}
+
+# Function to extract acceptance criteria from JSON
+get_issue_acceptance() {
+    local json="$1"
+    echo "$json" | grep -oP '"acceptance_criteria":\s*"\K[^"]+(?:\\.[^"]*)*' | head -1 | sed 's/\\n/\n/g'
 }
 
 # Trap Ctrl+C for graceful exit
 cleanup() {
-    echo -e "\n${YELLOW}Ralph loop cancelled by user.${NC}"
+    log_both "\n${YELLOW}Ralph loop cancelled by user.${NC}"
     if [[ -n "$CURRENT_ISSUE" ]]; then
-        echo -e "${YELLOW}Issue ${CURRENT_ISSUE} left in_progress. Run 'bd update ${CURRENT_ISSUE} --status=open' to reset.${NC}"
+        log_both "${YELLOW}Issue ${CURRENT_ISSUE} left in_progress. Run '${BD} update ${CURRENT_ISSUE} --status=open' to reset.${NC}"
     fi
     rm -f "$TEMP_OUTPUT" 2>/dev/null
+    log "Session ended (interrupted)"
     exit 130
 }
 trap cleanup INT
 
 # Print header
-echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║${NC}     ${GREEN}Ralph Wiggum Method - Beads Integration${NC}               ${BLUE}║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
-echo ""
-echo -e "${YELLOW}Configuration:${NC}"
-echo -e "  Max iterations/issue: ${MAX_ITERATIONS}"
-echo -e "  Model:                ${MODEL}"
-echo -e "  Mode:                 $([ "$SINGLE_ISSUE" = true ] && echo 'Single issue' || echo 'Continuous')"
+log_both "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+log_both "${BLUE}║${NC}     ${GREEN}Ralph Wiggum Method - Beads Integration${NC}               ${BLUE}║${NC}"
+log_both "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+log_both ""
+log_both "${YELLOW}Configuration:${NC}"
+log_both "  Max iterations/issue: ${MAX_ITERATIONS}"
+log_both "  Model:                ${MODEL}"
+log_both "  Mode:                 $([ "$SINGLE_ISSUE" = true ] && echo 'Single issue' || echo 'Continuous')"
+log_both "  Log file:             ${LOG_FILE}"
 if [[ -n "$SPECIFIC_ISSUE" ]]; then
-    echo -e "  Target issue:         ${SPECIFIC_ISSUE}"
+    log_both "  Target issue:         ${SPECIFIC_ISSUE}"
 fi
-echo ""
+log_both ""
+log "=== Session started ==="
 
 # Create temp file for capturing output
 TEMP_OUTPUT=$(mktemp)
@@ -170,31 +215,35 @@ TOTAL_START_TIME=$(date +%s)
 # Main issue loop
 while true; do
     # Get next ready issue
-    ISSUE_ID=$(get_next_issue)
+    ISSUE_ID=$(get_next_issue || true)
 
     if [[ -z "$ISSUE_ID" ]]; then
-        echo -e "${CYAN}No ready issues found. All done!${NC}"
-        break
+        log_both "${CYAN}No ready issues found. Waiting 30 seconds before checking again...${NC}"
+        log "No ready issues - sleeping for 30 seconds"
+        sleep 30
+        continue
     fi
 
     CURRENT_ISSUE="$ISSUE_ID"
 
-    # Get issue details
-    ISSUE_DETAILS=$(get_issue_details "$ISSUE_ID")
-    ISSUE_TITLE=$(get_issue_title "$ISSUE_DETAILS")
-    ISSUE_DESC=$(get_issue_description "$ISSUE_DETAILS")
+    # Get issue details as JSON
+    ISSUE_JSON=$(get_issue_json "$ISSUE_ID")
+    ISSUE_TITLE=$(get_issue_title "$ISSUE_JSON")
+    ISSUE_DESC=$(get_issue_description "$ISSUE_JSON")
+    ISSUE_ACCEPT=$(get_issue_acceptance "$ISSUE_JSON")
 
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  Issue: ${ISSUE_ID}${NC}"
-    echo -e "${BLUE}  Title: ${ISSUE_TITLE}${NC}"
-    echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-    echo ""
+    log_both "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    log_both "${BLUE}  Issue: ${ISSUE_ID}${NC}"
+    log_both "${BLUE}  Title: ${ISSUE_TITLE}${NC}"
+    log_both "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+    log_both ""
+    log "Starting work on issue: ${ISSUE_ID} - ${ISSUE_TITLE}"
 
     if [[ "$DRY_RUN" == "true" ]]; then
-        echo -e "${YELLOW}[DRY RUN] Would work on this issue${NC}"
-        echo -e "${YELLOW}Description:${NC}"
+        log_both "${YELLOW}[DRY RUN] Would work on this issue${NC}"
+        log_both "${YELLOW}Description:${NC}"
         echo "$ISSUE_DESC"
-        echo ""
+        log_both ""
         if [[ "$SINGLE_ISSUE" == "true" ]]; then
             break
         fi
@@ -202,22 +251,32 @@ while true; do
     fi
 
     # Mark issue as in_progress
-    echo -e "${CYAN}Marking issue as in_progress...${NC}"
-    bd update "$ISSUE_ID" --status=in_progress 2>/dev/null || true
+    log_both "${CYAN}Marking issue as in_progress...${NC}"
+    $BD update "$ISSUE_ID" --status=in_progress 2>/dev/null || true
 
-    # Build prompt from issue
+    # Build prompt from issue (include acceptance criteria if present)
+    ACCEPTANCE_SECTION=""
+    if [[ -n "$ISSUE_ACCEPT" ]]; then
+        ACCEPTANCE_SECTION="
+## Acceptance Criteria:
+${ISSUE_ACCEPT}
+"
+    fi
+
     PROMPT="You are working on beads issue: ${ISSUE_ID}
 
 ## Task: ${ISSUE_TITLE}
 
 ## Description:
 ${ISSUE_DESC}
-
+${ACCEPTANCE_SECTION}
 ## Instructions:
 1. Implement this task completely
 2. Follow existing code patterns in the codebase
 3. Run tests if applicable to verify your changes
 4. Check git status/diff to see your progress
+5. Ensure ALL acceptance criteria are met before completing
+6. NEVER add Co-Authored-By, AI attribution, or any Claude/AI references in git commits
 
 When the task is FULLY complete and verified, output exactly: <promise>${COMPLETION_PROMISE}</promise>
 
@@ -231,9 +290,10 @@ If you get stuck after multiple attempts, document what's blocking you and outpu
     while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         ITERATION=$((ITERATION + 1))
 
-        echo ""
-        echo -e "${GREEN}─── Iteration ${ITERATION}/${MAX_ITERATIONS} ───${NC}"
-        echo ""
+        log_both ""
+        log_both "${GREEN}─── Iteration ${ITERATION}/${MAX_ITERATIONS} ───${NC}"
+        log_both ""
+        log "Issue ${ISSUE_ID}: Starting iteration ${ITERATION}/${MAX_ITERATIONS}"
 
         # Build the prompt with iteration context
         LOOP_PROMPT="$PROMPT
@@ -242,17 +302,28 @@ If you get stuck after multiple attempts, document what's blocking you and outpu
 [Ralph Wiggum Loop - Iteration ${ITERATION}/${MAX_ITERATIONS}]
 Check git status/diff to see your previous work in this session."
 
-        # Run Claude Code and capture output
-        if claude --model "$MODEL" --print --dangerously-skip-permissions -p "$LOOP_PROMPT" 2>&1 | tee "$TEMP_OUTPUT"; then
+        # Run Claude Code with streaming JSON output
+        # Stream text to console and log file in real-time while capturing full output
+        if claude --model "$MODEL" --verbose --print --dangerously-skip-permissions --output-format stream-json -p "$LOOP_PROMPT" 2>&1 \
+            | grep --line-buffered '^{' \
+            | tee "$TEMP_OUTPUT" \
+            | jq --unbuffered -rj "$JQ_STREAM_TEXT" \
+            | tee -a "$LOG_FILE"; then
+
             # Check for completion promise in output
-            if grep -q "$COMPLETION_PROMISE" "$TEMP_OUTPUT"; then
+            # First check the result field, then fall back to checking full JSON output
+            RESULT=$(jq -r "$JQ_FINAL_RESULT" "$TEMP_OUTPUT" 2>/dev/null || echo "")
+
+            if [[ "$RESULT" == *"$COMPLETION_PROMISE"* ]] || grep -q "$COMPLETION_PROMISE" "$TEMP_OUTPUT"; then
                 COMPLETED=true
-                echo ""
-                echo -e "${GREEN}✓ Completion promise detected!${NC}"
+                log_both ""
+                log_both "${GREEN}✓ Completion promise detected!${NC}"
+                log_both "Issue ${ISSUE_ID}: Completion promise detected at iteration ${ITERATION}"
                 break
             fi
         else
-            echo -e "${YELLOW}Warning: Claude exited with non-zero status. Continuing...${NC}"
+            log_both "${YELLOW}Warning: Claude exited with non-zero status. Continuing...${NC}"
+            log_both "Issue ${ISSUE_ID}: Claude exited with non-zero status at iteration ${ITERATION}"
         fi
 
         # Brief pause between iterations
@@ -267,35 +338,41 @@ Check git status/diff to see your previous work in this session."
 
     # Handle completion
     if [[ "$COMPLETED" == "true" ]]; then
-        echo ""
-        echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${GREEN}║  Issue ${ISSUE_ID} completed in ${ISSUE_MIN}m ${ISSUE_SEC}s${NC}"
-        echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+        log_both ""
+        log_both "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+        log_both "${GREEN}║  Issue ${ISSUE_ID} completed in ${ISSUE_MIN}m ${ISSUE_SEC}s${NC}"
+        log_both "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+        log "Issue ${ISSUE_ID}: COMPLETED in ${ISSUE_MIN}m ${ISSUE_SEC}s (${ITERATION} iterations)"
 
         # Close the issue
-        echo -e "${CYAN}Closing issue...${NC}"
-        bd close "$ISSUE_ID" 2>/dev/null || true
+        log_both "${CYAN}Closing issue...${NC}"
+        $BD close "$ISSUE_ID" 2>/dev/null || true
+
+        # Sync beads
+        log_both "${CYAN}Syncing beads...${NC}"
+        $BD sync 2>/dev/null || true
 
         # Commit and push changes
-        echo -e "${CYAN}Committing and pushing changes...${NC}"
+        log_both "${CYAN}Committing and pushing changes...${NC}"
         if git diff --quiet && git diff --cached --quiet; then
-            echo -e "${YELLOW}No changes to commit${NC}"
+            log_both "${YELLOW}No changes to commit${NC}"
+            log "Issue ${ISSUE_ID}: No changes to commit"
         else
             git add -A
-            git commit -m "Complete ${ISSUE_ID}: ${ISSUE_TITLE}
-
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>" || true
-            git push || echo -e "${YELLOW}Warning: git push failed${NC}"
+            git commit -m "Complete ${ISSUE_ID}: ${ISSUE_TITLE}" || true
+            git push || log_both "${YELLOW}Warning: git push failed${NC}"
+            log "Issue ${ISSUE_ID}: Changes committed and pushed"
         fi
 
         ISSUES_COMPLETED=$((ISSUES_COMPLETED + 1))
         CURRENT_ISSUE=""
     else
-        echo ""
-        echo -e "${YELLOW}╔════════════════════════════════════════════════════════════╗${NC}"
-        echo -e "${YELLOW}║  Max iterations reached for ${ISSUE_ID}${NC}"
-        echo -e "${YELLOW}╚════════════════════════════════════════════════════════════╝${NC}"
-        echo -e "${YELLOW}Issue left as in_progress. Review and continue manually.${NC}"
+        log_both ""
+        log_both "${YELLOW}╔════════════════════════════════════════════════════════════╗${NC}"
+        log_both "${YELLOW}║  Max iterations reached for ${ISSUE_ID}${NC}"
+        log_both "${YELLOW}╚════════════════════════════════════════════════════════════╝${NC}"
+        log_both "${YELLOW}Issue left as in_progress. Review and continue manually.${NC}"
+        log "Issue ${ISSUE_ID}: MAX ITERATIONS REACHED - left as in_progress"
         CURRENT_ISSUE=""
     fi
 
@@ -304,8 +381,8 @@ Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>" || true
         break
     fi
 
-    echo ""
-    echo -e "${CYAN}Looking for next ready issue...${NC}"
+    log_both ""
+    log_both "${CYAN}Looking for next ready issue...${NC}"
     sleep 2
 done
 
@@ -319,15 +396,18 @@ TOTAL_MIN=$((TOTAL_ELAPSED / 60))
 TOTAL_SEC=$((TOTAL_ELAPSED % 60))
 
 # Final summary
-echo ""
-echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-echo -e "${BLUE}                    Ralph Session Complete                      ${NC}"
-echo -e "${BLUE}════════════════════════════════════════════════════════════════${NC}"
-echo ""
-echo -e "  Issues completed: ${ISSUES_COMPLETED}"
-echo -e "  Total time:       ${TOTAL_MIN}m ${TOTAL_SEC}s"
-echo ""
+log_both ""
+log_both "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+log_both "${BLUE}                    Ralph Session Complete                      ${NC}"
+log_both "${BLUE}════════════════════════════════════════════════════════════════${NC}"
+log_both ""
+log_both "  Issues completed: ${ISSUES_COMPLETED}"
+log_both "  Total time:       ${TOTAL_MIN}m ${TOTAL_SEC}s"
+log_both "  Log file:         ${LOG_FILE}"
+log_both ""
+
+log_both "=== Session ended: ${ISSUES_COMPLETED} issues completed in ${TOTAL_MIN}m ${TOTAL_SEC}s ==="
 
 if [[ $ISSUES_COMPLETED -gt 0 ]]; then
-    echo -e "${GREEN}All changes have been committed and pushed.${NC}"
+    log_both "${GREEN}All changes have been committed and pushed.${NC}"
 fi

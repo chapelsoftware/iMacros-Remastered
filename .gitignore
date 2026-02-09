@@ -63,3 +63,6 @@ venv/
 # Build artifacts
 *.bak
 *.orig
+
+# Audit files
+COMMAND_AUDIT.md

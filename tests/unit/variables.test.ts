@@ -159,56 +159,61 @@ describe('Variable System Unit Tests', () => {
     });
   });
 
-  describe('!EXTRACT Variable', () => {
+  describe('!EXTRACT Variable (iMacros 8.9.7 behavior)', () => {
     it('should start with empty extract', () => {
       expect(ctx.getExtractArray()).toEqual([]);
       expect(ctx.get('!EXTRACT')).toBe('');
     });
 
-    it('should accumulate values when setting !EXTRACT', () => {
+    it('SET !EXTRACT should clear and set single value', () => {
       ctx.set('!EXTRACT', 'value1');
       expect(ctx.getExtractArray()).toEqual(['value1']);
+      expect(ctx.get('!EXTRACT')).toBe('value1');
     });
 
-    it('should accumulate multiple extract values', () => {
+    it('SET !EXTRACT should clear previous values (not accumulate)', () => {
       ctx.set('!EXTRACT', 'first');
       ctx.set('!EXTRACT', 'second');
       ctx.set('!EXTRACT', 'third');
-      expect(ctx.getExtractArray()).toEqual(['first', 'second', 'third']);
+      // Each SET !EXTRACT clears the accumulator - only last value remains
+      expect(ctx.getExtractArray()).toEqual(['third']);
+      expect(ctx.get('!EXTRACT')).toBe('third');
     });
 
-    it('should return extract values joined with [EXTRACT] via getExtractAdd', () => {
-      ctx.set('!EXTRACT', 'one');
-      ctx.set('!EXTRACT', 'two');
-      ctx.set('!EXTRACT', 'three');
+    it('SET !EXTRACTADD should accumulate values with [EXTRACT] delimiter', () => {
+      ctx.set('!EXTRACTADD', 'one');
+      ctx.set('!EXTRACTADD', 'two');
+      ctx.set('!EXTRACTADD', 'three');
       expect(ctx.getExtractAdd()).toBe('one[EXTRACT]two[EXTRACT]three');
+      expect(ctx.get('!EXTRACT')).toBe('one[EXTRACT]two[EXTRACT]three');
     });
 
-    it('should return the latest set value via get(!EXTRACT)', () => {
-      ctx.set('!EXTRACT', 'first');
-      ctx.set('!EXTRACT', 'second');
-      // get('!EXTRACT') returns the last SET value, not the joined string
-      expect(ctx.get('!EXTRACT')).toBe('second');
+    it('SET !EXTRACT null should clear extract data', () => {
+      ctx.set('!EXTRACTADD', 'value1');
+      ctx.set('!EXTRACTADD', 'value2');
+      ctx.set('!EXTRACT', 'null');
+      expect(ctx.getExtractArray()).toEqual([]);
+      expect(ctx.get('!EXTRACT')).toBe('');
     });
 
     it('should clear extract values on resetExtract', () => {
-      ctx.set('!EXTRACT', 'value');
+      ctx.set('!EXTRACTADD', 'value');
       ctx.resetExtract();
       expect(ctx.getExtractArray()).toEqual([]);
       expect(ctx.get('!EXTRACT')).toBe('');
     });
 
-    it('should handle empty string extracts', () => {
-      ctx.set('!EXTRACT', '');
-      ctx.set('!EXTRACT', 'value');
-      ctx.set('!EXTRACT', '');
+    it('SET !EXTRACTADD should handle empty string extracts', () => {
+      ctx.set('!EXTRACTADD', '');
+      ctx.set('!EXTRACTADD', 'value');
+      ctx.set('!EXTRACTADD', '');
       expect(ctx.getExtractArray()).toEqual(['', 'value', '']);
     });
 
-    it('should handle special characters in extract values', () => {
-      ctx.set('!EXTRACT', '<html>');
-      ctx.set('!EXTRACT', 'a & b');
-      ctx.set('!EXTRACT', '"quoted"');
+    it('SET !EXTRACTADD should handle special characters in extract values', () => {
+      ctx.set('!EXTRACTADD', '<html>');
+      ctx.set('!EXTRACTADD', 'a & b');
+      ctx.set('!EXTRACTADD', '"quoted"');
       expect(ctx.getExtractArray()).toEqual(['<html>', 'a & b', '"quoted"']);
     });
 
@@ -217,9 +222,9 @@ describe('Variable System Unit Tests', () => {
       expect(ctx.getExtractArray()).toEqual(['line1\nline2']);
     });
 
-    it('should handle unicode in extract values', () => {
-      ctx.set('!EXTRACT', 'Hello \u4e16\u754c');
-      ctx.set('!EXTRACT', '\ud83d\ude00');
+    it('SET !EXTRACTADD should handle unicode in extract values', () => {
+      ctx.set('!EXTRACTADD', 'Hello \u4e16\u754c');
+      ctx.set('!EXTRACTADD', '\ud83d\ude00');
       expect(ctx.getExtractArray()).toEqual(['Hello \u4e16\u754c', '\ud83d\ude00']);
     });
   });
@@ -421,77 +426,84 @@ describe('Variable System Unit Tests', () => {
   describe('ADD Operations on Variables', () => {
     it('should add to numeric variable', () => {
       ctx.set('!VAR0', '10');
-      ctx.add('!VAR0', 5);
+      ctx.add('!VAR0', '5');
       // add() stores result as number
       expect(ctx.get('!VAR0')).toBe(15);
     });
 
     it('should add negative number', () => {
       ctx.set('!VAR0', '10');
-      ctx.add('!VAR0', -3);
+      ctx.add('!VAR0', '-3');
       expect(ctx.get('!VAR0')).toBe(7);
     });
 
     it('should add to empty variable (treated as 0)', () => {
-      ctx.add('!VAR0', 5);
+      ctx.add('!VAR0', '5');
       expect(ctx.get('!VAR0')).toBe(5);
     });
 
     it('should add decimal numbers', () => {
       ctx.set('!VAR0', '10.5');
-      ctx.add('!VAR0', 2.3);
+      ctx.add('!VAR0', '2.3');
       expect(ctx.get('!VAR0')).toBeCloseTo(12.8);
     });
 
     it('should add to custom variable', () => {
       ctx.set('COUNTER', '100');
-      ctx.add('COUNTER', 50);
+      ctx.add('COUNTER', '50');
       expect(ctx.get('COUNTER')).toBe(150);
     });
 
     it('should handle adding zero', () => {
       ctx.set('!VAR0', '42');
-      ctx.add('!VAR0', 0);
+      ctx.add('!VAR0', '0');
       expect(ctx.get('!VAR0')).toBe(42);
     });
 
     it('should handle large numbers', () => {
       ctx.set('!VAR0', '1000000000');
-      ctx.add('!VAR0', 1);
+      ctx.add('!VAR0', '1');
       expect(ctx.get('!VAR0')).toBe(1000000001);
     });
 
     it('should handle negative results', () => {
       ctx.set('!VAR0', '5');
-      ctx.add('!VAR0', -10);
+      ctx.add('!VAR0', '-10');
       expect(ctx.get('!VAR0')).toBe(-5);
     });
 
     it('should be case-insensitive for variable name', () => {
       ctx.set('!var0', '10');
-      ctx.add('!VAR0', 5);
+      ctx.add('!VAR0', '5');
       expect(ctx.get('!var0')).toBe(15);
     });
 
     it('should create new variable if not exists and add', () => {
-      ctx.add('NEWVAR', 10);
+      ctx.add('NEWVAR', '10');
       expect(ctx.get('NEWVAR')).toBe(10);
     });
 
     it('should return AddResult with details', () => {
       ctx.set('!VAR0', '10');
-      const result = ctx.add('!VAR0', 5);
+      const result = ctx.add('!VAR0', '5');
       expect(result.success).toBe(true);
       expect(result.previousValue).toBe('10');
       expect(result.addedValue).toBe(5);
       expect(result.newValue).toBe(15);
     });
 
-    it('should return error for non-numeric value', () => {
+    it('should concatenate strings when non-numeric (iMacros 8.9.7 behavior)', () => {
       ctx.set('!VAR0', 'hello');
-      const result = ctx.add('!VAR0', 5);
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+      const result = ctx.add('!VAR0', '5');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe('hello5');
+    });
+
+    it('should concatenate when added value is non-numeric', () => {
+      ctx.set('!VAR0', '10');
+      const result = ctx.add('!VAR0', 'world');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe('10world');
     });
   });
 
@@ -509,9 +521,39 @@ describe('Variable System Unit Tests', () => {
       expect(ctx.get('!VAR0')).toBe(15);
     });
 
-    it('should execute ADD with invalid numeric string', () => {
+    it('should execute ADD with non-numeric string (concatenates per iMacros 8.9.7)', () => {
+      ctx.set('!VAR0', 'prefix_');
       const result = executeAdd(ctx, '!VAR0', 'not_a_number');
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('prefix_not_a_number');
+    });
+  });
+
+  describe('ADD !EXTRACT behavior (iMacros 8.9.7 parity)', () => {
+    it('should append first value without delimiter', () => {
+      const result = executeAdd(ctx, '!EXTRACT', 'first');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!EXTRACT')).toBe('first');
+    });
+
+    it('should append subsequent values with [EXTRACT] delimiter', () => {
+      executeAdd(ctx, '!EXTRACT', 'first');
+      executeAdd(ctx, '!EXTRACT', 'second');
+      expect(ctx.get('!EXTRACT')).toBe('first[EXTRACT]second');
+    });
+
+    it('should accumulate multiple values with [EXTRACT] delimiters', () => {
+      executeAdd(ctx, '!EXTRACT', 'Index ID');
+      executeAdd(ctx, '!EXTRACT', '2026/03/01');
+      executeAdd(ctx, '!EXTRACT', '4.015');
+      expect(ctx.get('!EXTRACT')).toBe('Index ID[EXTRACT]2026/03/01[EXTRACT]4.015');
+    });
+
+    it('should keep !EXTRACT and !EXTRACTADD in sync', () => {
+      executeAdd(ctx, '!EXTRACT', 'a');
+      executeAdd(ctx, '!EXTRACT', 'b');
+      expect(ctx.get('!EXTRACT')).toBe('a[EXTRACT]b');
+      expect(ctx.get('!EXTRACTADD')).toBe('a[EXTRACT]b');
     });
   });
 
@@ -624,9 +666,9 @@ describe('Variable System Unit Tests', () => {
         expect(ctx.getLoop()).toBe(101);
       });
 
-      it('should handle rapid extract additions', () => {
+      it('should handle rapid extract additions via !EXTRACTADD', () => {
         for (let i = 0; i < 100; i++) {
-          ctx.set('!EXTRACT', `item${i}`);
+          ctx.set('!EXTRACTADD', `item${i}`);
         }
         expect(ctx.getExtractArray().length).toBe(100);
       });
@@ -743,15 +785,15 @@ describe('Variable System Unit Tests', () => {
       });
 
       it('should clone extract accumulator independently', () => {
-        ctx.set('!EXTRACT', 'first');
-        ctx.set('!EXTRACT', 'second');
+        ctx.set('!EXTRACTADD', 'first');
+        ctx.set('!EXTRACTADD', 'second');
         const cloned = ctx.clone();
 
         // Cloned context should have the same extract accumulator
         expect(cloned.getExtractArray()).toEqual(['first', 'second']);
 
         // Modifying the original should not affect the clone
-        ctx.set('!EXTRACT', 'third');
+        ctx.set('!EXTRACTADD', 'third');
         expect(cloned.getExtractArray()).toEqual(['first', 'second']);
         expect(ctx.getExtractArray()).toEqual(['first', 'second', 'third']);
       });
@@ -1242,12 +1284,12 @@ describe('Variable System Unit Tests', () => {
       expect(ctx.get('!VAR0')).toBe(15);
     });
 
-    it('should return error for non-numeric expanded value', () => {
+    it('should concatenate non-numeric expanded value (iMacros 8.9.7 behavior)', () => {
       ctx.set('!VAR0', '10');
       ctx.set('!VAR1', 'abc');
       const result = executeAdd(ctx, '!VAR0', '{{!VAR1}}');
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBe('10abc');
     });
   });
 

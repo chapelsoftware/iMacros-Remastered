@@ -11,7 +11,8 @@ import { autocompletion, CompletionContext, CompletionResult } from '@codemirror
 import { lintGutter, linter, Diagnostic } from '@codemirror/lint';
 import { javascript } from '@codemirror/lang-javascript';
 import { createMessageId, createTimestamp, parseMacro, ParseError } from '@shared/index';
-import { iim, getCommandCompletions, getParameterCompletions, getVariableCompletions, COMMANDS } from './iim-mode';
+import { syntaxHighlighting } from '@codemirror/language';
+import { iim, iimHighlightStyle, getCommandCompletions, getParameterCompletions, getVariableCompletions, COMMANDS } from './iim-mode';
 
 /**
  * Editor state interface
@@ -189,6 +190,7 @@ function createEditor(container: HTMLElement, initialContent: string = '', fileT
       completionConf.of(getCompletionExtension(fileType)),
       lintGutter(),
       linterConf.of(getLinterExtension(fileType)),
+      syntaxHighlighting(iimHighlightStyle),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const content = update.state.doc.toString();

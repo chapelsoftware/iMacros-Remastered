@@ -413,10 +413,14 @@ describe('ADD Command Integration Tests', () => {
       expect(result.success).toBe(false);
     });
 
-    it('should fail when ADD value is non-numeric', async () => {
-      const result = await executeMacro('ADD !VAR1 abc');
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    it('should concatenate when ADD value is non-numeric (iMacros 8.9.7 behavior)', async () => {
+      const script = [
+        'SET !VAR1 prefix_',
+        'ADD !VAR1 abc',
+      ].join('\n');
+      const result = await executeMacro(script);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe('prefix_abc');
     });
   });
 
@@ -528,14 +532,15 @@ describe('SET and ADD edge cases', () => {
       expect(result.variables['!VAR1']).toBe('fifth');
     });
 
-    it('should handle setting !EXTRACT to NULL to reset it', async () => {
+    it('should handle setting !EXTRACT to NULL to reset it (iMacros 8.9.7 behavior)', async () => {
       const script = [
         'SET !EXTRACT somedata',
         'SET !EXTRACT NULL',
       ].join('\n');
       const result = await executeMacro(script);
       expect(result.success).toBe(true);
-      expect(result.variables['!EXTRACT']).toBe('NULL');
+      // In iMacros 8.9.7, SET !EXTRACT NULL clears the extract data
+      expect(result.variables['!EXTRACT']).toBe('');
     });
 
     it('should handle setting !LOOP to a specific starting value', async () => {

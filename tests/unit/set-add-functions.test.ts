@@ -324,10 +324,11 @@ describe('executeAdd', () => {
     expect(result.newValue).toBe(75);
   });
 
-  it('should fail for non-numeric value', () => {
+  it('should concatenate non-numeric value (iMacros 8.9.7 behavior)', () => {
+    context.set('!VAR1', 'prefix_');
     const result = executeAdd(context, '!VAR1', 'abc');
-    expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.success).toBe(true);
+    expect(result.newValue).toBe('prefix_abc');
   });
 
   it('should expand variable references in value', () => {
@@ -338,11 +339,11 @@ describe('executeAdd', () => {
     expect(result.newValue).toBe(7);
   });
 
-  it('should fail when current value is non-numeric string', () => {
+  it('should concatenate when current value is non-numeric string (iMacros 8.9.7 behavior)', () => {
     context.set('!VAR1', 'not-a-number');
     const result = executeAdd(context, '!VAR1', '5');
-    expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.success).toBe(true);
+    expect(result.newValue).toBe('not-a-number5');
   });
 
   it('should add zero without changing value', () => {

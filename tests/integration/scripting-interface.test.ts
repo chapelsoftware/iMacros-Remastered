@@ -549,6 +549,12 @@ describe('Scripting Interface Integration Tests', () => {
 
       expect(response.code).toBe(ReturnCode.OK);
     });
+
+    it('should handle iimClose as alias for iimExit', async () => {
+      const response = await sendCommand(testPort, 'iimClose()');
+
+      expect(response.code).toBe(ReturnCode.OK);
+    });
   });
 
   describe('Error Handling for Invalid Commands', () => {

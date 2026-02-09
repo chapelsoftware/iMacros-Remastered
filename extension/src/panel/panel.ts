@@ -11,11 +11,12 @@ import { createMessageId, createTimestamp } from '@shared/index';
 import { FileTree, FileTreeNode, createTreeFromPaths, FileTreeSelectionEvent } from './file-tree';
 import { statusSync, initializeStatusSync, StatusSyncEvent, ExecutionStatus, LogEntry } from './status-sync';
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
-import { iim } from '../editor/iim-mode';
+import { syntaxHighlighting } from '@codemirror/language';
+import { iim, iimHighlightStyle } from '../editor/iim-mode';
 import {
   showRecordingPrefsDialog,
   loadRecordingPreferences,
@@ -85,7 +86,7 @@ function getFileType(path: string | null): 'iim' | 'js' {
  */
 function createInlineEditor(container: HTMLElement, content: string, filePath: string): EditorView {
   const fileType = getFileType(filePath);
-  const lang = fileType === 'js' ? javascript() : iim();
+  const lang = fileType === 'js' ? [javascript(), Prec.highest(syntaxHighlighting(iimHighlightStyle))] : iim();
 
   const startState = EditorState.create({
     doc: content,

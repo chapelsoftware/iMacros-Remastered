@@ -399,13 +399,21 @@ describe('File Service', () => {
       expect(fs.existsSync(filePath)).toBe(false);
     });
 
-    it('should delete a directory recursively', async () => {
+    it('should delete an empty directory', async () => {
       const dirPath = path.join(tmpDir, 'to-delete-dir');
       fs.mkdirSync(dirPath);
-      fs.writeFileSync(path.join(dirPath, 'inner.txt'), 'inner');
 
       await unlink(dirPath);
       expect(fs.existsSync(dirPath)).toBe(false);
+    });
+
+    it('should throw for non-empty directory (non-recursive)', async () => {
+      const dirPath = path.join(tmpDir, 'nonempty-dir');
+      fs.mkdirSync(dirPath);
+      fs.writeFileSync(path.join(dirPath, 'inner.txt'), 'inner');
+
+      await expect(unlink(dirPath)).rejects.toThrow();
+      expect(fs.existsSync(dirPath)).toBe(true);
     });
 
     it('should throw for nonexistent path', async () => {
@@ -422,13 +430,21 @@ describe('File Service', () => {
       expect(fs.existsSync(filePath)).toBe(false);
     });
 
-    it('should delete a directory synchronously', () => {
+    it('should delete an empty directory synchronously', () => {
       const dirPath = path.join(tmpDir, 'sync-del-dir');
       fs.mkdirSync(dirPath);
-      fs.writeFileSync(path.join(dirPath, 'f.txt'), 'y');
 
       unlinkSync(dirPath);
       expect(fs.existsSync(dirPath)).toBe(false);
+    });
+
+    it('should throw for non-empty directory synchronously (non-recursive)', () => {
+      const dirPath = path.join(tmpDir, 'sync-nonempty-dir');
+      fs.mkdirSync(dirPath);
+      fs.writeFileSync(path.join(dirPath, 'f.txt'), 'y');
+
+      expect(() => unlinkSync(dirPath)).toThrow();
+      expect(fs.existsSync(dirPath)).toBe(true);
     });
 
     it('should throw for nonexistent path synchronously', () => {

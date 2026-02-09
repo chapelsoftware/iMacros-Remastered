@@ -148,7 +148,8 @@ async function sendFileMessage(
  * - FILEDELETE NAME=<path>
  *
  * Deletes a file or directory at the specified path.
- * If the path is a directory, it will be deleted recursively.
+ * If the path is a directory, it will be deleted non-recursively (must be empty).
+ * Filenames without path separators are resolved relative to !FOLDER_DOWNLOAD.
  *
  * Examples:
  * - FILEDELETE NAME=C:\temp\file.txt
@@ -167,7 +168,7 @@ export const filedeleteHandler: CommandHandler = async (ctx: CommandContext): Pr
   }
 
   // Expand variables in the path
-  const filePath = ctx.expand(nameParam);
+  let filePath = ctx.expand(nameParam);
 
   if (!filePath || filePath.trim() === '') {
     return {
@@ -175,6 +176,15 @@ export const filedeleteHandler: CommandHandler = async (ctx: CommandContext): Pr
       errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
       errorMessage: 'FILEDELETE NAME parameter cannot be empty',
     };
+  }
+
+  // Resolve relative paths (no path separators) relative to !FOLDER_DOWNLOAD
+  // Original iMacros resolves filenames without path separators relative to defdownpath
+  if (!filePath.includes('/') && !filePath.includes('\\')) {
+    const downloadFolder = ctx.state.getVariable('!FOLDER_DOWNLOAD');
+    if (downloadFolder && typeof downloadFolder === 'string') {
+      filePath = `${downloadFolder}/${filePath}`;
+    }
   }
 
   ctx.log('info', `Deleting: ${filePath}`);

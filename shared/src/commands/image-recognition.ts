@@ -2,11 +2,17 @@
  * Image Recognition Command Handlers for iMacros
  *
  * Implements handlers for image-based commands:
- * - IMAGESEARCH: Search for a template image on screen, stores coordinates
+ * - IMAGESEARCH: Search for a template image on the webpage, stores coordinates
  * - IMAGECLICK: Search for an image and click on it
  *
  * These commands require the native host's image-search service and
  * winclick-service for actual screen capture and mouse operations.
+ *
+ * Matches iMacros 8.9.7 behavior:
+ * - Searches webpage content area (not full screen) by default
+ * - Retries with !TIMEOUT_TAG until found or timeout (-930)
+ * - Highlights found image with green overlay
+ * - Uses proper error codes: -902, -903, -927, -930
  */
 
 import {
@@ -15,6 +21,7 @@ import {
   CommandResult,
   IMACROS_ERROR_CODES,
 } from '../executor';
+import { executeWithTimeoutRetry } from './flow';
 import type { CommandType } from '../parser';
 
 // ===== Image Search Interface =====
@@ -42,12 +49,17 @@ export interface ImageSearchResult {
 }
 
 /**
+ * Image capture source for search
+ */
+export type ImageSearchSource = 'webpage' | 'screen';
+
+/**
  * Options for image search
  */
 export interface ImageSearchOptions {
   /** Minimum confidence threshold (0-1). Default: 0.8 */
   confidenceThreshold?: number;
-  /** Screen region to search within. If not specified, searches entire screen */
+  /** Screen region to search within. If not specified, searches entire source */
   region?: {
     x: number;
     y: number;
@@ -60,6 +72,8 @@ export interface ImageSearchOptions {
   colorTolerance?: number;
   /** Whether to convert images to grayscale before matching. Default: false */
   grayscale?: boolean;
+  /** Capture source: 'webpage' (content area only) or 'screen' (full screen). Default: 'webpage' */
+  source?: ImageSearchSource;
 }
 
 /**
@@ -122,6 +136,20 @@ export interface MouseClickService {
   }): Promise<MouseResult>;
 }
 
+// ===== Highlight Callback Interface =====
+
+/**
+ * Callback for visual highlight feedback when an image is found.
+ * The extension sets this to draw a green overlay on the matched region.
+ */
+export type ImageHighlightCallback = (region: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string;
+}) => void;
+
 // ===== Service Registry =====
 
 /** Registered image search service */
@@ -129,6 +157,9 @@ let imageSearchService: ImageSearchService | null = null;
 
 /** Registered mouse click service */
 let mouseClickService: MouseClickService | null = null;
+
+/** Registered highlight callback */
+let imageHighlightCallback: ImageHighlightCallback | null = null;
 
 /**
  * Set the image search service
@@ -160,6 +191,20 @@ export function getMouseClickService(): MouseClickService | null {
   return mouseClickService;
 }
 
+/**
+ * Set the image highlight callback for visual feedback
+ */
+export function setImageHighlightCallback(callback: ImageHighlightCallback): void {
+  imageHighlightCallback = callback;
+}
+
+/**
+ * Get the current image highlight callback
+ */
+export function getImageHighlightCallback(): ImageHighlightCallback | null {
+  return imageHighlightCallback;
+}
+
 // ===== Helper Functions =====
 
 /**
@@ -182,6 +227,66 @@ function resolveImagePath(ctx: CommandContext, imagePath: string): string {
   return imagePath;
 }
 
+/**
+ * Trigger visual highlight overlay on found image region
+ */
+function highlightFoundImage(result: ImageSearchResult, label: string): void {
+  if (!imageHighlightCallback || !result.found) return;
+
+  imageHighlightCallback({
+    x: result.topLeft.x,
+    y: result.topLeft.y,
+    width: result.width,
+    height: result.height,
+    label,
+  });
+}
+
+/**
+ * Perform a single image search operation (used by retry loop)
+ */
+async function performImageSearch(
+  imagePath: string,
+  confidenceThreshold: number,
+  pos: number,
+  source: ImageSearchSource,
+): Promise<ImageSearchResult> {
+  const options: ImageSearchOptions = { confidenceThreshold, source };
+
+  if (pos === 1) {
+    return await imageSearchService!.search(imagePath, options);
+  } else if (imageSearchService!.searchAll) {
+    const allResults = await imageSearchService!.searchAll(imagePath, options, pos);
+    if (allResults.length >= pos) {
+      return allResults[pos - 1];
+    }
+    return {
+      found: false, x: 0, y: 0, confidence: 0,
+      width: 0, height: 0,
+      topLeft: { x: 0, y: 0 }, bottomRight: { x: 0, y: 0 },
+    };
+  } else {
+    // searchAll not available but pos > 1 - fall back to first match
+    return await imageSearchService!.search(imagePath, options);
+  }
+}
+
+/**
+ * Check if an error indicates the image file itself is missing/invalid
+ * (as opposed to the image not being found on screen)
+ */
+function isImageFileError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const lowerMsg = msg.toLowerCase();
+  return lowerMsg.includes('file not found') ||
+    lowerMsg.includes('no such file') ||
+    lowerMsg.includes('enoent') ||
+    lowerMsg.includes('cannot open') ||
+    lowerMsg.includes('cannot read') ||
+    lowerMsg.includes('invalid image') ||
+    lowerMsg.includes('corrupt');
+}
+
 // ===== Command Handlers =====
 
 /**
@@ -189,7 +294,8 @@ function resolveImagePath(ctx: CommandContext, imagePath: string): string {
  *
  * Syntax: IMAGESEARCH POS=<pos> IMAGE=<path> CONFIDENCE=<percent>
  *
- * Searches the screen for a template image and stores the coordinates.
+ * Searches the webpage content area for a template image and stores the coordinates.
+ * Retries with !TIMEOUT_TAG (like TAG command) until found or timeout.
  *
  * Parameters:
  * - POS: Position index (1-based, for finding nth occurrence)
@@ -202,16 +308,22 @@ function resolveImagePath(ctx: CommandContext, imagePath: string): string {
  * - !IMAGESEARCH: Boolean, "true" if found, "false" if not
  * - !IMAGESEARCH_CONFIDENCE: Actual confidence score (0-100)
  *
+ * Error codes:
+ * - -902: Image search service not configured
+ * - -903: Image file not found or cannot be loaded
+ * - -927: Image not found on screen (after retries)
+ * - -930: Timeout waiting for image to appear
+ *
  * Example:
  * - IMAGESEARCH POS=1 IMAGE=button.png CONFIDENCE=80
  */
 export const imageSearchHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
-  // Check if service is available
+  // Check if service is available (-902)
   if (!imageSearchService) {
     ctx.log('warn', 'Image search service not available - requires native host');
     return {
       success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorCode: IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED,
       errorMessage: 'IMAGESEARCH requires the native host image-search service. Service not configured.',
     };
   }
@@ -252,83 +364,81 @@ export const imageSearchHandler: CommandHandler = async (ctx: CommandContext): P
 
   ctx.log('info', `Searching for image: ${imagePath} (confidence: ${confidence}%, pos: ${pos})`);
 
-  try {
-    // Convert confidence from percentage (0-100) to decimal (0-1)
-    const confidenceThreshold = confidence / 100;
+  // Convert confidence from percentage (0-100) to decimal (0-1)
+  const confidenceThreshold = confidence / 100;
 
-    let result: ImageSearchResult;
+  // Search webpage content area by default (matches iMacros 8.9.7)
+  const source: ImageSearchSource = 'webpage';
 
-    if (pos === 1) {
-      // Simple case: find first match
-      result = await imageSearchService.search(imagePath, {
-        confidenceThreshold,
-      });
-    } else if (imageSearchService.searchAll) {
-      // Need to find the nth occurrence
-      const allResults = await imageSearchService.searchAll(imagePath, {
-        confidenceThreshold,
-      }, pos);
+  // Use retry loop with !TIMEOUT_TAG (same as TAG command)
+  return executeWithTimeoutRetry(
+    ctx,
+    async (): Promise<CommandResult> => {
+      try {
+        const result = await performImageSearch(imagePath, confidenceThreshold, pos, source);
 
-      if (allResults.length >= pos) {
-        result = allResults[pos - 1];
-      } else {
-        // Not enough matches found
-        result = {
-          found: false,
-          x: 0,
-          y: 0,
-          confidence: 0,
-          width: 0,
-          height: 0,
-          topLeft: { x: 0, y: 0 },
-          bottomRight: { x: 0, y: 0 },
+        // Store results in variables
+        ctx.state.setVariable('!IMAGESEARCH', result.found ? 'true' : 'false');
+        ctx.state.setVariable('!IMAGESEARCH_X', result.x);
+        ctx.state.setVariable('!IMAGESEARCH_Y', result.y);
+        ctx.state.setVariable('!IMAGESEARCH_CONFIDENCE', Math.round(result.confidence * 100));
+
+        if (result.found) {
+          ctx.log('info', `Image found at (${result.x}, ${result.y}) with ${Math.round(result.confidence * 100)}% confidence`);
+
+          // Visual highlight feedback (green overlay on found image)
+          highlightFoundImage(result, 'IMAGESEARCH');
+
+          return {
+            success: true,
+            errorCode: IMACROS_ERROR_CODES.OK,
+            output: `${result.x},${result.y}`,
+          };
+        } else {
+          ctx.log('debug', `Image not found with required confidence (${confidence}%)`);
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+            errorMessage: `Image not found: ${imagePath}`,
+          };
+        }
+      } catch (error) {
+        // Check if this is a file-not-found error (-903, non-retryable)
+        if (isImageFileError(error)) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          ctx.log('error', `Image file error: ${errorMessage}`);
+
+          ctx.state.setVariable('!IMAGESEARCH', 'false');
+          ctx.state.setVariable('!IMAGESEARCH_X', 0);
+          ctx.state.setVariable('!IMAGESEARCH_Y', 0);
+          ctx.state.setVariable('!IMAGESEARCH_CONFIDENCE', 0);
+
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND,
+            errorMessage: `Image file not found or cannot be loaded: ${imagePath}`,
+          };
+        }
+
+        // Other errors - propagate as retryable
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        ctx.log('error', `Image search failed: ${errorMessage}`);
+
+        ctx.state.setVariable('!IMAGESEARCH', 'false');
+        ctx.state.setVariable('!IMAGESEARCH_X', 0);
+        ctx.state.setVariable('!IMAGESEARCH_Y', 0);
+        ctx.state.setVariable('!IMAGESEARCH_CONFIDENCE', 0);
+
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+          errorMessage: `Image search failed: ${errorMessage}`,
         };
       }
-    } else {
-      // searchAll not available but pos > 1 requested
-      ctx.log('warn', `POS=${pos} requested but searchAll not available, using first match`);
-      result = await imageSearchService.search(imagePath, {
-        confidenceThreshold,
-      });
-    }
-
-    // Store results in variables
-    ctx.state.setVariable('!IMAGESEARCH', result.found ? 'true' : 'false');
-    ctx.state.setVariable('!IMAGESEARCH_X', result.x);
-    ctx.state.setVariable('!IMAGESEARCH_Y', result.y);
-    ctx.state.setVariable('!IMAGESEARCH_CONFIDENCE', Math.round(result.confidence * 100));
-
-    if (result.found) {
-      ctx.log('info', `Image found at (${result.x}, ${result.y}) with ${Math.round(result.confidence * 100)}% confidence`);
-      return {
-        success: true,
-        errorCode: IMACROS_ERROR_CODES.OK,
-        output: `${result.x},${result.y}`,
-      };
-    } else {
-      ctx.log('warn', `Image not found with required confidence (${confidence}%)`);
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: `Image not found: ${imagePath}`,
-      };
-    }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    ctx.log('error', `Image search failed: ${errorMessage}`);
-
-    // Store failure in variables
-    ctx.state.setVariable('!IMAGESEARCH', 'false');
-    ctx.state.setVariable('!IMAGESEARCH_X', 0);
-    ctx.state.setVariable('!IMAGESEARCH_Y', 0);
-    ctx.state.setVariable('!IMAGESEARCH_CONFIDENCE', 0);
-
-    return {
-      success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-      errorMessage: `Image search failed: ${errorMessage}`,
-    };
-  }
+    },
+    // Retry on IMAGE_NOT_FOUND (-927), not on file errors (-903) or config errors (-902)
+    (r) => r.errorCode === IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+  );
 };
 
 /**
@@ -336,7 +446,8 @@ export const imageSearchHandler: CommandHandler = async (ctx: CommandContext): P
  *
  * Syntax: IMAGECLICK IMAGE=<path> [CONFIDENCE=<percent>] [BUTTON=<left|right|middle>]
  *
- * Searches for an image on screen and clicks on its center.
+ * Searches for an image on the webpage and clicks on its center.
+ * Retries with !TIMEOUT_TAG until found or timeout.
  *
  * Parameters:
  * - IMAGE: Path to the template image file
@@ -348,17 +459,23 @@ export const imageSearchHandler: CommandHandler = async (ctx: CommandContext): P
  * - !IMAGECLICK_Y: Y coordinate where clicked
  * - !IMAGECLICK: Boolean, "true" if found and clicked, "false" if not
  *
+ * Error codes:
+ * - -902: Image search service not configured
+ * - -903: Image file not found or cannot be loaded
+ * - -927: Image not found on screen (after retries)
+ * - -930: Timeout waiting for image to appear
+ *
  * Example:
  * - IMAGECLICK IMAGE=submit_button.png CONFIDENCE=90
  * - IMAGECLICK IMAGE=menu.png BUTTON=right
  */
 export const imageClickHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
-  // Check if services are available
+  // Check if services are available (-902)
   if (!imageSearchService) {
     ctx.log('warn', 'Image search service not available - requires native host');
     return {
       success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorCode: IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED,
       errorMessage: 'IMAGECLICK requires the native host image-search service. Service not configured.',
     };
   }
@@ -367,7 +484,7 @@ export const imageClickHandler: CommandHandler = async (ctx: CommandContext): Pr
     ctx.log('warn', 'Mouse click service not available - requires native host');
     return {
       success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorCode: IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED,
       errorMessage: 'IMAGECLICK requires the native host winclick-service. Service not configured.',
     };
   }
@@ -414,66 +531,95 @@ export const imageClickHandler: CommandHandler = async (ctx: CommandContext): Pr
 
   ctx.log('info', `Image click: ${imagePath} (confidence: ${confidence}%, button: ${button})`);
 
-  try {
-    // First, search for the image
-    const confidenceThreshold = confidence / 100;
-    const searchResult = await imageSearchService.search(imagePath, {
-      confidenceThreshold,
-    });
+  // Convert confidence from percentage (0-100) to decimal (0-1)
+  const confidenceThreshold = confidence / 100;
 
-    // Store search results
-    ctx.state.setVariable('!IMAGECLICK', searchResult.found ? 'true' : 'false');
-    ctx.state.setVariable('!IMAGECLICK_X', searchResult.x);
-    ctx.state.setVariable('!IMAGECLICK_Y', searchResult.y);
+  // Search webpage content area by default (matches iMacros 8.9.7)
+  const source: ImageSearchSource = 'webpage';
 
-    if (!searchResult.found) {
-      ctx.log('warn', `Image not found with required confidence (${confidence}%)`);
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: `Image not found: ${imagePath}`,
-      };
-    }
+  // Use retry loop with !TIMEOUT_TAG (same as TAG command)
+  return executeWithTimeoutRetry(
+    ctx,
+    async (): Promise<CommandResult> => {
+      try {
+        const searchResult = await performImageSearch(imagePath, confidenceThreshold, 1, source);
 
-    // Image found, now click on it
-    ctx.log('info', `Image found at (${searchResult.x}, ${searchResult.y}), clicking...`);
+        // Store search results
+        ctx.state.setVariable('!IMAGECLICK', searchResult.found ? 'true' : 'false');
+        ctx.state.setVariable('!IMAGECLICK_X', searchResult.x);
+        ctx.state.setVariable('!IMAGECLICK_Y', searchResult.y);
 
-    const clickResult = await mouseClickService.click({
-      x: searchResult.x,
-      y: searchResult.y,
-      button,
-    });
+        if (!searchResult.found) {
+          ctx.log('debug', `Image not found with required confidence (${confidence}%)`);
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+            errorMessage: `Image not found: ${imagePath}`,
+          };
+        }
 
-    if (!clickResult.success) {
-      ctx.log('error', `Click failed: ${clickResult.error}`);
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-        errorMessage: `Image found but click failed: ${clickResult.error}`,
-      };
-    }
+        // Visual highlight feedback (green overlay on found image)
+        highlightFoundImage(searchResult, 'IMAGECLICK');
 
-    ctx.log('info', `Clicked at (${searchResult.x}, ${searchResult.y})`);
-    return {
-      success: true,
-      errorCode: IMACROS_ERROR_CODES.OK,
-      output: `${searchResult.x},${searchResult.y}`,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    ctx.log('error', `Image click failed: ${errorMessage}`);
+        // Image found, now click on it
+        ctx.log('info', `Image found at (${searchResult.x}, ${searchResult.y}), clicking...`);
 
-    // Store failure in variables
-    ctx.state.setVariable('!IMAGECLICK', 'false');
-    ctx.state.setVariable('!IMAGECLICK_X', 0);
-    ctx.state.setVariable('!IMAGECLICK_Y', 0);
+        const clickResult = await mouseClickService!.click({
+          x: searchResult.x,
+          y: searchResult.y,
+          button,
+        });
 
-    return {
-      success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-      errorMessage: `Image click failed: ${errorMessage}`,
-    };
-  }
+        if (!clickResult.success) {
+          ctx.log('error', `Click failed: ${clickResult.error}`);
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+            errorMessage: `Image found but click failed: ${clickResult.error}`,
+          };
+        }
+
+        ctx.log('info', `Clicked at (${searchResult.x}, ${searchResult.y})`);
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+          output: `${searchResult.x},${searchResult.y}`,
+        };
+      } catch (error) {
+        // Check if this is a file-not-found error (-903, non-retryable)
+        if (isImageFileError(error)) {
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          ctx.log('error', `Image file error: ${errorMessage}`);
+
+          ctx.state.setVariable('!IMAGECLICK', 'false');
+          ctx.state.setVariable('!IMAGECLICK_X', 0);
+          ctx.state.setVariable('!IMAGECLICK_Y', 0);
+
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND,
+            errorMessage: `Image file not found or cannot be loaded: ${imagePath}`,
+          };
+        }
+
+        // Other errors - propagate
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        ctx.log('error', `Image click failed: ${errorMessage}`);
+
+        ctx.state.setVariable('!IMAGECLICK', 'false');
+        ctx.state.setVariable('!IMAGECLICK_X', 0);
+        ctx.state.setVariable('!IMAGECLICK_Y', 0);
+
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+          errorMessage: `Image click failed: ${errorMessage}`,
+        };
+      }
+    },
+    // Retry on IMAGE_NOT_FOUND (-927), not on file errors (-903), config errors (-902), or click errors
+    (r) => r.errorCode === IMACROS_ERROR_CODES.IMAGE_NOT_FOUND,
+  );
 };
 
 // ===== Handler Registration =====

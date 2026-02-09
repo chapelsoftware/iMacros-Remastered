@@ -1354,17 +1354,28 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
 
   // --- Bridge failure tests ---
 
-  it('TAB T=2 bridge failure returns SCRIPT_ERROR', async () => {
-    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      success: false,
-      error: 'Tab 2 does not exist',
-    });
+  it('TAB T=2 bridge failure returns SCRIPT_EXCEPTION after retry', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        if (message.type === 'switchTab') {
+          return { success: false, error: 'Tab 2 does not exist' };
+        }
+        return { success: true };
+      }
+    );
 
-    executor.loadMacro('TAB T=2');
+    // Set short timeout so retry finishes quickly
+    const script = [
+      'SET !TIMEOUT_STEP 1',
+      'TAB T=2',
+    ].join('\n');
+
+    executor.loadMacro(script);
     const result = await executor.execute();
 
     expect(result.success).toBe(false);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_EXCEPTION);
     expect(result.errorMessage).toContain('Tab 2 does not exist');
   });
 
@@ -1414,5 +1425,138 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
     expect(sentMessages[0].type).toBe('openTab');
     expect(sentMessages[1].type).toBe('switchTab');
     expect((sentMessages[1] as { tabIndex: number }).tabIndex).toBe(0);
+  });
+
+  // --- TAB OPEN NEW / TAB NEW OPEN syntax tests ---
+
+  it('TAB OPEN NEW opens a new tab (same as TAB OPEN)', async () => {
+    executor.loadMacro('TAB OPEN NEW');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('openTab');
+  });
+
+  it('TAB NEW OPEN opens a new tab (alternate syntax)', async () => {
+    executor.loadMacro('TAB NEW OPEN');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('openTab');
+  });
+
+  it('TAB NEW (without OPEN) opens a new tab', async () => {
+    executor.loadMacro('TAB NEW');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('openTab');
+  });
+
+  // --- startTabIndex relative indexing tests ---
+
+  it('TAB T=n uses startTabIndex for relative indexing', async () => {
+    // Set startTabIndex to 2 (macro started on 3rd tab, 0-based)
+    executor.getState().setStartTabIndex(2);
+
+    executor.loadMacro('TAB T=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    const msg = sentMessages[0];
+    expect(msg.type).toBe('switchTab');
+    // T=1 relative to startTabIndex=2 => absolute index = 2 + 1 - 1 = 2
+    expect((msg as { tabIndex: number }).tabIndex).toBe(2);
+  });
+
+  it('TAB T=3 with startTabIndex=1 sends switchTab with absolute index 3', async () => {
+    executor.getState().setStartTabIndex(1);
+
+    executor.loadMacro('TAB T=3');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
+    // T=3 relative to startTabIndex=1 => absolute index = 1 + 3 - 1 = 3
+    expect((sentMessages[0] as { tabIndex: number }).tabIndex).toBe(3);
+  });
+
+  // --- CLOSEALLOTHERS resets startTabIndex ---
+
+  it('TAB CLOSEALLOTHERS resets startTabIndex to 0', async () => {
+    executor.getState().setStartTabIndex(5);
+
+    executor.loadMacro('TAB CLOSEALLOTHERS');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(executor.getState().getStartTabIndex()).toBe(0);
+  });
+
+  // --- Retry mechanism for non-existent tabs ---
+
+  it('TAB T=n retries until tab appears within !TIMEOUT_STEP', async () => {
+    let callCount = 0;
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        callCount++;
+        // Fail first 2 attempts, succeed on 3rd
+        if (message.type === 'switchTab' && callCount <= 2) {
+          return { success: false, error: 'Tab does not exist' };
+        }
+        return { success: true };
+      }
+    );
+
+    const script = [
+      'SET !TIMEOUT_STEP 5',
+      'TAB T=3',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    expect(callCount).toBeGreaterThanOrEqual(3);
+  });
+
+  it('TAB T=n returns SCRIPT_EXCEPTION (-971) after retry timeout', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        if (message.type === 'switchTab') {
+          return { success: false, error: 'Tab does not exist' };
+        }
+        return { success: true };
+      }
+    );
+
+    const script = [
+      'SET !TIMEOUT_STEP 1',
+      'TAB T=99',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_EXCEPTION);
   });
 });

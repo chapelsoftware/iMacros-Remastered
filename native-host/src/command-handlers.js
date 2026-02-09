@@ -124,13 +124,14 @@ function createBrowserHandlers(bridge) {
     /**
      * TAB command handler
      * TAB T=<n> - Switch to tab n (1-based)
-     * TAB OPEN [URL=<url>] - Open new tab
+     * TAB OPEN [URL=<url>] / TAB OPEN NEW / TAB NEW OPEN - Open new tab
      * TAB CLOSE - Close current tab
      * TAB CLOSEALLOTHERS - Close all other tabs
      */
     TAB: async (ctx) => {
       const tParam = ctx.getParam('T');
       const openParam = ctx.command.parameters.some(p => p.key.toUpperCase() === 'OPEN');
+      const newParam = ctx.command.parameters.some(p => p.key.toUpperCase() === 'NEW');
       const closeParam = ctx.command.parameters.some(p => p.key.toUpperCase() === 'CLOSE');
       const closeAllOthersParam = ctx.command.parameters.some(
         p => p.key.toUpperCase() === 'CLOSEALLOTHERS'
@@ -149,7 +150,8 @@ function createBrowserHandlers(bridge) {
           return { success: true, errorCode: ERROR_CODES.OK };
         }
 
-        if (openParam) {
+        // Support TAB OPEN, TAB OPEN NEW, TAB NEW OPEN
+        if (openParam || (newParam && !tParam)) {
           const urlParam = ctx.getParam('URL');
           const url = urlParam ? ctx.expand(urlParam) : undefined;
           ctx.log('info', url ? `Opening new tab: ${url}` : 'Opening new tab');

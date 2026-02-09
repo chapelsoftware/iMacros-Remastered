@@ -667,6 +667,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
         return this.handleIimStop();
 
       case 'iimexit':
+      case 'iimclose': // Alias for iimExit (iMacros 8.9.7 compatibility)
         return this.handleIimExit();
 
       case 'iimdisplay':

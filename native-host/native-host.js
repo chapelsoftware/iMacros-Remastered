@@ -460,6 +460,11 @@ async function playJsMacro(macroPath, tabId) {
         throw err;
       },
 
+      // iimClose - alias for iimExit (iMacros 8.9.7 compatibility)
+      iimClose: function(exitCode) {
+        return iMacros.iimExit(exitCode);
+      },
+
       // iimInit - initialize (no-op for now)
       iimInit: function() {
         return 1;

@@ -140,6 +140,9 @@ describe('DialogInterceptor', () => {
     simulateMainWorldScript();
 
     interceptor = new DialogInterceptor();
+
+    // Reset module-level config to defaults (persists across tests)
+    interceptor.setConfig({ enabled: false, button: 'OK', pos: 1, content: undefined });
   });
 
   afterEach(() => {
@@ -175,7 +178,7 @@ describe('DialogInterceptor', () => {
 
     it('should restore original alert behavior after uninstall', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       interceptor.uninstall();
 
@@ -186,7 +189,7 @@ describe('DialogInterceptor', () => {
 
     it('should restore original confirm behavior after uninstall', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       interceptor.uninstall();
 
@@ -246,7 +249,7 @@ describe('DialogInterceptor', () => {
 
     it('should reset counter when applyDialogConfig is called', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
       // Trigger a dialog to increment counter
       window.alert('test');
 
@@ -283,7 +286,7 @@ describe('DialogInterceptor', () => {
   describe('alert interception', () => {
     it('should suppress alert when enabled and auto-responding', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       window.alert('Hello!');
 
@@ -302,7 +305,7 @@ describe('DialogInterceptor', () => {
 
     it('should report alert event via callback', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       const events: any[] = [];
       interceptor.setEventCallback((event) => events.push(event));
@@ -323,7 +326,7 @@ describe('DialogInterceptor', () => {
   describe('confirm interception', () => {
     it('should return true for OK button when enabled', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       const result = window.confirm('Proceed?');
 
@@ -332,7 +335,7 @@ describe('DialogInterceptor', () => {
 
     it('should return true for YES button when enabled', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'YES', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'YES', pos: 1 });
 
       const result = window.confirm('Proceed?');
 
@@ -341,7 +344,7 @@ describe('DialogInterceptor', () => {
 
     it('should return false for CANCEL button when enabled', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       const result = window.confirm('Proceed?');
 
@@ -350,7 +353,7 @@ describe('DialogInterceptor', () => {
 
     it('should return false for NO button when enabled', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'NO', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'NO', pos: 1 });
 
       const result = window.confirm('Proceed?');
 
@@ -368,7 +371,7 @@ describe('DialogInterceptor', () => {
 
     it('should report confirm event via callback', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       const events: any[] = [];
       interceptor.setEventCallback((event) => events.push(event));
@@ -389,7 +392,7 @@ describe('DialogInterceptor', () => {
   describe('prompt interception', () => {
     it('should return configured content for OK button', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1, content: 'auto-value' });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1, content: 'auto-value' });
 
       const result = window.prompt('Enter name:');
 
@@ -398,7 +401,7 @@ describe('DialogInterceptor', () => {
 
     it('should return defaultValue when no content is configured', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       const result = window.prompt('Enter name:', 'default-name');
 
@@ -407,7 +410,7 @@ describe('DialogInterceptor', () => {
 
     it('should return empty string when no content and no defaultValue', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'YES', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'YES', pos: 1 });
 
       const result = window.prompt('Enter name:');
 
@@ -416,7 +419,7 @@ describe('DialogInterceptor', () => {
 
     it('should return null for CANCEL button', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       const result = window.prompt('Enter name:');
 
@@ -425,7 +428,7 @@ describe('DialogInterceptor', () => {
 
     it('should return null for NO button', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'NO', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'NO', pos: 1 });
 
       const result = window.prompt('Enter name:');
 
@@ -445,7 +448,7 @@ describe('DialogInterceptor', () => {
 
     it('should report prompt event via callback with value', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1, content: 'resp' });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1, content: 'resp' });
 
       const events: any[] = [];
       interceptor.setEventCallback((event) => events.push(event));
@@ -468,7 +471,7 @@ describe('DialogInterceptor', () => {
   describe('POS counter', () => {
     it('should auto-respond only up to POS dialogs', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 2 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 2 });
 
       // First two should be auto-responded (CANCEL -> false)
       const r1 = window.confirm('1');
@@ -483,7 +486,7 @@ describe('DialogInterceptor', () => {
 
     it('should suppress alerts only up to POS count', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       window.alert('first');
       window.alert('second');
@@ -495,12 +498,15 @@ describe('DialogInterceptor', () => {
 
     it('should reset counter with resetCounter', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'CANCEL', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       const r1 = window.confirm('first');
       expect(r1).toBe(false); // auto
 
+      // resetCounter dispatches __imacros_dialog_reset which also disables,
+      // so re-apply config after reset
       interceptor.resetCounter();
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 });
 
       const r2 = window.confirm('second');
       expect(r2).toBe(false); // auto again because counter was reset
@@ -514,7 +520,7 @@ describe('DialogInterceptor', () => {
   describe('event callback', () => {
     it('should call the event callback for each dialog', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 10 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 10 });
 
       const events: any[] = [];
       interceptor.setEventCallback((e) => events.push(e));
@@ -531,7 +537,7 @@ describe('DialogInterceptor', () => {
 
     it('should include timestamp and url in events', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       let event: any = null;
       interceptor.setEventCallback((e) => { event = e; });
@@ -544,7 +550,7 @@ describe('DialogInterceptor', () => {
 
     it('should handle callback errors gracefully', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
 
       interceptor.setEventCallback(() => { throw new Error('callback error'); });
 
@@ -554,7 +560,7 @@ describe('DialogInterceptor', () => {
 
     it('should clear event callback with null', () => {
       interceptor.install();
-      interceptor.setConfig({ enabled: true, button: 'OK', pos: 10 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 10 });
 
       const events: any[] = [];
       interceptor.setEventCallback((e) => events.push(e));

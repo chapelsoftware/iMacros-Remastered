@@ -66,6 +66,7 @@ const MAIN_WORLD_SCRIPT_URL = chrome.runtime.getURL('dialog-interceptor-main.js'
  * Whether the main world script has been injected
  */
 let mainWorldScriptInjected = false;
+let eventListenerSetup = false;
 
 /**
  * Callback for dialog events
@@ -108,6 +109,8 @@ function injectMainWorldScript(): void {
  * Set up event listener for dialog events from main world
  */
 function setupEventListener(): void {
+  if (eventListenerSetup) return;
+  eventListenerSetup = true;
   window.addEventListener('__imacros_dialog_event', ((event: CustomEvent) => {
     const detail = event.detail as DialogEvent;
     if (eventCallback) {

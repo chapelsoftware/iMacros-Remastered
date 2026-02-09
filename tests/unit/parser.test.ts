@@ -530,10 +530,10 @@ describe('iMacros Parser', () => {
       expect(idParam?.value).toBe('SubmitData');
     });
 
-    it('should validate STOPWATCH requires ID', () => {
-      const result = parseMacro('STOPWATCH', true);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].message).toContain('ID');
+    it('should allow bare STOPWATCH for toggle on default stopwatch', () => {
+      const result = parseMacro('STOPWATCH');
+      expect(result.commands[0].type).toBe('STOPWATCH');
+      expect(result.errors).toHaveLength(0);
     });
   });
 

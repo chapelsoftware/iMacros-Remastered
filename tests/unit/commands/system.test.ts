@@ -136,22 +136,21 @@ describe('VERSION handler - version segment length mismatch', () => {
   });
 });
 
-// ===== Branch: STOPWATCH without ACTION param defaults to START =====
+// ===== Branch: STOPWATCH toggle behavior (no ACTION param) =====
 
-describe('STOPWATCH handler - default action', () => {
-  it('defaults to START when no ACTION parameter is provided', async () => {
+describe('STOPWATCH handler - toggle behavior', () => {
+  it('toggles to START when no ACTION parameter is provided and stopwatch not running', async () => {
     const vars = new Map<string, any>();
-    // No ACTION param provided at all
     const ctx = createMockContext({}, vars);
     const result = await stopwatchHandler(ctx);
 
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-    // The default START action sets the stopwatch variable to 0
+    // Toggle on non-running stopwatch starts it, setting variable to 0
     expect(vars.get('!STOPWATCH')).toBe(0);
   });
 
-  it('defaults to START with only ID parameter', async () => {
+  it('toggles to START with only ID parameter on non-running stopwatch', async () => {
     const vars = new Map<string, any>();
     const ctx = createMockContext({ ID: 'myTimer' }, vars);
     const result = await stopwatchHandler(ctx);

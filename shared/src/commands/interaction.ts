@@ -14,6 +14,7 @@ import {
   CommandContext,
   CommandResult,
   IMACROS_ERROR_CODES,
+  type IMacrosErrorCode,
 } from '../executor';
 import type { CommandType } from '../parser';
 
@@ -609,7 +610,7 @@ export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<C
       }
       return {
         success: false,
-        errorCode: response.errorCode || IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorCode: (response.errorCode as IMacrosErrorCode) || IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
         errorMessage: response.error || 'Element not found',
       };
     }

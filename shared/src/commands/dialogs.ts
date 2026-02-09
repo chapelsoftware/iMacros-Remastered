@@ -18,6 +18,7 @@ import {
   CommandContext,
   CommandResult,
   IMACROS_ERROR_CODES,
+  type IMacrosErrorCode,
 } from '../executor';
 import type { CommandType } from '../parser';
 import { decryptString, isEncrypted, EncryptionError } from '../encryption';
@@ -440,7 +441,7 @@ export const onLoginHandler: CommandHandler = async (ctx: CommandContext): Promi
       if (e instanceof EncryptionError) {
         return {
           success: false,
-          errorCode: e.code,
+          errorCode: e.code as IMacrosErrorCode,
           errorMessage: `ONLOGIN password decryption failed: ${e.message}`,
         };
       }

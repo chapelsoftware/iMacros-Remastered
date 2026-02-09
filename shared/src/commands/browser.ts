@@ -318,9 +318,9 @@ async function sendBrowserCommandMessage(
 function parseClearDataTypes(ctx: CommandContext): ClearDataType[] {
   const params = ctx.command.parameters;
 
-  // No parameters = clear cookies (default)
+  // No parameters = clear cache and cookies (default)
   if (params.length === 0) {
-    return ['cookies'];
+    return ['cache', 'cookies'];
   }
 
   const dataTypes: ClearDataType[] = [];

@@ -62,6 +62,9 @@ export const IMACROS_ERROR_CODES = {
   DOWNLOAD_ERROR: -950,
   DOWNLOAD_FAILED: -951,
   DOWNLOAD_TIMEOUT: -952,
+  DOWNLOAD_CHECKSUM_MISMATCH: -953,
+  DOWNLOAD_FOLDER_ACCESS: -954,
+  DOWNLOAD_INVALID_FILENAME: -955,
   // File errors (-96x)
   FILE_ERROR: -960,
   FILE_NOT_FOUND: -961,
@@ -78,6 +81,8 @@ export const IMACROS_ERROR_CODES = {
   // Loop errors (-99x)
   LOOP_LIMIT: -990,
   LOOP_ERROR: -991,
+  // Dialog errors (-145x)
+  UNHANDLED_DIALOG: -1450,
   // User actions (-10x)
   USER_ABORT: -100,
   USER_PAUSE: -101,
@@ -919,6 +924,9 @@ export function getErrorMessage(code: IMacrosErrorCode): string {
     [IMACROS_ERROR_CODES.DOWNLOAD_ERROR]: 'Download error',
     [IMACROS_ERROR_CODES.DOWNLOAD_FAILED]: 'Download failed',
     [IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT]: 'Download timeout',
+    [IMACROS_ERROR_CODES.DOWNLOAD_CHECKSUM_MISMATCH]: 'Download checksum mismatch',
+    [IMACROS_ERROR_CODES.DOWNLOAD_FOLDER_ACCESS]: 'Download folder access error',
+    [IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME]: 'Invalid download filename',
     [IMACROS_ERROR_CODES.FILE_ERROR]: 'File error',
     [IMACROS_ERROR_CODES.FILE_NOT_FOUND]: 'File not found',
     [IMACROS_ERROR_CODES.FILE_ACCESS_DENIED]: 'File access denied',

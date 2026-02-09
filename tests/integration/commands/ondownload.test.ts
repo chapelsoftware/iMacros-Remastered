@@ -3,8 +3,9 @@
  *
  * Tests the ONDOWNLOAD command through the MacroExecutor with a mock DownloadBridge.
  * Verifies folder/file parameter handling, wildcard/auto-generate specials,
- * WAIT parameter, variable expansion, bridge error handling, missing parameter
- * validation, and ONDOWNLOAD+SAVEAS sequencing.
+ * WAIT parameter (default YES), CHECKSUM validation, filename/folder validation,
+ * variable expansion, bridge error handling, missing parameter validation,
+ * and ONDOWNLOAD+SAVEAS sequencing.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createExecutor, MacroExecutor, IMACROS_ERROR_CODES } from '@shared/executor';
@@ -57,7 +58,7 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
     });
 
     it('should send folder as undefined when FOLDER=* (browser default)', async () => {
-      executor.loadMacro('ONDOWNLOAD FOLDER=*');
+      executor.loadMacro('ONDOWNLOAD FOLDER=* FILE=report.pdf');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -70,7 +71,7 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
     });
 
     it('should send file as undefined when FILE=+ (auto-generate)', async () => {
-      executor.loadMacro('ONDOWNLOAD FILE=+');
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=+');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -80,34 +81,6 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       const msg = sentMessages[0] as SetDownloadOptionsMessage;
       expect(msg.type).toBe('setDownloadOptions');
       expect(msg.file).toBeUndefined();
-    });
-
-    it('should succeed with only FOLDER parameter', async () => {
-      executor.loadMacro('ONDOWNLOAD FOLDER=/path');
-      const result = await executor.execute();
-
-      expect(result.success).toBe(true);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
-
-      const msg = sentMessages[0] as SetDownloadOptionsMessage;
-      expect(msg.type).toBe('setDownloadOptions');
-      expect(msg.folder).toBe('/path');
-      expect(msg.file).toBeUndefined();
-    });
-
-    it('should succeed with only FILE parameter', async () => {
-      executor.loadMacro('ONDOWNLOAD FILE=myfile.txt');
-      const result = await executor.execute();
-
-      expect(result.success).toBe(true);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
-
-      const msg = sentMessages[0] as SetDownloadOptionsMessage;
-      expect(msg.type).toBe('setDownloadOptions');
-      expect(msg.folder).toBeUndefined();
-      expect(msg.file).toBe('myfile.txt');
     });
   });
 
@@ -122,13 +95,44 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
       expect(sentMessages).toHaveLength(0);
     });
+
+    it('should return MISSING_PARAMETER when only FOLDER is specified', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/path');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+      expect(result.errorMessage).toContain('both FOLDER and FILE');
+      expect(sentMessages).toHaveLength(0);
+    });
+
+    it('should return MISSING_PARAMETER when only FILE is specified', async () => {
+      executor.loadMacro('ONDOWNLOAD FILE=myfile.txt');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+      expect(result.errorMessage).toContain('both FOLDER and FILE');
+      expect(sentMessages).toHaveLength(0);
+    });
   });
 
   // ===== WAIT Parameter =====
 
   describe('WAIT parameter', () => {
+    it('should default WAIT to YES (true) when not specified', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.wait).toBe(true);
+    });
+
     it('should send wait=true when WAIT=YES', async () => {
-      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads WAIT=YES');
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=YES');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -140,7 +144,7 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
     });
 
     it('should send wait=false when WAIT=NO', async () => {
-      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads WAIT=NO');
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=NO');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -149,6 +153,180 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       const msg = sentMessages[0] as SetDownloadOptionsMessage;
       expect(msg.type).toBe('setDownloadOptions');
       expect(msg.wait).toBe(false);
+    });
+  });
+
+  // ===== CHECKSUM Parameter =====
+
+  describe('CHECKSUM parameter', () => {
+    it('should accept valid MD5 checksum', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBe('MD5:d41d8cd98f00b204e9800998ecf8427e');
+    });
+
+    it('should accept valid SHA1 checksum', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=SHA1:da39a3ee5e6b4b0d3255bfef95601890afd80709');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBe('SHA1:da39a3ee5e6b4b0d3255bfef95601890afd80709');
+    });
+
+    it('should reject checksum without colon separator', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5abc123');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('format');
+    });
+
+    it('should reject unsupported checksum algorithm', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=SHA256:abc123');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('Unsupported checksum algorithm');
+    });
+
+    it('should reject invalid hex in checksum hash', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5:zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('hexadecimal');
+    });
+
+    it('should reject MD5 hash with wrong length', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5:abc123');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('length');
+    });
+
+    it('should reject SHA1 hash with wrong length', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=SHA1:abc123');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('length');
+    });
+
+    it('should normalize checksum hash to lowercase', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5:D41D8CD98F00B204E9800998ECF8427E');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBe('MD5:d41d8cd98f00b204e9800998ecf8427e');
+    });
+
+    it('should not send checksum when CHECKSUM is not specified', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBeUndefined();
+    });
+  });
+
+  // ===== Filename Validation =====
+
+  describe('Filename validation', () => {
+    it('should reject filename with < character', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file<name.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
+      expect(result.errorMessage).toContain('Illegal character');
+    });
+
+    it('should reject filename with > character', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file>name.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
+    });
+
+    it('should reject filename with | character', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file|name.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
+    });
+
+    it('should reject filename with ? character', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file?name.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
+    });
+
+    it('should reject filename with * character', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file*name.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
+    });
+
+    it('should accept valid filenames', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=my-file_v2.0.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should skip filename validation for FILE=+ (auto-generate)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=+');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ===== Folder Path Validation =====
+
+  describe('Folder path validation', () => {
+    it('should reject folder path with null byte', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/down\0loads FILE=report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_FOLDER_ACCESS);
+    });
+
+    it('should skip folder validation for FOLDER=* (browser default)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=* FILE=report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept valid folder paths', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/home/user/downloads FILE=report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
     });
   });
 

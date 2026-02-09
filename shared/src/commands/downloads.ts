@@ -46,6 +46,8 @@ export interface SetDownloadOptionsMessage extends DownloadMessage {
   file?: string;
   /** If true, wait for download to complete before continuing */
   wait?: boolean;
+  /** Checksum verification in format "MD5:hash" or "SHA1:hash" */
+  checksum?: string;
 }
 
 /**
@@ -187,6 +189,7 @@ type SetDownloadOptionsPayload = {
   folder?: string;
   file?: string;
   wait?: boolean;
+  checksum?: string;
 };
 
 type SaveAsPayload = {
@@ -272,44 +275,141 @@ export const LAST_DOWNLOAD_ID_KEY = '!LAST_DOWNLOAD_ID';
 // ===== ONDOWNLOAD Command Handler =====
 
 /**
+ * Characters illegal in filenames (Windows + common cross-platform restrictions)
+ */
+const ILLEGAL_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
+
+/**
+ * Validate a filename for illegal characters
+ * Returns the illegal character found or null if valid
+ */
+function validateFilename(filename: string): string | null {
+  const match = filename.match(ILLEGAL_FILENAME_CHARS);
+  return match ? match[0] : null;
+}
+
+/**
+ * Validate and normalize a folder path.
+ * Checks for path traversal and illegal characters.
+ * Returns an error message or null if valid.
+ */
+function validateFolderPath(folder: string): string | null {
+  // Check for null bytes
+  if (folder.includes('\0')) {
+    return 'Folder path contains null byte';
+  }
+  return null;
+}
+
+/**
+ * Parse CHECKSUM parameter value.
+ * Expected format: "MD5:hexhash" or "SHA1:hexhash"
+ * Returns parsed checksum or error string.
+ */
+function parseChecksum(value: string): { algorithm: string; hash: string } | string {
+  const colonIndex = value.indexOf(':');
+  if (colonIndex === -1) {
+    return 'CHECKSUM must be in format ALGORITHM:hash (e.g., MD5:abc123 or SHA1:abc123)';
+  }
+
+  const algorithm = value.substring(0, colonIndex).toUpperCase();
+  const hash = value.substring(colonIndex + 1).toLowerCase();
+
+  if (algorithm !== 'MD5' && algorithm !== 'SHA1') {
+    return `Unsupported checksum algorithm: ${algorithm}. Supported: MD5, SHA1`;
+  }
+
+  if (!hash || !/^[0-9a-f]+$/.test(hash)) {
+    return `Invalid ${algorithm} hash value: must be a hexadecimal string`;
+  }
+
+  // Validate hash length
+  const expectedLength = algorithm === 'MD5' ? 32 : 40;
+  if (hash.length !== expectedLength) {
+    return `Invalid ${algorithm} hash length: expected ${expectedLength} characters, got ${hash.length}`;
+  }
+
+  return { algorithm, hash };
+}
+
+/**
  * Handler for ONDOWNLOAD command
  *
  * Syntax:
  * - ONDOWNLOAD FOLDER=<path> FILE=<filename>
- * - ONDOWNLOAD FOLDER=* (use browser default folder)
- * - ONDOWNLOAD FILE=+ (auto-generate unique filename)
- * - ONDOWNLOAD WAIT=YES (wait for download to complete)
+ * - ONDOWNLOAD FOLDER=* FILE=<filename> (use browser default folder)
+ * - ONDOWNLOAD FOLDER=<path> FILE=+ (auto-generate unique filename)
+ * - ONDOWNLOAD WAIT=YES|NO (wait for download; default YES)
+ * - ONDOWNLOAD CHECKSUM=MD5:hash or CHECKSUM=SHA1:hash
  *
  * Sets the destination for subsequent downloads.
+ * Both FOLDER and FILE are required parameters.
  */
 export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const folderParam = ctx.getParam('FOLDER');
   const fileParam = ctx.getParam('FILE');
   const waitParam = ctx.getParam('WAIT');
+  const checksumParam = ctx.getParam('CHECKSUM');
 
-  // At least one of FOLDER or FILE should be specified
-  if (!folderParam && !fileParam) {
+  // Both FOLDER and FILE are required (iMacros 8.9.7 parity)
+  if (!folderParam || !fileParam) {
     return {
       success: false,
       errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
-      errorMessage: 'ONDOWNLOAD requires FOLDER and/or FILE parameter',
+      errorMessage: 'ONDOWNLOAD requires both FOLDER and FILE parameters',
     };
   }
 
   // Expand variables in parameters
-  const folder = folderParam ? ctx.expand(folderParam) : undefined;
-  const file = fileParam ? ctx.expand(fileParam) : undefined;
-  const wait = waitParam?.toUpperCase() === 'YES';
+  const folder = ctx.expand(folderParam);
+  const file = ctx.expand(fileParam);
 
-  ctx.log('info', `Setting download options: folder=${folder || '(default)'}, file=${file || '(auto)'}`);
+  // WAIT defaults to YES (iMacros 8.9.7 parity)
+  const wait = waitParam ? waitParam.toUpperCase() !== 'NO' : true;
+
+  // Validate folder path (skip for wildcard '*' which means browser default)
+  if (folder !== '*') {
+    const folderError = validateFolderPath(folder);
+    if (folderError) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_FOLDER_ACCESS,
+        errorMessage: folderError,
+      };
+    }
+  }
+
+  // Validate filename (skip for '+' which means auto-generate)
+  if (file !== '+') {
+    const illegalChar = validateFilename(file);
+    if (illegalChar) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME,
+        errorMessage: `Illegal character '${illegalChar}' in filename: ${file}`,
+      };
+    }
+  }
+
+  // Parse and validate CHECKSUM parameter
+  let checksum: string | undefined;
+  if (checksumParam) {
+    const parsed = parseChecksum(ctx.expand(checksumParam));
+    if (typeof parsed === 'string') {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+        errorMessage: parsed,
+      };
+    }
+    checksum = `${parsed.algorithm}:${parsed.hash}`;
+  }
+
+  ctx.log('info', `Setting download options: folder=${folder === '*' ? '(default)' : folder}, file=${file === '+' ? '(auto)' : file}${checksum ? `, checksum=${checksum}` : ''}`);
 
   // Store download settings in state for later use
-  if (folder) {
-    ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, folder);
-  }
-  if (file) {
-    ctx.state.setVariable(DOWNLOAD_FILE_KEY, file);
-  }
+  ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, folder);
+  ctx.state.setVariable(DOWNLOAD_FILE_KEY, file);
 
   // Send message to browser extension to configure download behavior
   const response = await sendDownloadMessage(
@@ -318,6 +418,7 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
       folder: folder === '*' ? undefined : folder,
       file: file === '+' ? undefined : file,
       wait,
+      checksum,
     },
     ctx
   );

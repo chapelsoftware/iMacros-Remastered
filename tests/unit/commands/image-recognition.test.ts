@@ -2,7 +2,13 @@
  * Image Recognition Command Handlers Unit Tests
  *
  * Tests for IMAGECLICK and IMAGESEARCH commands that use the native host's
- * image-search service for template matching on screen.
+ * image-search service for template matching on webpage screenshots.
+ *
+ * Covers:
+ * - Proper error codes (-902, -903, -927, -930)
+ * - Retry loop with !TIMEOUT_TAG
+ * - Webpage screenshot source option
+ * - Visual highlight callback
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
@@ -16,11 +22,14 @@ import {
   registerImageRecognitionHandlers,
   setImageSearchService,
   setMouseClickService,
+  setImageHighlightCallback,
   getImageSearchService,
   getMouseClickService,
+  getImageHighlightCallback,
   ImageSearchService,
   MouseClickService,
   ImageSearchResult,
+  ImageHighlightCallback,
 } from '../../../shared/src/commands/image-recognition';
 
 // ===== Mock Services =====
@@ -70,9 +79,9 @@ function createMockMouseClickService(success = true): MouseClickService {
 /**
  * Create a mock command context
  */
-function createMockContext(params: Record<string, string> = {}): any {
+function createMockContext(params: Record<string, string> = {}, stateVars: Record<string, any> = {}): any {
   const logMessages: Array<{ level: string; message: string }> = [];
-  const variables: Record<string, any> = {};
+  const variables: Record<string, any> = { ...stateVars };
 
   return {
     command: { type: 'IMAGESEARCH', parameters: [], raw: 'IMAGESEARCH', lineNumber: 1, variables: [] },
@@ -104,10 +113,12 @@ describe('Image Recognition Command Handlers', () => {
   // Store original services to restore after tests
   let originalImageSearchService: ImageSearchService | null;
   let originalMouseClickService: MouseClickService | null;
+  let originalHighlightCallback: ImageHighlightCallback | null;
 
   beforeEach(() => {
     originalImageSearchService = getImageSearchService();
     originalMouseClickService = getMouseClickService();
+    originalHighlightCallback = getImageHighlightCallback();
   });
 
   afterEach(() => {
@@ -117,6 +128,9 @@ describe('Image Recognition Command Handlers', () => {
     }
     if (originalMouseClickService) {
       setMouseClickService(originalMouseClickService);
+    }
+    if (originalHighlightCallback) {
+      setImageHighlightCallback(originalHighlightCallback);
     }
   });
 
@@ -152,8 +166,7 @@ describe('Image Recognition Command Handlers', () => {
         (setImageSearchService as any)(null);
       });
 
-      it('should return SCRIPT_ERROR when image search service is not available', async () => {
-        // Temporarily remove the service
+      it('should return IMAGE_SEARCH_NOT_CONFIGURED (-902) when service is not available', async () => {
         const ctx = createMockContext({
           POS: '1',
           IMAGE: 'button.png',
@@ -163,7 +176,7 @@ describe('Image Recognition Command Handlers', () => {
         const result = await imageSearchHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED);
         expect(result.errorMessage).toContain('image-search service');
       });
     });
@@ -244,11 +257,12 @@ describe('Image Recognition Command Handlers', () => {
       });
 
       it('should search for image and store coordinates on success', async () => {
+        // Set short timeout to avoid long test
         const ctx = createMockContext({
           POS: '1',
           IMAGE: 'button.png',
           CONFIDENCE: '80',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageSearchHandler(ctx);
 
@@ -256,6 +270,7 @@ describe('Image Recognition Command Handlers', () => {
         expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
         expect(mockService.search).toHaveBeenCalledWith('button.png', {
           confidenceThreshold: 0.8,
+          source: 'webpage',
         });
 
         // Check stored variables
@@ -265,21 +280,95 @@ describe('Image Recognition Command Handlers', () => {
         expect(ctx._variables['!IMAGESEARCH_CONFIDENCE']).toBe(95);
       });
 
-      it('should return ELEMENT_NOT_FOUND when image is not found', async () => {
+      it('should pass source=webpage to search service (matches iMacros 8.9.7)', async () => {
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'button.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        await imageSearchHandler(ctx);
+
+        expect(mockService.search).toHaveBeenCalledWith('button.png', expect.objectContaining({
+          source: 'webpage',
+        }));
+      });
+
+      it('should return IMAGE_NOT_FOUND (-927) after timeout when image is not found', async () => {
         mockService = createMockImageSearchService(createMockSearchResult(false));
         setImageSearchService(mockService);
 
+        // Set timeout to 1 second for fast test
         const ctx = createMockContext({
           POS: '1',
           IMAGE: 'missing.png',
           CONFIDENCE: '80',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageSearchHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND);
+        // After timeout, executeWithTimeoutRetry returns TIMEOUT (-930)
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.TIMEOUT);
         expect(ctx._variables['!IMAGESEARCH']).toBe('false');
+      });
+
+      it('should retry searching until timeout', async () => {
+        mockService = createMockImageSearchService(createMockSearchResult(false));
+        setImageSearchService(mockService);
+
+        // Set timeout to 2 seconds
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'button.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 2 });
+
+        await imageSearchHandler(ctx);
+
+        // Should have been called multiple times (initial + retries)
+        expect((mockService.search as any).mock.calls.length).toBeGreaterThan(1);
+      });
+
+      it('should succeed on retry if image appears during retry loop', async () => {
+        // First call: not found, second call: found
+        const notFound = createMockSearchResult(false);
+        const found = createMockSearchResult(true, 150, 250);
+        mockService.search = vi.fn()
+          .mockResolvedValueOnce(notFound)
+          .mockResolvedValueOnce(found);
+        setImageSearchService(mockService);
+
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'button.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 3 });
+
+        const result = await imageSearchHandler(ctx);
+
+        expect(result.success).toBe(true);
+        expect(ctx._variables['!IMAGESEARCH']).toBe('true');
+        expect(ctx._variables['!IMAGESEARCH_X']).toBe(150);
+        expect(ctx._variables['!IMAGESEARCH_Y']).toBe(250);
+      });
+
+      it('should return IMAGE_FILE_NOT_FOUND (-903) for file errors (non-retryable)', async () => {
+        mockService.search = vi.fn().mockRejectedValue(new Error('ENOENT: file not found'));
+        setImageSearchService(mockService);
+
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'nonexistent.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        const result = await imageSearchHandler(ctx);
+
+        expect(result.success).toBe(false);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND);
+        // Should NOT retry for file errors - only called once
+        expect((mockService.search as any).mock.calls.length).toBe(1);
       });
 
       it('should handle service errors gracefully', async () => {
@@ -290,13 +379,13 @@ describe('Image Recognition Command Handlers', () => {
           POS: '1',
           IMAGE: 'button.png',
           CONFIDENCE: '80',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageSearchHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
-        expect(result.errorMessage).toContain('Screen capture failed');
+        // Non-file errors are retryable, so after timeout we get TIMEOUT
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.TIMEOUT);
       });
 
       it('should use searchAll for POS > 1', async () => {
@@ -311,7 +400,7 @@ describe('Image Recognition Command Handlers', () => {
           POS: '2',
           IMAGE: 'button.png',
           CONFIDENCE: '80',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageSearchHandler(ctx);
 
@@ -319,6 +408,45 @@ describe('Image Recognition Command Handlers', () => {
         expect(mockService.searchAll).toHaveBeenCalled();
         expect(ctx._variables['!IMAGESEARCH_X']).toBe(300);
         expect(ctx._variables['!IMAGESEARCH_Y']).toBe(400);
+      });
+
+      it('should trigger highlight callback when image is found', async () => {
+        const highlightCallback = vi.fn();
+        setImageHighlightCallback(highlightCallback);
+
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'button.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        await imageSearchHandler(ctx);
+
+        expect(highlightCallback).toHaveBeenCalledWith({
+          x: 75,   // topLeft.x = 100 - 25
+          y: 185,   // topLeft.y = 200 - 15
+          width: 50,
+          height: 30,
+          label: 'IMAGESEARCH',
+        });
+      });
+
+      it('should not trigger highlight callback when image is not found', async () => {
+        const highlightCallback = vi.fn();
+        setImageHighlightCallback(highlightCallback);
+
+        mockService = createMockImageSearchService(createMockSearchResult(false));
+        setImageSearchService(mockService);
+
+        const ctx = createMockContext({
+          POS: '1',
+          IMAGE: 'button.png',
+          CONFIDENCE: '80',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        await imageSearchHandler(ctx);
+
+        expect(highlightCallback).not.toHaveBeenCalled();
       });
     });
   });
@@ -332,7 +460,7 @@ describe('Image Recognition Command Handlers', () => {
         (setMouseClickService as any)(null);
       });
 
-      it('should return SCRIPT_ERROR when image search service is not available', async () => {
+      it('should return IMAGE_SEARCH_NOT_CONFIGURED (-902) when image search service is not available', async () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
         });
@@ -340,11 +468,11 @@ describe('Image Recognition Command Handlers', () => {
         const result = await imageClickHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED);
         expect(result.errorMessage).toContain('image-search service');
       });
 
-      it('should return SCRIPT_ERROR when mouse click service is not available', async () => {
+      it('should return IMAGE_SEARCH_NOT_CONFIGURED (-902) when mouse click service is not available', async () => {
         setImageSearchService(createMockImageSearchService(createMockSearchResult(true)));
 
         const ctx = createMockContext({
@@ -354,7 +482,7 @@ describe('Image Recognition Command Handlers', () => {
         const result = await imageClickHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED);
         expect(result.errorMessage).toContain('winclick-service');
       });
     });
@@ -383,12 +511,13 @@ describe('Image Recognition Command Handlers', () => {
       it('should use default confidence of 80 when not specified', async () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         await imageClickHandler(ctx);
 
         expect(mockImageService.search).toHaveBeenCalledWith('button.png', {
           confidenceThreshold: 0.8,
+          source: 'webpage',
         });
       });
 
@@ -396,12 +525,13 @@ describe('Image Recognition Command Handlers', () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
           CONFIDENCE: '95',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         await imageClickHandler(ctx);
 
         expect(mockImageService.search).toHaveBeenCalledWith('button.png', {
           confidenceThreshold: 0.95,
+          source: 'webpage',
         });
       });
 
@@ -421,7 +551,7 @@ describe('Image Recognition Command Handlers', () => {
       it('should search and click on found image', async () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageClickHandler(ctx);
 
@@ -441,7 +571,7 @@ describe('Image Recognition Command Handlers', () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
           BUTTON: 'right',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         await imageClickHandler(ctx);
 
@@ -456,7 +586,7 @@ describe('Image Recognition Command Handlers', () => {
         const ctx = createMockContext({
           IMAGE: 'button.png',
           BUTTON: 'middle',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         await imageClickHandler(ctx);
 
@@ -467,20 +597,58 @@ describe('Image Recognition Command Handlers', () => {
         });
       });
 
-      it('should return ELEMENT_NOT_FOUND when image is not found', async () => {
+      it('should return TIMEOUT (-930) after retries when image is not found', async () => {
         mockImageService = createMockImageSearchService(createMockSearchResult(false));
         setImageSearchService(mockImageService);
 
         const ctx = createMockContext({
           IMAGE: 'missing.png',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageClickHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.TIMEOUT);
         expect(mockClickService.click).not.toHaveBeenCalled();
         expect(ctx._variables['!IMAGECLICK']).toBe('false');
+      });
+
+      it('should retry searching and succeed if image appears during retry loop', async () => {
+        const notFound = createMockSearchResult(false);
+        const found = createMockSearchResult(true, 150, 250);
+        mockImageService.search = vi.fn()
+          .mockResolvedValueOnce(notFound)
+          .mockResolvedValueOnce(found);
+        setImageSearchService(mockImageService);
+
+        const ctx = createMockContext({
+          IMAGE: 'button.png',
+        }, { '!TIMEOUT_TAG': 3 });
+
+        const result = await imageClickHandler(ctx);
+
+        expect(result.success).toBe(true);
+        expect(mockClickService.click).toHaveBeenCalledWith({
+          x: 150,
+          y: 250,
+          button: 'left',
+        });
+      });
+
+      it('should return IMAGE_FILE_NOT_FOUND (-903) for file errors (non-retryable)', async () => {
+        mockImageService.search = vi.fn().mockRejectedValue(new Error('file not found: /path/to/image.png'));
+        setImageSearchService(mockImageService);
+
+        const ctx = createMockContext({
+          IMAGE: 'nonexistent.png',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        const result = await imageClickHandler(ctx);
+
+        expect(result.success).toBe(false);
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND);
+        // Should not retry for file errors
+        expect((mockImageService.search as any).mock.calls.length).toBe(1);
       });
 
       it('should return error when click fails', async () => {
@@ -489,7 +657,7 @@ describe('Image Recognition Command Handlers', () => {
 
         const ctx = createMockContext({
           IMAGE: 'button.png',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageClickHandler(ctx);
 
@@ -504,15 +672,66 @@ describe('Image Recognition Command Handlers', () => {
 
         const ctx = createMockContext({
           IMAGE: 'button.png',
-        });
+        }, { '!TIMEOUT_TAG': 1 });
 
         const result = await imageClickHandler(ctx);
 
         expect(result.success).toBe(false);
-        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
-        expect(result.errorMessage).toContain('Template not found');
+        // Non-file errors are retried, so after timeout we get TIMEOUT
+        expect(result.errorCode).toBe(IMACROS_ERROR_CODES.TIMEOUT);
         expect(ctx._variables['!IMAGECLICK']).toBe('false');
       });
+
+      it('should trigger highlight callback when image is found', async () => {
+        const highlightCallback = vi.fn();
+        setImageHighlightCallback(highlightCallback);
+
+        const ctx = createMockContext({
+          IMAGE: 'button.png',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        await imageClickHandler(ctx);
+
+        expect(highlightCallback).toHaveBeenCalledWith({
+          x: 75,   // topLeft.x = 100 - 25
+          y: 185,   // topLeft.y = 200 - 15
+          width: 50,
+          height: 30,
+          label: 'IMAGECLICK',
+        });
+      });
+
+      it('should pass source=webpage to search service', async () => {
+        const ctx = createMockContext({
+          IMAGE: 'button.png',
+        }, { '!TIMEOUT_TAG': 1 });
+
+        await imageClickHandler(ctx);
+
+        expect(mockImageService.search).toHaveBeenCalledWith('button.png', expect.objectContaining({
+          source: 'webpage',
+        }));
+      });
+    });
+  });
+
+  // ===== Error Codes Tests =====
+
+  describe('Error codes', () => {
+    it('should have IMAGE_SEARCH_NOT_CONFIGURED = -902', () => {
+      expect(IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED).toBe(-902);
+    });
+
+    it('should have IMAGE_FILE_NOT_FOUND = -903', () => {
+      expect(IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND).toBe(-903);
+    });
+
+    it('should have IMAGE_NOT_FOUND = -927', () => {
+      expect(IMACROS_ERROR_CODES.IMAGE_NOT_FOUND).toBe(-927);
+    });
+
+    it('should have TIMEOUT = -930', () => {
+      expect(IMACROS_ERROR_CODES.TIMEOUT).toBe(-930);
     });
   });
 
@@ -535,7 +754,7 @@ describe('Image Recognition Command Handlers', () => {
       });
       registerImageRecognitionHandlers(executor.registerHandler.bind(executor));
 
-      executor.loadMacro('IMAGESEARCH POS=1 IMAGE=button.png CONFIDENCE=80');
+      executor.loadMacro('SET !TIMEOUT_TAG 1\nIMAGESEARCH POS=1 IMAGE=button.png CONFIDENCE=80');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -548,7 +767,7 @@ describe('Image Recognition Command Handlers', () => {
       });
       registerImageRecognitionHandlers(executor.registerHandler.bind(executor));
 
-      executor.loadMacro('IMAGECLICK IMAGE=submit.png CONFIDENCE=90');
+      executor.loadMacro('SET !TIMEOUT_TAG 1\nIMAGECLICK IMAGE=submit.png CONFIDENCE=90');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);

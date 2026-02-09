@@ -339,6 +339,13 @@ export class MacroExecutor {
       const varName = params[0].key;
       const value = ctx.expand(params[1].rawValue || params[1].value);
 
+      // !LOOP first-loop guard: SET !LOOP only works on the first loop iteration
+      // (iMacros 8.9.7 behavior - ignored on subsequent iterations)
+      if (varName.toUpperCase() === '!LOOP' && ctx.state.getLoopCounter() > 1) {
+        ctx.log('debug', `SET !LOOP ignored (only effective on first loop iteration)`);
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      }
+
       // Use async version with native eval callback for JavaScript EVAL support
       const result = await executeSetAsync(ctx.variables, varName, value, this.onNativeEval);
       if (result.macroError) {

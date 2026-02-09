@@ -1143,7 +1143,8 @@ async function handleMessage(
     case 'LOGIN_CONFIG':
       console.log('[iMacros] LOGIN_CONFIG received:', message.payload);
       return handleLoginConfig(message.payload as {
-        config: { user: string; password: string; active: boolean };
+        config: { user: string; password: string; active: boolean; timeout?: number };
+        append?: boolean;
       });
 
     case 'setFilter':

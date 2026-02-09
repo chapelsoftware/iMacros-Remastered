@@ -23,6 +23,8 @@ interface AuthCredentials {
   urlPattern?: string;
   /** Whether these credentials are active */
   active: boolean;
+  /** Timeout in seconds */
+  timeout?: number;
 }
 
 /**
@@ -49,9 +51,11 @@ interface FilterState {
 // ============================================================================
 
 /**
- * Current HTTP auth credentials (from ONLOGIN command)
+ * Queue of HTTP auth credentials (from ONLOGIN commands).
+ * Multiple ONLOGIN commands stack, matching original iMacros behavior.
+ * Credentials are consumed FIFO when auth is requested.
  */
-let currentCredentials: AuthCredentials | null = null;
+let credentialsQueue: AuthCredentials[] = [];
 
 /**
  * Current filter state
@@ -78,44 +82,56 @@ const RULE_IDS = {
 // ============================================================================
 
 /**
- * Set credentials for HTTP authentication (called when ONLOGIN command runs)
+ * Set credentials for HTTP authentication (called when ONLOGIN command runs).
+ * When append=true, pushes to queue so multiple ONLOGIN commands stack.
+ * When append=false, replaces the entire queue (backward compatibility).
  */
 export function setAuthCredentials(
   username: string,
   password: string,
-  urlPattern?: string
+  urlPattern?: string,
+  timeout?: number,
+  append: boolean = false
 ): void {
-  currentCredentials = {
+  const credentials: AuthCredentials = {
     username,
     password,
     urlPattern,
     active: true,
+    timeout,
   };
-  console.log('[iMacros] HTTP auth credentials set for user:', username);
+
+  if (append) {
+    credentialsQueue.push(credentials);
+  } else {
+    credentialsQueue = [credentials];
+  }
+  console.log('[iMacros] HTTP auth credentials set for user:', username, append ? '(appended to queue)' : '(replaced queue)');
 }
 
 /**
- * Clear HTTP authentication credentials
+ * Clear HTTP authentication credentials (empties the queue)
  */
 export function clearAuthCredentials(): void {
-  currentCredentials = null;
+  credentialsQueue = [];
   console.log('[iMacros] HTTP auth credentials cleared');
 }
 
 /**
- * Get current auth credentials (for debugging/status)
+ * Get current auth credentials queue (for debugging/status)
  */
-export function getAuthCredentials(): { username: string; active: boolean } | null {
-  if (!currentCredentials) return null;
-  return {
-    username: currentCredentials.username,
-    active: currentCredentials.active,
-  };
+export function getAuthCredentials(): { username: string; active: boolean }[] {
+  return credentialsQueue.map(c => ({
+    username: c.username,
+    active: c.active,
+  }));
 }
 
 /**
  * Handler for chrome.webRequest.onAuthRequired
- * Automatically provides credentials when HTTP auth is requested
+ * Automatically provides credentials when HTTP auth is requested.
+ * Consumes credentials FIFO from the queue (matching original iMacros behavior
+ * where multiple ONLOGIN commands stack as an action queue).
  */
 function handleAuthRequired(
   details: chrome.webRequest.WebAuthenticationChallengeDetails,
@@ -123,37 +139,36 @@ function handleAuthRequired(
 ): chrome.webRequest.BlockingResponse | void {
   console.log('[iMacros] Auth required for:', details.url, 'challenger:', details.challenger);
 
-  // Check if we have active credentials
-  if (!currentCredentials || !currentCredentials.active) {
-    console.log('[iMacros] No active credentials, skipping auth');
+  // Find the first active credential in the queue
+  const credIndex = credentialsQueue.findIndex(c => {
+    if (!c.active) return false;
+    if (c.urlPattern) {
+      try {
+        const pattern = new RegExp(c.urlPattern);
+        if (!pattern.test(details.url)) return false;
+      } catch {
+        // Invalid regex, still match
+      }
+    }
+    return true;
+  });
+
+  if (credIndex === -1) {
+    console.log('[iMacros] No active credentials in queue, skipping auth');
     if (callback) {
       callback({});
     }
     return {};
   }
 
-  // Check URL pattern if specified
-  if (currentCredentials.urlPattern) {
-    try {
-      const pattern = new RegExp(currentCredentials.urlPattern);
-      if (!pattern.test(details.url)) {
-        console.log('[iMacros] URL does not match pattern, skipping auth');
-        if (callback) {
-          callback({});
-        }
-        return {};
-      }
-    } catch {
-      // Invalid regex, continue with auth
-    }
-  }
-
-  console.log('[iMacros] Providing credentials for user:', currentCredentials.username);
+  // Consume the credential from the queue (FIFO)
+  const cred = credentialsQueue.splice(credIndex, 1)[0];
+  console.log('[iMacros] Providing credentials for user:', cred.username, `(${credentialsQueue.length} remaining in queue)`);
 
   const response: chrome.webRequest.BlockingResponse = {
     authCredentials: {
-      username: currentCredentials.username,
-      password: currentCredentials.password,
+      username: cred.username,
+      password: cred.password,
     },
   };
 
@@ -391,11 +406,19 @@ export function handleLoginConfig(payload: {
     user: string;
     password: string;
     active: boolean;
+    timeout?: number;
   };
+  append?: boolean;
 }): { success: boolean; error?: string } {
   try {
     if (payload.config.active) {
-      setAuthCredentials(payload.config.user, payload.config.password);
+      setAuthCredentials(
+        payload.config.user,
+        payload.config.password,
+        undefined,
+        payload.config.timeout,
+        payload.append ?? false
+      );
     } else {
       clearAuthCredentials();
     }

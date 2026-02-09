@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 
 // Polyfill global DOM for module imports that reference browser globals
 const _polyfillDom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { url: 'https://example.com' });
@@ -54,9 +56,10 @@ if (typeof globalThis.InputEvent === 'undefined') {
 if (typeof globalThis.FocusEvent === 'undefined') {
   (globalThis as any).FocusEvent = _polyfillDom.window.FocusEvent;
 }
-// Force overwrite Event - Node.js has a native Event class that is
+// Force overwrite Event/CustomEvent - Node.js has native classes that are
 // incompatible with JSDOM's dispatchEvent (cross-realm rejection).
 (globalThis as any).Event = _polyfillDom.window.Event;
+(globalThis as any).CustomEvent = _polyfillDom.window.CustomEvent;
 if (typeof globalThis.XPathResult === 'undefined') {
   (globalThis as any).XPathResult = _polyfillDom.window.XPathResult;
 }
@@ -86,14 +89,29 @@ if (typeof (globalThis as any).window.prompt !== 'function') {
   (globalThis as any).window.prompt = () => '';
 }
 
-import {
-  DialogInterceptor,
-  getDialogInterceptor,
-  handleDialogConfigMessage,
-} from '../../extension/src/content/dialog-interceptor';
+// Load the main world script that actually overrides window.alert/confirm/prompt
+const mainWorldScriptContent = readFileSync(
+  resolve(__dirname, '../../extension/public/dialog-interceptor-main.js'),
+  'utf-8',
+);
+
+/**
+ * Simulate the main world script injection.
+ * In a real browser, install() injects a <script> tag that loads this.
+ * In JSDOM, we eval it directly after setting up fresh dialog functions.
+ */
+function simulateMainWorldScript(): void {
+  delete (window as any).__imacrosDialogInterceptorInstalled;
+  const fn = new Function(mainWorldScriptContent);
+  fn();
+}
+
+// Use dynamic import so chrome mock is available at module load time
+const { DialogInterceptor, getDialogInterceptor, handleDialogConfigMessage } =
+  await import('../../extension/src/content/dialog-interceptor');
 
 describe('DialogInterceptor', () => {
-  let interceptor: DialogInterceptor;
+  let interceptor: InstanceType<typeof DialogInterceptor>;
 
   // Track calls to the original functions
   let alertCalls: string[];
@@ -117,6 +135,9 @@ describe('DialogInterceptor', () => {
       promptCalls.push({ message: String(message ?? ''), defaultValue });
       return 'user-input'; // original mock returns 'user-input'
     };
+
+    // Simulate the main world script so dialog interception works
+    simulateMainWorldScript();
 
     interceptor = new DialogInterceptor();
   });

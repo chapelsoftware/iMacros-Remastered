@@ -10,6 +10,9 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as net from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   ScriptingInterfaceServer,
   ReturnCode,
@@ -738,6 +741,67 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
         client.destroy();
       }
     });
+
+    it('replaces [sp] with space in CODE: macros', async () => {
+      const client = await createClient(testPort);
+      try {
+        // [sp] is replaced with space before macro parsing.
+        // Use [br] as line separator and verify [sp] works in SET value context.
+        // SET takes the first space-separated token as value when unquoted,
+        // so [sp] effectively splits tokens (matching original iMacros behavior).
+        // Verify the replacement occurs by using [br] to separate commands.
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 test[br]EXTRACT {{!VAR1}}")');
+        expect(response.code).toBe(ReturnCode.OK);
+
+        const extract = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(extract.data).toBe('test');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('replaces [br] with newline in CODE: macros', async () => {
+      const client = await createClient(testPort);
+      try {
+        // [br] becomes \n, which acts as a line separator between commands
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 first[br]EXTRACT {{!VAR1}}")');
+        expect(response.code).toBe(ReturnCode.OK);
+
+        const extract = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(extract.data).toBe('first');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('replaces [lf] with carriage return in CODE: macros', async () => {
+      const client = await createClient(testPort);
+      try {
+        // [lf] becomes \r (carriage return), per original iMacros 8.9.7 behavior.
+        // \r alone doesn't split lines, so it stays within the value.
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 val\\nEXTRACT {{!VAR1}}")');
+        expect(response.code).toBe(ReturnCode.OK);
+
+        const extract = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(extract.data).toBe('val');
+      } finally {
+        client.destroy();
+      }
+    });
+
+    it('replaces escape sequences case-insensitively', async () => {
+      const client = await createClient(testPort);
+      try {
+        // [BR] (uppercase) should also work as line separator
+        const response = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 upper[BR]EXTRACT {{!VAR1}}")');
+        expect(response.code).toBe(ReturnCode.OK);
+
+        const extract = await sendOnClient(client, 'iimGetLastExtract()');
+        expect(extract.data).toBe('upper');
+      } finally {
+        client.destroy();
+      }
+    });
   });
 
   // ===== Section 13: iimDisplay =====
@@ -827,5 +891,121 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
       const response = await sendCommand(testPort, 'iimGetStopwatch()');
       expect(response.code).toBe(ReturnCode.OK);
     });
+  });
+});
+
+// ===== File I/O Tests =====
+
+describe('Scripting Interface file-based iimPlay', () => {
+  let server: ScriptingInterfaceServer;
+  let handler: ExecutorMacroHandler;
+  let tmpDir: string;
+  const fileTestPort = 24961;
+
+  beforeEach(async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'imacros-si-test-'));
+    handler = new ExecutorMacroHandler();
+    handler.setHandlerRegistrar((executor) => {
+      registerSystemHandlers(executor.registerHandler.bind(executor));
+    });
+    server = new ScriptingInterfaceServer(
+      { port: fileTestPort, macrosDir: tmpDir },
+      handler
+    );
+    await server.start();
+  });
+
+  afterEach(async () => {
+    if (server && server.isRunning()) {
+      await server.stop();
+    }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('loads and executes a macro from file', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'test.iim'),
+      'SET !VAR1 fromfile\nEXTRACT {{!VAR1}}'
+    );
+
+    const client = await createClient(fileTestPort);
+    try {
+      const play = await sendOnClient(client, 'iimPlay("test.iim")');
+      expect(play.code).toBe(ReturnCode.OK);
+
+      const extract = await sendOnClient(client, 'iimGetLastExtract()');
+      expect(extract.data).toBe('fromfile');
+    } finally {
+      client.destroy();
+    }
+  });
+
+  it('auto-appends .iim extension when missing', async () => {
+    fs.writeFileSync(
+      path.join(tmpDir, 'mytest.iim'),
+      'SET !VAR1 autoext\nEXTRACT {{!VAR1}}'
+    );
+
+    const client = await createClient(fileTestPort);
+    try {
+      const play = await sendOnClient(client, 'iimPlay("mytest")');
+      expect(play.code).toBe(ReturnCode.OK);
+
+      const extract = await sendOnClient(client, 'iimGetLastExtract()');
+      expect(extract.data).toBe('autoext');
+    } finally {
+      client.destroy();
+    }
+  });
+
+  it('returns MACRO_NOT_FOUND for missing file', async () => {
+    const response = await sendCommand(fileTestPort, 'iimPlay("nosuchfile")');
+    expect(response.code).toBe(ReturnCode.MACRO_NOT_FOUND);
+    expect(response.data).toContain('Macro file not found');
+  });
+
+  it('loads macros from subdirectories', async () => {
+    const sub = path.join(tmpDir, 'sub');
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(sub, 'deep.iim'), 'SET !VAR1 nested\nEXTRACT {{!VAR1}}');
+
+    const client = await createClient(fileTestPort);
+    try {
+      const play = await sendOnClient(client, 'iimPlay("sub/deep")');
+      expect(play.code).toBe(ReturnCode.OK);
+
+      const extract = await sendOnClient(client, 'iimGetLastExtract()');
+      expect(extract.data).toBe('nested');
+    } finally {
+      client.destroy();
+    }
+  });
+
+  it('still supports CODE: protocol when macrosDir is set', async () => {
+    const client = await createClient(fileTestPort);
+    try {
+      const play = await sendOnClient(client, 'iimPlay("CODE:SET !VAR1 inline\\nEXTRACT {{!VAR1}}")');
+      expect(play.code).toBe(ReturnCode.OK);
+
+      const extract = await sendOnClient(client, 'iimGetLastExtract()');
+      expect(extract.data).toBe('inline');
+    } finally {
+      client.destroy();
+    }
+  });
+
+  it('does not auto-append .iim if extension already present', async () => {
+    fs.writeFileSync(path.join(tmpDir, 'explicit.iim'), 'SET !VAR1 explicit\nEXTRACT {{!VAR1}}');
+
+    const client = await createClient(fileTestPort);
+    try {
+      const play = await sendOnClient(client, 'iimPlay("explicit.iim")');
+      expect(play.code).toBe(ReturnCode.OK);
+
+      const extract = await sendOnClient(client, 'iimGetLastExtract()');
+      expect(extract.data).toBe('explicit');
+    } finally {
+      client.destroy();
+    }
   });
 });

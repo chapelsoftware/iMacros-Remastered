@@ -26,6 +26,14 @@
     pos: 1
   };
 
+  // Error dialog configuration
+  var errorConfig = {
+    stopOnError: false
+  };
+
+  // Store original window.onerror
+  var originalOnError = window.onerror;
+
   // Dialog counter
   var dialogCounter = 0;
 
@@ -136,4 +144,37 @@
       }
     }));
   });
+
+  // Listen for error dialog configuration (ONERRORDIALOG CONTINUE=NO/FALSE)
+  window.addEventListener('__imacros_error_dialog_config', function(event) {
+    var detail = event.detail;
+    if (detail) {
+      errorConfig.stopOnError = detail.stopOnError === true;
+    }
+  });
+
+  // Listen for error dialog reset
+  window.addEventListener('__imacros_error_dialog_reset', function() {
+    errorConfig.stopOnError = false;
+  });
+
+  // Intercept JavaScript errors (iMacros v8.9.7 onErrorOccurred behavior)
+  window.onerror = function(msg, url, line) {
+    // Call original handler if it existed
+    if (typeof originalOnError === 'function') {
+      originalOnError(msg, url, line);
+    }
+
+    // If stopOnError is active, report the JS error to content script
+    if (errorConfig.stopOnError) {
+      window.dispatchEvent(new CustomEvent('__imacros_js_error', {
+        detail: {
+          message: String(msg),
+          url: String(url || ''),
+          line: Number(line) || 0,
+          timestamp: Date.now()
+        }
+      }));
+    }
+  };
 })();

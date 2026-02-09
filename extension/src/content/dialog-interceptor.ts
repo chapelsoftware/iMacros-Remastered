@@ -12,6 +12,7 @@ import type {
   DialogButton,
   DialogConfig,
   DialogType,
+  ErrorDialogConfig,
 } from '@shared/commands/dialogs';
 
 /**
@@ -57,6 +58,25 @@ export interface DialogInterceptorConfig {
 export type DialogEventCallback = (event: DialogEvent) => void;
 
 /**
+ * JS error event from main world (when ONERRORDIALOG CONTINUE=NO/FALSE)
+ */
+export interface JsErrorEvent {
+  /** Error message */
+  message: string;
+  /** URL where the error occurred */
+  url: string;
+  /** Line number of the error */
+  line: number;
+  /** Timestamp */
+  timestamp: number;
+}
+
+/**
+ * Callback for JS error events
+ */
+export type JsErrorCallback = (event: JsErrorEvent) => void;
+
+/**
  * URL of the external script that runs in the main world.
  * We use an external file to avoid CSP issues with inline scripts.
  */
@@ -72,6 +92,16 @@ let eventListenerSetup = false;
  * Callback for dialog events
  */
 let eventCallback: DialogEventCallback | null = null;
+
+/**
+ * Callback for JS error events (ONERRORDIALOG CONTINUE=NO/FALSE)
+ */
+let jsErrorCallback: JsErrorCallback | null = null;
+
+/**
+ * Whether the JS error listener has been set up
+ */
+let jsErrorListenerSetup = false;
 
 /**
  * Current configuration (mirrored for status queries)
@@ -124,6 +154,24 @@ function setupEventListener(): void {
 }
 
 /**
+ * Set up listener for JS error events from main world
+ */
+function setupJsErrorListener(): void {
+  if (jsErrorListenerSetup) return;
+  jsErrorListenerSetup = true;
+  window.addEventListener('__imacros_js_error', ((event: CustomEvent) => {
+    const detail = event.detail as JsErrorEvent;
+    if (jsErrorCallback) {
+      try {
+        jsErrorCallback(detail);
+      } catch (error) {
+        console.error('[iMacros] Error in JS error callback:', error);
+      }
+    }
+  }) as EventListener);
+}
+
+/**
  * Dialog Interceptor class (wrapper for API compatibility)
  */
 export class DialogInterceptor {
@@ -141,6 +189,7 @@ export class DialogInterceptor {
 
     injectMainWorldScript();
     setupEventListener();
+    setupJsErrorListener();
     this.installed = true;
   }
 
@@ -175,6 +224,30 @@ export class DialogInterceptor {
     window.dispatchEvent(new CustomEvent('__imacros_dialog_config', {
       detail: { config }
     }));
+  }
+
+  /**
+   * Apply error dialog configuration (ONERRORDIALOG)
+   */
+  applyErrorDialogConfig(config: ErrorDialogConfig): void {
+    // Send stopOnError config to main world
+    window.dispatchEvent(new CustomEvent('__imacros_error_dialog_config', {
+      detail: { stopOnError: config.stopOnError }
+    }));
+  }
+
+  /**
+   * Reset error dialog configuration
+   */
+  resetErrorDialogConfig(): void {
+    window.dispatchEvent(new CustomEvent('__imacros_error_dialog_reset'));
+  }
+
+  /**
+   * Set the callback for JS error events
+   */
+  setJsErrorCallback(callback: JsErrorCallback | null): void {
+    jsErrorCallback = callback;
   }
 
   /**
@@ -266,6 +339,23 @@ export function initializeDialogInterceptor(): DialogInterceptor {
     }
   });
 
+  // Set up JS error callback to send events to background script
+  interceptor.setJsErrorCallback((event: JsErrorEvent) => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          type: 'JS_ERROR_EVENT',
+          payload: event,
+          timestamp: Date.now(),
+        }).catch((error: unknown) => {
+          console.debug('[iMacros] Could not send JS error event:', error);
+        });
+      }
+    } catch (error) {
+      console.debug('[iMacros] Error sending JS error event:', error);
+    }
+  });
+
   // Install the interceptor
   interceptor.install();
 
@@ -278,6 +368,14 @@ export function initializeDialogInterceptor(): DialogInterceptor {
 export function handleDialogConfigMessage(config: DialogConfig): void {
   const interceptor = getDialogInterceptor();
   interceptor.applyDialogConfig(config);
+}
+
+/**
+ * Handle ERROR_DIALOG_CONFIG messages from background script
+ */
+export function handleErrorDialogConfigMessage(config: ErrorDialogConfig): void {
+  const interceptor = getDialogInterceptor();
+  interceptor.applyErrorDialogConfig(config);
 }
 
 /**
@@ -302,9 +400,23 @@ export function setupDialogMessageListener(): void {
       return true;
     }
 
+    if (message.type === 'ERROR_DIALOG_CONFIG') {
+      try {
+        handleErrorDialogConfigMessage(message.payload?.config);
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
     if (message.type === 'DIALOG_RESET') {
       const interceptor = getDialogInterceptor();
       interceptor.resetCounter();
+      interceptor.resetErrorDialogConfig();
       interceptor.setConfig({ enabled: false });
       sendResponse({ success: true });
       return true;
@@ -326,4 +438,4 @@ export function setupDialogMessageListener(): void {
 }
 
 // Export types for external use
-export type { DialogButton, DialogConfig, DialogType };
+export type { DialogButton, DialogConfig, DialogType, ErrorDialogConfig };

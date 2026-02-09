@@ -70,8 +70,8 @@ describe('CLEAR Handler via MacroExecutor (with mock BrowserCommandBridge)', () 
     return msg as ClearDataMessage;
   }
 
-  // 1. CLEAR (no params) sends clearData with dataTypes=['cookies']
-  it('CLEAR (no params) sends clearData with dataTypes=[cookies]', async () => {
+  // 1. CLEAR (no params) sends clearData with dataTypes=['cache', 'cookies']
+  it('CLEAR (no params) sends clearData with dataTypes=[cache, cookies]', async () => {
     executor.loadMacro('CLEAR');
     const result = await executor.execute();
 
@@ -81,7 +81,7 @@ describe('CLEAR Handler via MacroExecutor (with mock BrowserCommandBridge)', () 
     expect(mockBridge.sendMessage).toHaveBeenCalledTimes(1);
     const msg = getClearMessage();
     expect(msg.type).toBe('clearData');
-    expect(msg.dataTypes).toEqual(['cookies']);
+    expect(msg.dataTypes).toEqual(['cache', 'cookies']);
     expect(msg.id).toBeDefined();
     expect(msg.timestamp).toBeGreaterThan(0);
   });

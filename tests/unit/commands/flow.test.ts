@@ -307,8 +307,9 @@ describe('Flow Control - Uncovered Branch Tests', () => {
   // ===== PROMPT handler: positional param with value =====
 
   describe('PROMPT handler - positional param with value', () => {
-    it('should use params[0].value as message when value is non-empty', async () => {
-      // Covers the params[0].value || params[0].key path where value IS present
+    it('should use positional param key as message for alert-only when no var specified', async () => {
+      // Single positional param (message only, no variable) triggers alert-only mode
+      // Parser puts the token text in key, with value='true' for flag-style params
       const customUI: FlowControlUI = {
         showPause: vi.fn().mockResolvedValue(undefined),
         showPrompt: vi.fn().mockResolvedValue('reply'),
@@ -318,10 +319,9 @@ describe('Flow Control - Uncovered Branch Tests', () => {
 
       const ctx = buildMockCtx(executor, {}, {
         type: 'PROMPT',
-        params: [{ key: 'SOMEKEY', value: 'My prompt message' }],
-        raw: 'PROMPT My prompt message',
+        params: [{ key: 'My prompt message', value: 'true' }],
+        raw: 'PROMPT "My prompt message"',
         getParam: (key: string) => {
-          // Only return values for DEFAULT and VAR, not MESSAGE
           if (key === 'DEFAULT' || key === 'VAR' || key === 'MESSAGE') return undefined;
           return undefined;
         },
@@ -329,7 +329,9 @@ describe('Flow Control - Uncovered Branch Tests', () => {
 
       const result = await promptHandler(ctx);
       expect(result.success).toBe(true);
-      expect(customUI.showPrompt).toHaveBeenCalledWith('My prompt message', undefined);
+      // Alert-only mode: calls showAlert, not showPrompt
+      expect(customUI.showAlert).toHaveBeenCalledWith('My prompt message');
+      expect(customUI.showPrompt).not.toHaveBeenCalled();
     });
   });
 

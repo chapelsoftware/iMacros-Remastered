@@ -292,31 +292,63 @@ export const pauseHandler: CommandHandler = async (ctx: CommandContext): Promise
 /**
  * PROMPT command handler
  *
- * Syntax: PROMPT message [DEFAULT=value] [VAR=varname]
- * Shows an input dialog and stores the result in a variable.
+ * Original iMacros 8.9.7 positional syntax:
+ *   PROMPT message [varname] [default]
+ * Named parameter syntax (also supported):
+ *   PROMPT MESSAGE="text" [VAR=!VARx] [DEFAULT="value"]
  *
- * Parameters:
- * - message: The prompt message to display (first parameter or MESSAGE param)
- * - DEFAULT: Optional default value for the input field
- * - VAR: Variable to store result (defaults to !INPUT)
+ * Behavior:
+ * - If no variable is specified, shows an alert-only dialog (no input field)
+ * - If a variable is specified, shows an input prompt and stores the result
+ * - Cancel continues execution silently without storing any value
+ * - No default variable (unlike earlier implementation that defaulted to !INPUT)
  *
  * Examples:
- * - PROMPT "Enter your username:"
- * - PROMPT MESSAGE="Enter password:" VAR=!VAR1
- * - PROMPT "Search term:" DEFAULT="default search" VAR=!VAR2
+ * - PROMPT "Hello!"                          (alert-only, no input)
+ * - PROMPT "Enter name" !VAR1                (prompt, store in !VAR1)
+ * - PROMPT "Enter name" !VAR1 DefaultName    (prompt with default)
+ * - PROMPT MESSAGE="Enter:" VAR=!VAR1 DEFAULT="val"
  */
 export const promptHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
-  // Get the message - can be first positional param or MESSAGE param
-  let message = ctx.getParam('MESSAGE');
+  const params = ctx.command.parameters;
 
-  // If no MESSAGE param, check first parameter (positional)
-  if (!message) {
-    const params = ctx.command.parameters;
-    if (params.length > 0 && params[0].key !== 'MESSAGE' &&
-        params[0].key !== 'DEFAULT' && params[0].key !== 'VAR') {
-      // First param is the message itself
-      message = params[0].value || params[0].key;
+  // Determine message, variable name, and default value.
+  // Support both named params (MESSAGE/VAR/DEFAULT) and positional syntax.
+  let message: string | undefined;
+  let varName: string | undefined;
+  let defaultValue: string | undefined;
+
+  const messageParam = ctx.getParam('MESSAGE');
+  const varParam = ctx.getParam('VAR');
+  const defaultParam = ctx.getParam('DEFAULT');
+
+  if (messageParam) {
+    // Named parameter mode: MESSAGE="text" [VAR=!VARx] [DEFAULT="val"]
+    message = messageParam;
+    varName = varParam;
+    defaultValue = defaultParam;
+  } else {
+    // Positional mode: PROMPT message [varname] [default]
+    // Positional params come as { key: token, value: 'true' } from the parser
+    // (boolean flag style), so the actual token text is always in the key.
+    const positional = params.filter(p => {
+      const k = p.key.toUpperCase();
+      return k !== 'MESSAGE' && k !== 'VAR' && k !== 'DEFAULT';
+    });
+
+    if (positional.length > 0) {
+      message = positional[0].key;
     }
+    if (positional.length > 1) {
+      varName = positional[1].key;
+    }
+    if (positional.length > 2) {
+      defaultValue = positional[2].key;
+    }
+
+    // Named params can still supplement positional ones
+    if (!varName && varParam) varName = varParam;
+    if (defaultValue === undefined && defaultParam) defaultValue = defaultParam;
   }
 
   if (!message) {
@@ -327,45 +359,44 @@ export const promptHandler: CommandHandler = async (ctx: CommandContext): Promis
     };
   }
 
-  // Expand variables in message
+  // Expand variables in message and default
   const expandedMessage = ctx.expand(message);
+  const expandedDefault = defaultValue !== undefined ? ctx.expand(defaultValue) : undefined;
+  const expandedVarName = varName ? ctx.expand(varName) : undefined;
 
-  // Get optional default value
-  const defaultParam = ctx.getParam('DEFAULT');
-  const defaultValue = defaultParam ? ctx.expand(defaultParam) : undefined;
+  if (!expandedVarName) {
+    // Alert-only mode: no variable specified, just show a message
+    ctx.log('info', `Showing alert: "${expandedMessage}"`);
 
-  // Get variable name to store result (defaults to !INPUT)
-  const varParam = ctx.getParam('VAR');
-  const varName = varParam ? ctx.expand(varParam) : '!INPUT';
+    await activeUI.showAlert(expandedMessage);
 
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+    };
+  }
+
+  // Prompt mode: show input dialog and store result
   ctx.log('info', `Prompting user: "${expandedMessage}"`);
 
   try {
-    // Show prompt dialog
-    const userInput = await activeUI.showPrompt(expandedMessage, defaultValue);
+    const userInput = await activeUI.showPrompt(expandedMessage, expandedDefault);
 
-    // Store result in specified variable
-    ctx.state.setVariable(varName, userInput);
-
-    ctx.log('info', `User input stored in ${varName}: "${userInput}"`);
+    ctx.state.setVariable(expandedVarName, userInput);
+    ctx.log('info', `User input stored in ${expandedVarName}: "${userInput}"`);
 
     return {
       success: true,
       errorCode: IMACROS_ERROR_CODES.OK,
       output: userInput,
     };
-  } catch (error) {
-    // User cancelled the prompt
+  } catch {
+    // User cancelled — continue silently without storing any value
     ctx.log('info', 'User cancelled prompt dialog');
 
-    // Store empty string on cancel
-    ctx.state.setVariable(varName, '');
-
     return {
-      success: false,
-      errorCode: IMACROS_ERROR_CODES.USER_ABORT,
-      errorMessage: 'User cancelled the prompt dialog',
-      stopExecution: true,
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
     };
   }
 };

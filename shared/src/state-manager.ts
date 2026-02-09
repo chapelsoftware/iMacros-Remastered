@@ -160,6 +160,8 @@ export class StateManager {
   private snapshots: StateSnapshot[];
   /** Maximum snapshots to retain */
   private maxSnapshots: number;
+  /** Tab index when macro started (for relative TAB T=n indexing) */
+  private startTabIndex: number;
 
   constructor(options: StateManagerOptions = {}) {
     this.macroName = options.macroName || '';
@@ -177,6 +179,7 @@ export class StateManager {
     this.lastUpdateTime = new Date();
     this.executionTimeMs = 0;
     this.snapshots = [];
+    this.startTabIndex = 0;
   }
 
   // ===== Line Management =====
@@ -542,6 +545,22 @@ export class StateManager {
     this.macroName = name;
   }
 
+  // ===== Tab Index Tracking =====
+
+  /**
+   * Get starting tab index (0-based, recorded when macro begins)
+   */
+  getStartTabIndex(): number {
+    return this.startTabIndex;
+  }
+
+  /**
+   * Set starting tab index (0-based)
+   */
+  setStartTabIndex(index: number): void {
+    this.startTabIndex = index;
+  }
+
   // ===== Serialization =====
 
   /**
@@ -632,6 +651,7 @@ export class StateManager {
     this.startTime = null;
     this.executionTimeMs = 0;
     this.snapshots = [];
+    this.startTabIndex = 0;
     this.updateTimestamp();
   }
 
@@ -647,6 +667,8 @@ export class StateManager {
     this.status = ExecutionStatus.IDLE;
     this.startTime = null;
     this.executionTimeMs = 0;
+    // Note: startTabIndex is NOT reset here - it's set externally
+    // by the extension/host layer based on which tab launched the macro
     this.updateTimestamp();
   }
 

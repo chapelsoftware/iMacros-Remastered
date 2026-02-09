@@ -387,6 +387,30 @@ describe('command-handlers', () => {
       expect(bridge.closeOtherTabs).toHaveBeenCalled();
       expect(bridge.closeTab).not.toHaveBeenCalled();
     });
+
+    it('OPEN NEW opens a new tab', async () => {
+      const ctx = createMockCtx([{ key: 'OPEN' }, { key: 'NEW' }]);
+      const result = await handlers.TAB(ctx);
+
+      expect(result.success).toBe(true);
+      expect(bridge.openTab).toHaveBeenCalledWith(undefined);
+    });
+
+    it('NEW OPEN opens a new tab (alternate order)', async () => {
+      const ctx = createMockCtx([{ key: 'NEW' }, { key: 'OPEN' }]);
+      const result = await handlers.TAB(ctx);
+
+      expect(result.success).toBe(true);
+      expect(bridge.openTab).toHaveBeenCalledWith(undefined);
+    });
+
+    it('NEW alone (without OPEN or T) opens a new tab', async () => {
+      const ctx = createMockCtx([{ key: 'NEW' }]);
+      const result = await handlers.TAB(ctx);
+
+      expect(result.success).toBe(true);
+      expect(bridge.openTab).toHaveBeenCalledWith(undefined);
+    });
   });
 
   // =========================================================================

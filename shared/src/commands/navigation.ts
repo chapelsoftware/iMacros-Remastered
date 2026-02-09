@@ -366,10 +366,69 @@ export const refreshHandler: CommandHandler = async (ctx: CommandContext): Promi
  * - TAB CLOSE - Close the current tab
  * - TAB CLOSEALLOTHERS - Close all tabs except the current one
  */
+/**
+ * Get the timeout in seconds for tab switch retry from !TIMEOUT_STEP variable.
+ * Returns 0 if the variable is not set or invalid (no retry).
+ */
+function getTabRetryTimeout(ctx: CommandContext): number {
+  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
+  if (typeof timeoutStep === 'number') return timeoutStep;
+  if (typeof timeoutStep === 'string') {
+    const parsed = parseFloat(timeoutStep);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * Attempt to switch to a tab with retry logic.
+ * Retries every 500ms up to !TIMEOUT_STEP seconds.
+ * On failure, returns error code -971 (SCRIPT_EXCEPTION) per iMacros 8.9.7.
+ */
+async function switchTabWithRetry(
+  tabIndex: number,
+  ctx: CommandContext
+): Promise<CommandResult> {
+  const timeoutSeconds = getTabRetryTimeout(ctx);
+  const retryIntervalMs = 500;
+  const deadline = Date.now() + timeoutSeconds * 1000;
+
+  // First attempt
+  let response = await sendBrowserMessage(
+    { type: 'switchTab', tabIndex },
+    ctx
+  );
+  if (response.success) {
+    return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+  }
+
+  // Retry until timeout
+  while (Date.now() < deadline) {
+    ctx.log('debug', `Tab not found, retrying... (${Math.ceil((deadline - Date.now()) / 1000)}s remaining)`);
+    await sleep(retryIntervalMs);
+    response = await sendBrowserMessage(
+      { type: 'switchTab', tabIndex },
+      ctx
+    );
+    if (response.success) {
+      return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+    }
+  }
+
+  return {
+    success: false,
+    errorCode: IMACROS_ERROR_CODES.SCRIPT_EXCEPTION,
+    errorMessage: response.error || `Tab ${tabIndex + 1} does not exist`,
+  };
+}
+
 export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const tParam = ctx.getParam('T');
   const openParam = ctx.command.parameters.some(
     p => p.key.toUpperCase() === 'OPEN'
+  );
+  const newParam = ctx.command.parameters.some(
+    p => p.key.toUpperCase() === 'NEW'
   );
   const closeParam = ctx.command.parameters.some(
     p => p.key.toUpperCase() === 'CLOSE'
@@ -391,6 +450,9 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
         errorMessage: response.error || 'Failed to close other tabs',
       };
     }
+
+    // Reset startTabIndex since current tab becomes the only one
+    ctx.state.setStartTabIndex(0);
 
     return {
       success: true,
@@ -418,8 +480,9 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
     };
   }
 
-  if (openParam) {
-    // TAB OPEN - open new tab
+  // Support both TAB OPEN, TAB OPEN NEW, and TAB NEW OPEN
+  if (openParam || (newParam && !tParam)) {
+    // TAB OPEN / TAB OPEN NEW / TAB NEW OPEN - open new tab
     const urlParam = ctx.getParam('URL');
     const url = urlParam ? ctx.expand(urlParam) : undefined;
 
@@ -442,7 +505,7 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
   }
 
   if (tParam) {
-    // TAB T=<n> - switch to tab n
+    // TAB T=<n> - switch to tab n (relative to startTabIndex)
     const tabIndex = parseInt(ctx.expand(tParam), 10);
 
     if (isNaN(tabIndex) || tabIndex < 1) {
@@ -453,26 +516,14 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
       };
     }
 
-    ctx.log('info', `Switching to tab ${tabIndex}`);
+    // Convert to absolute 0-based index: startTabIndex + (T - 1)
+    const startTabIndex = ctx.state.getStartTabIndex();
+    const absoluteIndex = startTabIndex + tabIndex - 1;
 
-    // Convert to 0-based index for browser API
-    const response = await sendBrowserMessage(
-      { type: 'switchTab', tabIndex: tabIndex - 1 },
-      ctx
-    );
+    ctx.log('info', `Switching to tab ${tabIndex} (absolute index: ${absoluteIndex})`);
 
-    if (!response.success) {
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-        errorMessage: response.error || `Failed to switch to tab ${tabIndex}`,
-      };
-    }
-
-    return {
-      success: true,
-      errorCode: IMACROS_ERROR_CODES.OK,
-    };
+    // Retry mechanism: poll until tab exists or !TIMEOUT_STEP expires
+    return switchTabWithRetry(absoluteIndex, ctx);
   }
 
   return {

@@ -1063,12 +1063,14 @@ describe('FRAME Handler via MacroExecutor (with mock BrowserBridge)', () => {
   // --- Bridge failure tests ---
 
   it('FRAME F=1 bridge failure returns FRAME_NOT_FOUND error', async () => {
-    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    // Always return failure for selectFrame (retry will keep trying)
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
       error: 'Frame at index 1 does not exist',
     });
 
-    executor.loadMacro('FRAME F=1');
+    // Disable retry timeout to avoid waiting
+    executor.loadMacro('SET !TIMEOUT_STEP 0\nFRAME F=1');
     const result = await executor.execute();
 
     expect(result.success).toBe(false);
@@ -1077,17 +1079,68 @@ describe('FRAME Handler via MacroExecutor (with mock BrowserBridge)', () => {
   });
 
   it('FRAME NAME=missing bridge failure returns FRAME_NOT_FOUND error', async () => {
-    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+    // Always return failure for selectFrame (retry will keep trying)
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockResolvedValue({
       success: false,
       error: 'No frame with name "missing"',
     });
 
-    executor.loadMacro('FRAME NAME=missing');
+    // Disable retry timeout to avoid waiting
+    executor.loadMacro('SET !TIMEOUT_STEP 0\nFRAME NAME=missing');
     const result = await executor.execute();
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.FRAME_NOT_FOUND);
     expect(result.errorMessage).toContain('No frame with name "missing"');
+  });
+
+  it('FRAME F=1 resets to main frame on failure', async () => {
+    // Track all messages to verify reset
+    const allMessages: BrowserOperationMessage[] = [];
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage) => {
+        allMessages.push(message);
+        // selectFrame with frameIndex 0 (reset) succeeds, others fail
+        if (message.type === 'selectFrame' && (message as any).frameIndex === 0) {
+          return { success: true };
+        }
+        return { success: false, error: 'Frame not found' };
+      }
+    );
+
+    executor.loadMacro('SET !TIMEOUT_STEP 0\nFRAME F=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.FRAME_NOT_FOUND);
+
+    // Should have sent selectFrame(1) then selectFrame(0) for reset
+    const selectFrameMsgs = allMessages.filter(m => m.type === 'selectFrame');
+    expect(selectFrameMsgs.length).toBe(2);
+    expect((selectFrameMsgs[0] as any).frameIndex).toBe(1);
+    expect((selectFrameMsgs[1] as any).frameIndex).toBe(0);
+  });
+
+  it('FRAME retries until timeout before failing', async () => {
+    let callCount = 0;
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage) => {
+        callCount++;
+        // Succeed on 3rd call (2nd retry)
+        if (message.type === 'selectFrame' && callCount >= 3) {
+          return { success: true };
+        }
+        return { success: false, error: 'Frame not ready' };
+      }
+    );
+
+    // Set short timeout for test speed
+    executor.loadMacro('SET !TIMEOUT_STEP 2\nFRAME F=1');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    expect(callCount).toBeGreaterThanOrEqual(3);
   });
 
   // --- Multi-command sequence test ---

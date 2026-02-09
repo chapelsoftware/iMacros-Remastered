@@ -262,7 +262,8 @@ export class FrameHandler {
 
   /**
    * Select a frame by name attribute
-   * @param name Frame name to match. Supports "regexp:" prefix for regex matching.
+   * @param name Frame name to match. Supports "regexp:" prefix for regex matching
+   *   and wildcard (*) patterns which are auto-converted to regex (iMacros 8.9.7 compat).
    */
   public selectFrameByName(name: string): FrameOperationResult {
     const frames = this.enumerateFrames();
@@ -282,6 +283,12 @@ export class FrameHandler {
         };
       }
 
+      frame = frames.find(f => f.name && regex.test(f.name));
+    } else if (name.includes('*')) {
+      // Wildcard support: auto-convert * to .* regex (iMacros 8.9.7 compat)
+      const escaped = name.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = escaped.replace(/\*/g, '.*');
+      const regex = new RegExp(`^${pattern}$`, 'i');
       frame = frames.find(f => f.name && regex.test(f.name));
     } else {
       // Find frame with matching name (case-insensitive exact match)

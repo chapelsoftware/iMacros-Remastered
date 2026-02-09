@@ -49,15 +49,15 @@ export const IMACROS_ERROR_CODES = {
   // Element errors (-92x)
   ELEMENT_NOT_FOUND: -920,
   ELEMENT_NOT_VISIBLE: -921,
-  ELEMENT_NOT_ENABLED: -922,
+  FRAME_NOT_FOUND: -922,
   MULTIPLE_ELEMENTS: -923,
+  ELEMENT_NOT_ENABLED: -924,
   // Timeout errors (-93x)
   TIMEOUT: -930,
   PAGE_TIMEOUT: -931,
   STEP_TIMEOUT: -932,
   // Frame errors (-94x)
   FRAME_ERROR: -940,
-  FRAME_NOT_FOUND: -941,
   // Download errors (-95x)
   DOWNLOAD_ERROR: -950,
   DOWNLOAD_FAILED: -951,

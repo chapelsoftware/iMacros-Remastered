@@ -371,7 +371,7 @@ TAG POS=1 TYPE=INPUT ATTR=NAME:username&&ID:user CONTENT=test
 
 ### Issue: Frame commands fail
 
-**Symptom:** -941 error on FRAME command
+**Symptom:** -922 error on FRAME command
 
 **Solution:**
 1. Use FRAME F=0 to return to main document first

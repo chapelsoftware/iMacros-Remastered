@@ -93,10 +93,10 @@ describe('command-handlers', () => {
       expect(ERROR_CODES.OK).toBe(0);
       expect(ERROR_CODES.ELEMENT_NOT_FOUND).toBe(-920);
       expect(ERROR_CODES.ELEMENT_NOT_VISIBLE).toBe(-921);
-      expect(ERROR_CODES.ELEMENT_NOT_ENABLED).toBe(-922);
+      expect(ERROR_CODES.FRAME_NOT_FOUND).toBe(-922);
+      expect(ERROR_CODES.ELEMENT_NOT_ENABLED).toBe(-924);
       expect(ERROR_CODES.TIMEOUT).toBe(-930);
       expect(ERROR_CODES.PAGE_TIMEOUT).toBe(-931);
-      expect(ERROR_CODES.FRAME_NOT_FOUND).toBe(-941);
       expect(ERROR_CODES.SCRIPT_ERROR).toBe(-970);
       expect(ERROR_CODES.MISSING_PARAMETER).toBe(-913);
       expect(ERROR_CODES.INVALID_PARAMETER).toBe(-912);

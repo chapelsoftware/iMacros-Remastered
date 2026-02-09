@@ -220,6 +220,52 @@ describe('FrameHandler', () => {
         expect(result.frameInfo!.name).toBe('MyFrame');
       }
     });
+
+    it('should support wildcard (*) pattern matching', () => {
+      createTestDom(`<!DOCTYPE html><html><body>
+        <iframe name="sidebar_frame" srcdoc="<p>Hello</p>"></iframe>
+      </body></html>`);
+      handler = new FrameHandler();
+
+      const frames = handler.enumerateFrames();
+      const namedFrame = frames.find(f => f.name === 'sidebar_frame');
+      if (namedFrame) {
+        // Wildcard at end
+        const result1 = handler.selectFrameByName('sidebar*');
+        expect(result1.success).toBe(true);
+        expect(result1.frameInfo!.name).toBe('sidebar_frame');
+
+        // Wildcard at start
+        const result2 = handler.selectFrameByName('*frame');
+        expect(result2.success).toBe(true);
+        expect(result2.frameInfo!.name).toBe('sidebar_frame');
+
+        // Wildcard in middle
+        const result3 = handler.selectFrameByName('side*frame');
+        expect(result3.success).toBe(true);
+        expect(result3.frameInfo!.name).toBe('sidebar_frame');
+
+        // Non-matching wildcard
+        const result4 = handler.selectFrameByName('header*');
+        expect(result4.success).toBe(false);
+      }
+    });
+
+    it('should escape special regex chars in wildcard patterns', () => {
+      createTestDom(`<!DOCTYPE html><html><body>
+        <iframe name="frame.main" srcdoc="<p>Hello</p>"></iframe>
+      </body></html>`);
+      handler = new FrameHandler();
+
+      const frames = handler.enumerateFrames();
+      const namedFrame = frames.find(f => f.name === 'frame.main');
+      if (namedFrame) {
+        // Dot should be literal, not regex any-char
+        const result = handler.selectFrameByName('frame.*');
+        expect(result.success).toBe(true);
+        expect(result.frameInfo!.name).toBe('frame.main');
+      }
+    });
   });
 
   // ===== selectFrameById =====

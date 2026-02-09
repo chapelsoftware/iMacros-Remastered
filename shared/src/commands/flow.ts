@@ -13,6 +13,7 @@ import {
   CommandContext,
   CommandResult,
   IMACROS_ERROR_CODES,
+  ExecutionStatus,
 } from '../executor';
 import type { CommandType } from '../parser';
 
@@ -188,6 +189,26 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Pause-aware delay that checks for pause state during wait.
+ * Splits the wait into 100ms chunks and suspends if paused.
+ */
+async function pauseAwareDelay(ms: number, ctx: CommandContext): Promise<void> {
+  const chunkSize = 100;
+  let remaining = ms;
+
+  while (remaining > 0) {
+    // Check for pause state and wait for resume
+    while (ctx.state.getStatus() === ExecutionStatus.PAUSED) {
+      await delay(50);
+    }
+
+    const wait = Math.min(remaining, chunkSize);
+    await delay(wait);
+    remaining -= wait;
+  }
+}
+
+/**
  * Parse seconds value from string, supporting decimal values
  */
 function parseSeconds(value: string): number {
@@ -240,11 +261,14 @@ export const waitHandler: CommandHandler = async (ctx: CommandContext): Promise<
   }
 
   const actualWait = Math.min(seconds, maxWait > 0 ? maxWait : seconds);
-  const waitMs = actualWait * 1000;
+
+  // Quantize to 100ms increments with 10ms floor (matches original iMacros 8.9.7)
+  const rawMs = actualWait * 1000;
+  const waitMs = Math.max(10, Math.round(rawMs / 100) * 100);
 
   ctx.log('info', `Waiting ${actualWait} second${actualWait !== 1 ? 's' : ''}...`);
 
-  await delay(waitMs);
+  await pauseAwareDelay(waitMs, ctx);
 
   ctx.log('debug', `Wait completed (${actualWait}s)`);
 

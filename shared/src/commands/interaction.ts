@@ -167,7 +167,7 @@ export interface EventCommandMessage extends ContentScriptMessage {
   payload: {
     /** Event type to dispatch */
     eventType: DOMEventType | string;
-    /** Element selector (optional, defaults to active element) */
+    /** Element selector (optional, defaults to documentElement) */
     selector?: ElementSelector;
     /** Mouse button (for mouse events) */
     button?: number;
@@ -177,6 +177,12 @@ export interface EventCommandMessage extends ContentScriptMessage {
     char?: string;
     /** Point coordinates (for mouse events) */
     point?: { x: number; y: number };
+    /** Array of keycodes to fire keydown/keypress/keyup for each (KEYS parameter) */
+    keys?: string[];
+    /** Character string to type with full event cycle per char (CHARS parameter) */
+    chars?: string;
+    /** Array of points to fire mousemove at each (POINTS parameter) */
+    points?: Array<{ x: number; y: number }>;
     /** Modifier keys */
     modifiers?: {
       ctrl?: boolean;
@@ -769,6 +775,9 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
   const charStr = ctx.getParam('CHAR');
   const pointStr = ctx.getParam('POINT');
   const modifiersStr = ctx.getParam('MODIFIERS');
+  const keysStr = ctx.getParam('KEYS');
+  const charsStr = ctx.getParam('CHARS');
+  const pointsStr = ctx.getParam('POINTS');
 
   // Parse point (format: x,y or (x,y) for iMacros 8.9.7 compatibility)
   let point: { x: number; y: number } | undefined;
@@ -781,6 +790,43 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
     const [px, py] = pointValue.split(',').map(s => parseInt(s.trim(), 10));
     if (!isNaN(px) && !isNaN(py)) {
       point = { x: px, y: py };
+    }
+  }
+
+  // Parse KEYS array (format: [k1,k2,..,kn] - array of keycodes)
+  let keys: string[] | undefined;
+  if (keysStr) {
+    let keysValue = ctx.expand(keysStr).trim();
+    // Strip surrounding brackets if present
+    if (keysValue.startsWith('[') && keysValue.endsWith(']')) {
+      keysValue = keysValue.substring(1, keysValue.length - 1);
+    }
+    keys = keysValue.split(',').map(k => {
+      const trimmed = k.trim();
+      const asInt = parseInt(trimmed, 10);
+      if (!isNaN(asInt) && String(asInt) === trimmed) {
+        return keycodeToKeyName(asInt) || trimmed;
+      }
+      return trimmed;
+    }).filter(k => k.length > 0);
+  }
+
+  // Parse CHARS string (character sequence for typing)
+  let chars: string | undefined;
+  if (charsStr) {
+    chars = ctx.expand(charsStr);
+  }
+
+  // Parse POINTS array (format: (x,y),(x2,y2),... - array of coordinate pairs)
+  let points: Array<{ x: number; y: number }> | undefined;
+  if (pointsStr) {
+    const pointsValue = ctx.expand(pointsStr).trim();
+    const pointMatches = pointsValue.match(/\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)/g);
+    if (pointMatches) {
+      points = pointMatches.map(m => {
+        const coords = m.replace(/[()]/g, '').split(',').map(s => parseInt(s.trim(), 10));
+        return { x: coords[0], y: coords[1] };
+      });
     }
   }
 
@@ -822,6 +868,9 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
       key: resolvedKey,
       char: charStr ? ctx.expand(charStr) : undefined,
       point,
+      keys,
+      chars,
+      points,
       modifiers: Object.keys(modifiers).length > 0 ? modifiers : undefined,
       bubbles: true,
       cancelable: true,

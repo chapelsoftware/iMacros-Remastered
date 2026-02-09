@@ -1017,13 +1017,13 @@ export async function executeClickCommand(message: ClickCommandMessage): Promise
  * Execute EVENT command
  */
 export async function executeEventCommand(message: EventCommandMessage): Promise<DOMExecutorResult> {
-  const { eventType, selector, button, key, char, point, modifiers, bubbles, cancelable } = message.payload;
+  const { eventType, selector, button, key, char, point, keys, chars, points, modifiers, bubbles, cancelable } = message.payload;
 
   try {
     // Get the document from the currently selected frame
     const doc = getCurrentFrameDocument() || document;
 
-    // Find target element (or use active element / document)
+    // Find target element (or use documentElement per iMacros 8.9.7 default)
     let element: Element | Document;
 
     if (selector) {
@@ -1039,8 +1039,8 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
       }
       element = result.element;
     } else {
-      // Use active element or document body from the current frame
-      element = doc.activeElement || doc.body;
+      // Use documentElement as default target (matches original iMacros 8.9.7)
+      element = doc.documentElement;
     }
 
     // Build modifier options
@@ -1050,6 +1050,71 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
       altKey: modifiers?.alt,
       metaKey: modifiers?.meta,
     };
+
+    // Handle batch parameters (KEYS, CHARS, POINTS) - these fire sequences of events
+    if (keys && keys.length > 0) {
+      // KEYS array: fire keydown/keypress/keyup for each key in sequence
+      for (const keyName of keys) {
+        dispatchKeyPress(element as Element, {
+          ...modifierOptions,
+          key: keyName,
+          code: keyName,
+        });
+      }
+      return {
+        success: true,
+        errorCode: DOM_ERROR_CODES.OK,
+        elementInfo: element instanceof Element ? getElementInfo(element) : undefined,
+      };
+    }
+
+    if (chars && chars.length > 0) {
+      // CHARS string: type each character with full keydown/keypress/input/keyup cycle
+      const targetEl = element as Element;
+      for (const ch of chars) {
+        dispatchKeyboardEvent(targetEl, 'keydown', {
+          ...modifierOptions,
+          key: ch,
+          charCode: ch.charCodeAt(0),
+        });
+        dispatchKeyboardEvent(targetEl, 'keypress', {
+          ...modifierOptions,
+          key: ch,
+          charCode: ch.charCodeAt(0),
+        });
+        // Update value for input/textarea elements
+        if (targetEl instanceof HTMLInputElement || targetEl instanceof HTMLTextAreaElement) {
+          targetEl.value += ch;
+        }
+        dispatchInputEvent(targetEl, 'input', { data: ch, inputType: 'insertText' });
+        dispatchKeyboardEvent(targetEl, 'keyup', {
+          ...modifierOptions,
+          key: ch,
+          charCode: ch.charCodeAt(0),
+        });
+      }
+      return {
+        success: true,
+        errorCode: DOM_ERROR_CODES.OK,
+        elementInfo: element instanceof Element ? getElementInfo(element) : undefined,
+      };
+    }
+
+    if (points && points.length > 0) {
+      // POINTS array: fire mousemove at each point in sequence
+      for (const pt of points) {
+        dispatchMouseEvent(element as Element, 'mousemove', {
+          ...modifierOptions,
+          clientX: pt.x,
+          clientY: pt.y,
+        });
+      }
+      return {
+        success: true,
+        errorCode: DOM_ERROR_CODES.OK,
+        elementInfo: element instanceof Element ? getElementInfo(element) : undefined,
+      };
+    }
 
     // Dispatch the appropriate event type
     const eventTypeLower = eventType.toLowerCase() as DOMEventType;

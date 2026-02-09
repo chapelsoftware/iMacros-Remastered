@@ -59,6 +59,7 @@ export type CommandType =
   // Screenshot/archive
   | 'SCREENSHOT'
   | 'CMDLINE'
+  | 'EXEC'
   | 'PRINT'
   | 'SIZE'
   // Image recognition (Windows only)
@@ -273,6 +274,7 @@ const COMMAND_KEYWORDS: Record<string, CommandType> = {
   // Screenshot/archive
   'SCREENSHOT': 'SCREENSHOT',
   'CMDLINE': 'CMDLINE',
+  'EXEC': 'EXEC',
   'PRINT': 'PRINT',
   'SIZE': 'SIZE',
   // Image recognition (Windows only)
@@ -876,6 +878,19 @@ export function validateCommand(command: ParsedCommand): ParseError | null {
         return {
           lineNumber: command.lineNumber,
           message: 'CMDLINE command requires variable name and value',
+          raw: command.raw,
+        };
+      }
+      break;
+    }
+
+    case 'EXEC': {
+      // EXEC CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
+      const cmdParam = command.parameters.find(p => p.key.toUpperCase() === 'CMD');
+      if (!cmdParam) {
+        return {
+          lineNumber: command.lineNumber,
+          message: 'EXEC command requires CMD parameter',
           raw: command.raw,
         };
       }

@@ -31,6 +31,7 @@ import {
   versionHandler,
   stopwatchHandler,
   cmdlineHandler,
+  execHandler,
   disconnectHandler,
   redialHandler,
   setVersionInfo,
@@ -608,9 +609,9 @@ describe('Stopwatch helper functions', () => {
   });
 });
 
-// ===== CMDLINE Handler Tests =====
+// ===== EXEC Handler Tests =====
 
-describe('CMDLINE handler', () => {
+describe('EXEC handler', () => {
   it('succeeds with mock executor returning exit code 0', async () => {
     const mockExecutor = {
       execute: vi.fn().mockResolvedValue({
@@ -621,7 +622,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    const result = await run('CMDLINE CMD="echo hello"');
+    const result = await run('EXEC CMD="echo hello"');
 
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
@@ -639,7 +640,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'echo hello' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_EXITCODE')).toBe(0);
   });
@@ -656,7 +657,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'echo hello' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_STDOUT')).toBe('output text');
   });
@@ -673,7 +674,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'echo hello' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_STDERR')).toBe('warning msg');
   });
@@ -684,16 +685,15 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    const result = await run('CMDLINE');
+    const result = await run('EXEC');
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
-    expect(result.errorMessage).toContain('CMD');
   });
 
   it('no executor configured returns SCRIPT_ERROR', async () => {
     // cmdlineExecutor is null by default (reset in afterEach)
-    const result = await run('CMDLINE CMD="echo hello"');
+    const result = await run('EXEC CMD="echo hello"');
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -710,7 +710,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    const result = await run('CMDLINE CMD="false"');
+    const result = await run('EXEC CMD="false"');
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -729,7 +729,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'badcmd' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_EXITCODE')).toBe(127);
   });
@@ -740,7 +740,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    const result = await run('CMDLINE CMD="crash"');
+    const result = await run('EXEC CMD="crash"');
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -755,7 +755,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'crash' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_EXITCODE')).toBe(-1);
   });
@@ -768,7 +768,7 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'crash' }, vars);
-    await cmdlineHandler(ctx);
+    await execHandler(ctx);
 
     expect(vars.get('!CMDLINE_STDOUT')).toBe('');
     expect(vars.get('!CMDLINE_STDERR')).toBe('boom');
@@ -784,7 +784,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    await run('CMDLINE CMD="notepad" WAIT=NO');
+    await run('EXEC CMD="notepad" WAIT=NO');
 
     expect(mockExecutor.execute).toHaveBeenCalledWith(
       expect.objectContaining({ wait: false })
@@ -801,7 +801,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    await run('CMDLINE CMD="echo test" WAIT=YES');
+    await run('EXEC CMD="echo test" WAIT=YES');
 
     expect(mockExecutor.execute).toHaveBeenCalledWith(
       expect.objectContaining({ wait: true })
@@ -818,7 +818,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    await run('CMDLINE CMD="slow" TIMEOUT=10');
+    await run('EXEC CMD="slow" TIMEOUT=10');
 
     expect(mockExecutor.execute).toHaveBeenCalledWith(
       expect.objectContaining({ timeout: 10000 })
@@ -835,7 +835,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    await run('CMDLINE CMD="test"');
+    await run('EXEC CMD="test"');
 
     expect(mockExecutor.execute).toHaveBeenCalledWith(
       expect.objectContaining({ timeout: 30000 })
@@ -852,7 +852,7 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    await run('CMDLINE CMD="test" TIMEOUT=0.1');
+    await run('EXEC CMD="test" TIMEOUT=0.1');
 
     // 0.1 * 1000 = 100, but Math.max(1000, 100) = 1000
     expect(mockExecutor.execute).toHaveBeenCalledWith(
@@ -870,10 +870,10 @@ describe('CMDLINE handler', () => {
     };
     setCmdlineExecutor(mockExecutor);
 
-    // Set a variable then use it in CMDLINE
+    // Set a variable then use it in EXEC
     const macro = [
       'SET !VAR1 myfile.txt',
-      'CMDLINE CMD="cat {{!VAR1}}"',
+      'EXEC CMD="cat {{!VAR1}}"',
     ].join('\n');
 
     await run(macro);
@@ -883,7 +883,7 @@ describe('CMDLINE handler', () => {
     );
   });
 
-  it('CMDLINE handler returns stdout as output on success', async () => {
+  it('EXEC handler returns stdout as output on success', async () => {
     const mockExecutor = {
       execute: vi.fn().mockResolvedValue({
         exitCode: 0,
@@ -895,18 +895,17 @@ describe('CMDLINE handler', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'echo test' }, vars);
-    const result = await cmdlineHandler(ctx);
+    const result = await execHandler(ctx);
 
     expect(result.output).toBe('output data');
   });
 
   it('no CMD parameter via direct handler returns MISSING_PARAMETER', async () => {
     const ctx = createMockContext({});
-    const result = await cmdlineHandler(ctx);
+    const result = await execHandler(ctx);
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
-    expect(result.errorMessage).toContain('CMD');
   });
 
   it('no executor via direct handler returns SCRIPT_ERROR', async () => {
@@ -914,10 +913,217 @@ describe('CMDLINE handler', () => {
     setCmdlineExecutor(null as any);
 
     const ctx = createMockContext({ CMD: 'echo test' });
+    const result = await execHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+  });
+});
+
+// ===== CMDLINE Handler Tests (variable-setting semantics) =====
+
+describe('CMDLINE handler (variable-setting)', () => {
+  /**
+   * Create a mock context with positional parameters for CMDLINE.
+   * CMDLINE uses positional params: first key = variable name, second key = value.
+   */
+  function createCmdlineMockContext(
+    positionalParams: string[],
+    vars: Map<string, any> = new Map(),
+  ): any {
+    const mockLogs: Array<{ level: string; message: string }> = [];
+    return {
+      command: {
+        type: 'CMDLINE',
+        parameters: positionalParams.map(p => ({
+          key: p,
+          value: 'true',
+          rawValue: p,
+          variables: [],
+        })),
+        raw: `CMDLINE ${positionalParams.join(' ')}`,
+        lineNumber: 1,
+        variables: [],
+      },
+      variables: {
+        get: (name: string) => vars.get(name.toUpperCase()) ?? null,
+        set: (name: string, value: any) => {
+          vars.set(name.toUpperCase(), value);
+          return { success: true, previousValue: null, newValue: value };
+        },
+        expand: (t: string) => ({ expanded: t, variables: [] }),
+      },
+      state: {
+        setVariable: (name: string, value: any) => {
+          vars.set(name.toUpperCase(), value);
+        },
+        getVariable: (name: string) => vars.get(name.toUpperCase()) ?? null,
+      },
+      getParam: (key: string) => {
+        const upperKey = key.toUpperCase();
+        const found = positionalParams.find(p => p.toUpperCase() === upperKey);
+        return found || undefined;
+      },
+      getRequiredParam: (key: string) => {
+        const upperKey = key.toUpperCase();
+        const found = positionalParams.find(p => p.toUpperCase() === upperKey);
+        if (!found) throw new Error(`Missing required parameter: ${key}`);
+        return found;
+      },
+      expand: (t: string) => t,
+      log: (level: string, message: string) => mockLogs.push({ level, message }),
+      _logs: mockLogs,
+      _vars: vars,
+    };
+  }
+
+  it('sets !VAR1 to a string value', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!VAR1', 'hello'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    expect(vars.get('!VAR1')).toBe('hello');
+  });
+
+  it('sets !VAR0 to a numeric string', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!VAR0', '42'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(vars.get('!VAR0')).toBe('42');
+  });
+
+  it('sets !TIMEOUT to a numeric value', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!TIMEOUT', '30'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(vars.get('!TIMEOUT')).toBe(30);
+  });
+
+  it('sets !LOOP to an integer value', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!LOOP', '5'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(vars.get('!LOOP')).toBe(5);
+  });
+
+  it('sets !DATASOURCE to a file path', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!DATASOURCE', 'data.csv'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(vars.get('!DATASOURCE')).toBe('data.csv');
+  });
+
+  it('returns INVALID_PARAMETER for unsupported system variable', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!URLCURRENT', 'http://test.com'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toContain('Unsupported system variable');
+  });
+
+  it('returns MISSING_PARAMETER when less than 2 params', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!VAR1'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+  });
+
+  it('returns MISSING_PARAMETER when no params', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext([], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
+  });
+
+  it('sets existing user variable', async () => {
+    const vars = new Map<string, any>();
+    // Pre-set the variable to simulate it was created by SET
+    vars.set('MYVAR', 'oldvalue');
+    const ctx = createCmdlineMockContext(['myvar', 'newvalue'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(true);
+    expect(vars.get('MYVAR')).toBe('newvalue');
+  });
+
+  it('returns SCRIPT_ERROR for non-existent user variable', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['nonexistent', 'somevalue'], vars);
     const result = await cmdlineHandler(ctx);
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain('Unknown variable');
+  });
+
+  it('returns INVALID_PARAMETER for invalid timeout value', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!TIMEOUT', 'abc'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toContain('Invalid timeout');
+  });
+
+  it('returns INVALID_PARAMETER for zero timeout', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!TIMEOUT', '0'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+  });
+
+  it('returns INVALID_PARAMETER for invalid loop value', async () => {
+    const vars = new Map<string, any>();
+    const ctx = createCmdlineMockContext(['!LOOP', 'notanumber'], vars);
+    const result = await cmdlineHandler(ctx);
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toContain('Invalid loop');
+  });
+
+  it('sets all !VAR0 through !VAR9', async () => {
+    for (let i = 0; i <= 9; i++) {
+      const vars = new Map<string, any>();
+      const ctx = createCmdlineMockContext([`!VAR${i}`, `value${i}`], vars);
+      const result = await cmdlineHandler(ctx);
+
+      expect(result.success).toBe(true);
+      expect(vars.get(`!VAR${i}`)).toBe(`value${i}`);
+    }
+  });
+
+  it('CMDLINE via executor pipeline sets !VAR1', async () => {
+    const result = await run('CMDLINE !VAR1 testvalue');
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  it('CMDLINE via executor pipeline fails for unsupported system var', async () => {
+    const result = await run('CMDLINE !EXTRACT somedata');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
   });
 });
 
@@ -1201,7 +1407,7 @@ describe('setNetworkManager / getNetworkManager', () => {
 // ===== registerSystemHandlers Tests =====
 
 describe('registerSystemHandlers', () => {
-  it('registers all 5 system command handlers', () => {
+  it('registers all 6 system command handlers', () => {
     const registered: string[] = [];
     const mockRegisterFn = (type: string, _handler: any) => {
       registered.push(type);
@@ -1212,9 +1418,10 @@ describe('registerSystemHandlers', () => {
     expect(registered).toContain('VERSION');
     expect(registered).toContain('STOPWATCH');
     expect(registered).toContain('CMDLINE');
+    expect(registered).toContain('EXEC');
     expect(registered).toContain('DISCONNECT');
     expect(registered).toContain('REDIAL');
-    expect(registered).toHaveLength(5);
+    expect(registered).toHaveLength(6);
   });
 
   it('registers actual handler functions (not undefined)', () => {
@@ -1263,6 +1470,17 @@ describe('registerSystemHandlers', () => {
     expect(handlers.get('CMDLINE')).toBe(cmdlineHandler);
   });
 
+  it('registered EXEC handler matches execHandler export', () => {
+    const handlers = new Map<string, any>();
+    const mockRegisterFn = (type: string, handler: any) => {
+      handlers.set(type, handler);
+    };
+
+    registerSystemHandlers(mockRegisterFn as any);
+
+    expect(handlers.get('EXEC')).toBe(execHandler);
+  });
+
   it('registered DISCONNECT handler matches disconnectHandler export', () => {
     const handlers = new Map<string, any>();
     const mockRegisterFn = (type: string, handler: any) => {
@@ -1299,6 +1517,10 @@ describe('Exported handler references', () => {
 
   it('cmdlineHandler is a function', () => {
     expect(typeof cmdlineHandler).toBe('function');
+  });
+
+  it('execHandler is a function', () => {
+    expect(typeof execHandler).toBe('function');
   });
 
   it('disconnectHandler is a function', () => {

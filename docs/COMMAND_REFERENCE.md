@@ -836,11 +836,44 @@ VERSION BUILD=8.9.7
 
 ### CMDLINE
 
+Set variables from command-line arguments (original iMacros 8.9.7 semantics).
+
+**Syntax:**
+```
+CMDLINE <variable> <value>
+```
+
+**Supported System Variables:**
+| Variable | Description |
+|----------|-------------|
+| `!TIMEOUT` | Sets macro timeout (seconds) |
+| `!LOOP` | Sets current loop counter |
+| `!DATASOURCE` | Sets datasource file path |
+| `!VAR0`-`!VAR9` | Sets user system variables |
+
+User-defined variables must already exist (created via SET), otherwise an error is thrown.
+
+**Examples:**
+```
+' Set a system variable
+CMDLINE !VAR1 myvalue
+
+' Set timeout
+CMDLINE !TIMEOUT 30
+
+' Set loop counter
+CMDLINE !LOOP 5
+```
+
+---
+
+### EXEC
+
 Execute a shell command (requires native host).
 
 **Syntax:**
 ```
-CMDLINE CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
+EXEC CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
 ```
 
 **Parameters:**
@@ -860,13 +893,13 @@ CMDLINE CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
 **Examples:**
 ```
 ' Run a command
-CMDLINE CMD="dir /b"
+EXEC CMD="dir /b"
 
 ' Run without waiting
-CMDLINE CMD="notepad.exe" WAIT=NO
+EXEC CMD="notepad.exe" WAIT=NO
 
 ' With timeout
-CMDLINE CMD="ping -n 5 localhost" TIMEOUT=30
+EXEC CMD="ping -n 5 localhost" TIMEOUT=30
 ```
 
 ---

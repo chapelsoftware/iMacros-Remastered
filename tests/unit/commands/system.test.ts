@@ -16,6 +16,7 @@ import {
   versionHandler,
   stopwatchHandler,
   cmdlineHandler,
+  execHandler,
   disconnectHandler,
   redialHandler,
   systemHandlers,
@@ -161,9 +162,9 @@ describe('STOPWATCH handler - default action', () => {
   });
 });
 
-// ===== Branch: CMDLINE catch with non-Error thrown value =====
+// ===== Branch: EXEC catch with non-Error thrown value =====
 
-describe('CMDLINE handler - non-Error thrown value', () => {
+describe('EXEC handler - non-Error thrown value', () => {
   it('handles a thrown string (not an Error instance)', async () => {
     const mockExecutor = {
       execute: vi.fn().mockRejectedValue('plain string error'),
@@ -172,7 +173,7 @@ describe('CMDLINE handler - non-Error thrown value', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'test' }, vars);
-    const result = await cmdlineHandler(ctx);
+    const result = await execHandler(ctx);
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -190,7 +191,7 @@ describe('CMDLINE handler - non-Error thrown value', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'test' }, vars);
-    const result = await cmdlineHandler(ctx);
+    const result = await execHandler(ctx);
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -206,7 +207,7 @@ describe('CMDLINE handler - non-Error thrown value', () => {
 
     const vars = new Map<string, any>();
     const ctx = createMockContext({ CMD: 'test' }, vars);
-    const result = await cmdlineHandler(ctx);
+    const result = await execHandler(ctx);
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
@@ -302,12 +303,13 @@ describe('registerSystemHandlers - falsy handler branch', () => {
 
       // VERSION should NOT be registered since we set it to undefined
       expect(registered).not.toContain('VERSION');
-      // The other 4 should still be registered
+      // The other 5 should still be registered
       expect(registered).toContain('STOPWATCH');
       expect(registered).toContain('CMDLINE');
+      expect(registered).toContain('EXEC');
       expect(registered).toContain('DISCONNECT');
       expect(registered).toContain('REDIAL');
-      expect(registered).toHaveLength(4);
+      expect(registered).toHaveLength(5);
     } finally {
       // Restore the original handler
       (systemHandlers as any).VERSION = originalVersion;
@@ -329,9 +331,10 @@ describe('registerSystemHandlers - falsy handler branch', () => {
       expect(registered).not.toContain('STOPWATCH');
       expect(registered).toContain('VERSION');
       expect(registered).toContain('CMDLINE');
+      expect(registered).toContain('EXEC');
       expect(registered).toContain('DISCONNECT');
       expect(registered).toContain('REDIAL');
-      expect(registered).toHaveLength(4);
+      expect(registered).toHaveLength(5);
     } finally {
       (systemHandlers as any).STOPWATCH = originalStopwatch;
     }

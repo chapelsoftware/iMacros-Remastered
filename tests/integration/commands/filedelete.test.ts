@@ -120,6 +120,85 @@ describe('FILEDELETE Command Integration Tests', () => {
     });
   });
 
+  // ===== Relative Path Resolution =====
+
+  describe('Relative path resolution to !FOLDER_DOWNLOAD', () => {
+    it('should resolve filename without path separators relative to !FOLDER_DOWNLOAD', async () => {
+      const script = [
+        'SET !FOLDER_DOWNLOAD /home/user/downloads',
+        'FILEDELETE NAME=output.csv',
+      ].join('\n');
+
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as FileDeleteMessage;
+      expect(msg.path).toBe('/home/user/downloads/output.csv');
+    });
+
+    it('should not resolve absolute Unix path even when !FOLDER_DOWNLOAD is set', async () => {
+      const script = [
+        'SET !FOLDER_DOWNLOAD /home/user/downloads',
+        'FILEDELETE NAME=/tmp/file.txt',
+      ].join('\n');
+
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as FileDeleteMessage;
+      expect(msg.path).toBe('/tmp/file.txt');
+    });
+
+    it('should not resolve path with forward slash even when !FOLDER_DOWNLOAD is set', async () => {
+      const script = [
+        'SET !FOLDER_DOWNLOAD /home/user/downloads',
+        'FILEDELETE NAME=subdir/file.txt',
+      ].join('\n');
+
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as FileDeleteMessage;
+      expect(msg.path).toBe('subdir/file.txt');
+    });
+
+    it('should not resolve path with backslash even when !FOLDER_DOWNLOAD is set', async () => {
+      const script = [
+        'SET !FOLDER_DOWNLOAD C:\\Users\\downloads',
+        'FILEDELETE NAME=subdir\\file.txt',
+      ].join('\n');
+
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as FileDeleteMessage;
+      expect(msg.path).toBe('subdir\\file.txt');
+    });
+
+    it('should pass filename as-is when !FOLDER_DOWNLOAD is empty', async () => {
+      executor.loadMacro('FILEDELETE NAME=output.csv');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as FileDeleteMessage;
+      expect(msg.path).toBe('output.csv');
+    });
+  });
+
   // ===== Parameter Validation =====
 
   describe('Parameter validation', () => {

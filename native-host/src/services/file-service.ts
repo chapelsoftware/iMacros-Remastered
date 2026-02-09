@@ -477,7 +477,8 @@ export async function unlink(targetPath: string): Promise<void> {
   const stats = await fs.promises.stat(targetPath);
 
   if (stats.isDirectory()) {
-    await fs.promises.rm(targetPath, { recursive: true, force: true });
+    // Non-recursive: directory must be empty (matches original iMacros file.remove(false))
+    await fs.promises.rmdir(targetPath);
   } else {
     await fs.promises.unlink(targetPath);
   }
@@ -490,7 +491,8 @@ export function unlinkSync(targetPath: string): void {
   const stats = fs.statSync(targetPath);
 
   if (stats.isDirectory()) {
-    fs.rmSync(targetPath, { recursive: true, force: true });
+    // Non-recursive: directory must be empty (matches original iMacros file.remove(false))
+    fs.rmdirSync(targetPath);
   } else {
     fs.unlinkSync(targetPath);
   }

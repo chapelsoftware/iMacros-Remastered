@@ -19,6 +19,8 @@
  * - iimExit: Disconnect client
  */
 import * as net from 'net';
+import * as fs from 'fs';
+import * as path from 'path';
 import { EventEmitter } from 'events';
 import {
   MacroExecutor,
@@ -75,6 +77,8 @@ export interface ScriptingInterfaceConfig {
   timeout: number;
   /** Enable debug logging */
   debug: boolean;
+  /** Directory for macro files (for file-based iimPlay). Empty string disables file loading. */
+  macrosDir: string;
 }
 
 /**
@@ -411,6 +415,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
       host: config.host ?? '127.0.0.1',
       timeout: config.timeout ?? 60000,
       debug: config.debug ?? false,
+      macrosDir: config.macrosDir ?? '',
     };
 
     this.handler = handler ?? new ExecutorMacroHandler();
@@ -698,8 +703,40 @@ export class ScriptingInterfaceServer extends EventEmitter {
     // Handle CODE: protocol - inline macro content
     if (macroNameOrContent.toUpperCase().startsWith('CODE:')) {
       macroNameOrContent = macroNameOrContent.substring(5);
+      // Replace iMacros escape sequences (matching original 8.9.7 behavior)
+      macroNameOrContent = macroNameOrContent.replace(/\[sp\]/gi, ' ');
+      macroNameOrContent = macroNameOrContent.replace(/\[lf\]/gi, '\r');
+      macroNameOrContent = macroNameOrContent.replace(/\[br\]/gi, '\n');
       // Convert literal \n sequences to actual newlines
       macroNameOrContent = macroNameOrContent.replace(/\\n/g, '\n');
+    } else if (this.config.macrosDir) {
+      // File-based macro loading: treat input as a file path
+      let macroPath = macroNameOrContent;
+
+      // Auto-append .iim extension if not present
+      if (!/\.iim$/i.test(macroPath)) {
+        macroPath += '.iim';
+      }
+
+      // Resolve relative paths against macrosDir
+      if (!path.isAbsolute(macroPath)) {
+        macroPath = path.join(this.config.macrosDir, macroPath);
+      }
+
+      try {
+        if (!fs.existsSync(macroPath)) {
+          return {
+            code: ReturnCode.MACRO_NOT_FOUND,
+            data: `Macro file not found: ${macroNameOrContent}`,
+          };
+        }
+        macroNameOrContent = fs.readFileSync(macroPath, 'utf8');
+      } catch (error) {
+        return {
+          code: ReturnCode.MACRO_NOT_FOUND,
+          data: `Cannot open file: ${macroNameOrContent}`,
+        };
+      }
     }
 
     const timeout = args[1] ? parseInt(args[1], 10) : this.config.timeout;

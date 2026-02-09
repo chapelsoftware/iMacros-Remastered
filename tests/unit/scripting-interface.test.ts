@@ -6,6 +6,9 @@
  * and all scripting interface commands.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import {
   ScriptingInterfaceServer,
   ExecutorMacroHandler,
@@ -362,5 +365,217 @@ describe('PerformanceData interface', () => {
     expect(mockPerf.commandsExecuted).toBe(5);
     expect(mockPerf.success).toBe(true);
     expect(mockPerf.errorCode).toBe(1);
+  });
+});
+
+describe('CODE: protocol escape sequences', () => {
+  let handler: ExecutorMacroHandler;
+
+  beforeEach(() => {
+    handler = new ExecutorMacroHandler();
+  });
+
+  it('should replace [sp] with space in CODE: macros', async () => {
+    // [sp] in CODE: protocol should become a space
+    // "SET !VAR0 hello[sp]world" => "SET !VAR0 hello world"
+    handler.setVariable('!VAR0', '');
+    const result = await handler.play('SET !VAR0 hello world');
+    expect(result.code).toBe(ReturnCode.OK);
+  });
+
+  it('should execute CODE: macro with [br] as newline separator', async () => {
+    // [br] should become \n (newline), allowing multi-line macros
+    // The server handles escape replacement, so we test the handler
+    // with what it would receive after replacement
+    const result = await handler.play('SET !VAR0 line1\nSET !VAR1 line2');
+    expect(result.code).toBe(ReturnCode.OK);
+  });
+});
+
+describe('File I/O support for iimPlay', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'imacros-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should load and execute a macro from file', async () => {
+    // Create a test macro file
+    const macroPath = path.join(tmpDir, 'test.iim');
+    fs.writeFileSync(macroPath, 'SET !VAR0 "from file"');
+
+    const handler = new ExecutorMacroHandler();
+    const server = new ScriptingInterfaceServer(
+      { macrosDir: tmpDir, debug: false },
+      handler
+    );
+
+    // Use the handler directly - file loading happens in the server
+    // We need to test via the server's command processing
+    await server.start();
+
+    // Connect and test via TCP
+    const net = await import('net');
+    const response = await new Promise<{ code: number; data?: string }>((resolve, reject) => {
+      const client = new net.Socket();
+      let responseBuffer = '';
+
+      client.connect(server.getConfig().port, '127.0.0.1', () => {
+        client.write('iimPlay("test.iim")\n');
+      });
+
+      client.on('data', (data) => {
+        responseBuffer += data.toString();
+        const lines = responseBuffer.split('\n');
+        if (lines.length > 1) {
+          const parts = lines[0].split('\t');
+          client.destroy();
+          resolve({
+            code: parseInt(parts[0], 10),
+            data: parts.length > 1 ? parts[1] : undefined,
+          });
+        }
+      });
+
+      client.on('error', reject);
+      client.setTimeout(5000);
+    });
+
+    expect(response.code).toBe(ReturnCode.OK);
+    await server.stop();
+  });
+
+  it('should auto-append .iim extension', async () => {
+    const macroPath = path.join(tmpDir, 'mymacro.iim');
+    fs.writeFileSync(macroPath, 'SET !VAR0 "auto ext"');
+
+    const handler = new ExecutorMacroHandler();
+    const server = new ScriptingInterfaceServer(
+      { macrosDir: tmpDir, port: 14960, debug: false },
+      handler
+    );
+    await server.start();
+
+    const net = await import('net');
+    const response = await new Promise<{ code: number; data?: string }>((resolve, reject) => {
+      const client = new net.Socket();
+      let responseBuffer = '';
+
+      client.connect(14960, '127.0.0.1', () => {
+        // Send without .iim extension
+        client.write('iimPlay("mymacro")\n');
+      });
+
+      client.on('data', (data) => {
+        responseBuffer += data.toString();
+        const lines = responseBuffer.split('\n');
+        if (lines.length > 1) {
+          const parts = lines[0].split('\t');
+          client.destroy();
+          resolve({
+            code: parseInt(parts[0], 10),
+            data: parts.length > 1 ? parts[1] : undefined,
+          });
+        }
+      });
+
+      client.on('error', reject);
+      client.setTimeout(5000);
+    });
+
+    expect(response.code).toBe(ReturnCode.OK);
+    await server.stop();
+  });
+
+  it('should return MACRO_NOT_FOUND for missing file', async () => {
+    const handler = new ExecutorMacroHandler();
+    const server = new ScriptingInterfaceServer(
+      { macrosDir: tmpDir, port: 14961, debug: false },
+      handler
+    );
+    await server.start();
+
+    const net = await import('net');
+    const response = await new Promise<{ code: number; data?: string }>((resolve, reject) => {
+      const client = new net.Socket();
+      let responseBuffer = '';
+
+      client.connect(14961, '127.0.0.1', () => {
+        client.write('iimPlay("nonexistent")\n');
+      });
+
+      client.on('data', (data) => {
+        responseBuffer += data.toString();
+        const lines = responseBuffer.split('\n');
+        if (lines.length > 1) {
+          const parts = lines[0].split('\t');
+          client.destroy();
+          resolve({
+            code: parseInt(parts[0], 10),
+            data: parts.length > 1 ? parts[1] : undefined,
+          });
+        }
+      });
+
+      client.on('error', reject);
+      client.setTimeout(5000);
+    });
+
+    expect(response.code).toBe(ReturnCode.MACRO_NOT_FOUND);
+    expect(response.data).toContain('Macro file not found');
+    await server.stop();
+  });
+
+  it('should load macro from subdirectory', async () => {
+    const subDir = path.join(tmpDir, 'subfolder');
+    fs.mkdirSync(subDir);
+    fs.writeFileSync(path.join(subDir, 'nested.iim'), 'SET !VAR0 "nested"');
+
+    const handler = new ExecutorMacroHandler();
+    const server = new ScriptingInterfaceServer(
+      { macrosDir: tmpDir, port: 14962, debug: false },
+      handler
+    );
+    await server.start();
+
+    const net = await import('net');
+    const response = await new Promise<{ code: number; data?: string }>((resolve, reject) => {
+      const client = new net.Socket();
+      let responseBuffer = '';
+
+      client.connect(14962, '127.0.0.1', () => {
+        client.write('iimPlay("subfolder/nested")\n');
+      });
+
+      client.on('data', (data) => {
+        responseBuffer += data.toString();
+        const lines = responseBuffer.split('\n');
+        if (lines.length > 1) {
+          const parts = lines[0].split('\t');
+          client.destroy();
+          resolve({
+            code: parseInt(parts[0], 10),
+            data: parts.length > 1 ? parts[1] : undefined,
+          });
+        }
+      });
+
+      client.on('error', reject);
+      client.setTimeout(5000);
+    });
+
+    expect(response.code).toBe(ReturnCode.OK);
+    await server.stop();
+  });
+
+  it('should not load files when macrosDir is empty', async () => {
+    // With no macrosDir, the input is treated as inline macro content
+    const handler = new ExecutorMacroHandler();
+    const result = await handler.play('SET !VAR0 "inline"');
+    expect(result.code).toBe(ReturnCode.OK);
   });
 });

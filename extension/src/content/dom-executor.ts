@@ -1029,9 +1029,11 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
     if (selector) {
       const result = await resolveSelector(selector, 5000, false);
       if (!result.element) {
+        // Use -921 (ELEMENT_NOT_VISIBLE) for element location failures
+        // matching original iMacros 8.9.7 EVENT behavior
         return {
           success: false,
-          errorCode: DOM_ERROR_CODES.ELEMENT_NOT_FOUND,
+          errorCode: DOM_ERROR_CODES.ELEMENT_NOT_VISIBLE,
           errorMessage: `Element not found for EVENT: ${JSON.stringify(selector)}`,
         };
       }
@@ -1094,10 +1096,13 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
         });
         break;
 
-      // Keyboard events
+      // Keyboard events - focus target before dispatching (iMacros 8.9.7 behavior)
       case 'keydown':
       case 'keyup':
       case 'keypress':
+        if (element instanceof HTMLElement && typeof element.focus === 'function') {
+          element.focus();
+        }
         dispatchKeyboardEvent(element, eventTypeLower, {
           ...modifierOptions,
           key: key || char || '',

@@ -460,6 +460,18 @@ describe('Variable System Unit Tests', () => {
       expect(ctx.get('!VAR0')).toBe(42);
     });
 
+    it('should handle adding empty string as no-op (preserve numeric value)', () => {
+      ctx.set('!VAR0', 10);
+      ctx.add('!VAR0', '');
+      expect(ctx.get('!VAR0')).toBe(10);
+    });
+
+    it('should handle adding empty string as no-op (preserve string value)', () => {
+      ctx.set('!VAR0', 'hello');
+      ctx.add('!VAR0', '');
+      expect(ctx.get('!VAR0')).toBe('hello');
+    });
+
     it('should handle large numbers', () => {
       ctx.set('!VAR0', '1000000000');
       ctx.add('!VAR0', '1');

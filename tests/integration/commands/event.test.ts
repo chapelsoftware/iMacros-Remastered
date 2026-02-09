@@ -119,8 +119,8 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       expect(msg.payload.key).toBe('Enter');
     });
 
-    // 6. EVENT TYPE=keypress CHAR=a KEY=65 sends char='a', key='65'
-    it('should send char=a and key=65 for keypress with CHAR and KEY params', async () => {
+    // 6. EVENT TYPE=keypress CHAR=a KEY=65 sends char='a', key='a' (65 resolved to 'a')
+    it('should send char=a and key=a for keypress with CHAR and KEY=65', async () => {
       executor.loadMacro('EVENT TYPE=keypress CHAR=a KEY=65');
       const result = await executor.execute();
 
@@ -130,7 +130,7 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       const msg = sentMessages[0] as EventCommandMessage;
       expect(msg.payload.eventType).toBe('keypress');
       expect(msg.payload.char).toBe('a');
-      expect(msg.payload.key).toBe('65');
+      expect(msg.payload.key).toBe('a'); // KEY=65 resolves to 'a' (integer keycode)
     });
   });
 
@@ -244,8 +244,8 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       expect(sentMessages).toHaveLength(0);
     });
 
-    // 15. EVENT TYPE=click sender failure returns SCRIPT_ERROR
-    it('should return SCRIPT_ERROR when sender reports failure', async () => {
+    // 15. EVENT TYPE=click sender failure returns ELEMENT_NOT_VISIBLE (-921)
+    it('should return ELEMENT_NOT_VISIBLE when sender reports failure', async () => {
       setContentScriptSender({
         sendMessage: vi.fn(async (): Promise<ContentScriptResponse> => {
           return { success: false, error: 'Event dispatch failed' };
@@ -256,11 +256,11 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       const result = await executor.execute();
 
       expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE);
     });
 
-    // 16. EVENT TYPE=click sender exception returns SCRIPT_ERROR
-    it('should return SCRIPT_ERROR when sender throws an exception', async () => {
+    // 16. EVENT TYPE=click sender exception returns ELEMENT_NOT_VISIBLE (-921)
+    it('should return ELEMENT_NOT_VISIBLE when sender throws an exception', async () => {
       setContentScriptSender({
         sendMessage: vi.fn(async (): Promise<ContentScriptResponse> => {
           throw new Error('Connection lost to content script');
@@ -271,7 +271,7 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       const result = await executor.execute();
 
       expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE);
     });
   });
 
@@ -312,6 +312,113 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
 
       const msg = sentMessages[0] as EventCommandMessage;
       expect(msg.payload.eventType).toBe('focus');
+    });
+  });
+
+  // ===== Lowercase selector= keyword support =====
+
+  describe('Lowercase selector keyword', () => {
+    it('should support lowercase selector= keyword', async () => {
+      executor.loadMacro('EVENT TYPE=click selector=CSS:.my-btn');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.selector).toBeDefined();
+      expect(msg.payload.selector!.css).toBe('.my-btn');
+    });
+
+    it('should support lowercase css: prefix in SELECTOR value', async () => {
+      executor.loadMacro('EVENT TYPE=click SELECTOR=css:.my-btn');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.selector!.css).toBe('.my-btn');
+    });
+
+    it('should support lowercase xpath: prefix in SELECTOR value', async () => {
+      executor.loadMacro('EVENT TYPE=click SELECTOR=xpath://div');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.selector!.xpath).toBe('//div');
+    });
+  });
+
+  // ===== POINT with parentheses =====
+
+  describe('POINT with parentheses', () => {
+    it('should accept POINT=(x,y) format with parentheses', async () => {
+      executor.loadMacro('EVENT TYPE=mouseover POINT=(100,200)');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.point).toEqual({ x: 100, y: 200 });
+    });
+
+    it('should still accept POINT=x,y format without parentheses', async () => {
+      executor.loadMacro('EVENT TYPE=mouseover POINT=50,75');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.point).toEqual({ x: 50, y: 75 });
+    });
+  });
+
+  // ===== KEY as integer keycode =====
+
+  describe('KEY as integer keycode', () => {
+    it('should resolve integer KEY=13 to Enter', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEY=13');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.key).toBe('Enter');
+    });
+
+    it('should resolve integer KEY=27 to Escape', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEY=27');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.key).toBe('Escape');
+    });
+
+    it('should resolve integer KEY=65 to a', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEY=65');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.key).toBe('a');
+    });
+
+    it('should resolve integer KEY=9 to Tab', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEY=9');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.key).toBe('Tab');
+    });
+
+    it('should pass through non-integer KEY as string', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEY=Enter');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.key).toBe('Enter');
     });
   });
 });

@@ -686,11 +686,40 @@ export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise
 };
 
 /**
+ * Map integer keycode to key name (iMacros 8.9.7 compatibility)
+ * Original iMacros passes KEY as integer keycode, not string key name.
+ */
+const KEYCODE_TO_KEY: Record<number, string> = {
+  8: 'Backspace', 9: 'Tab', 13: 'Enter', 16: 'Shift', 17: 'Control', 18: 'Alt',
+  19: 'Pause', 20: 'CapsLock', 27: 'Escape', 32: ' ', 33: 'PageUp', 34: 'PageDown',
+  35: 'End', 36: 'Home', 37: 'ArrowLeft', 38: 'ArrowUp', 39: 'ArrowRight',
+  40: 'ArrowDown', 45: 'Insert', 46: 'Delete',
+  // Digits 0-9
+  48: '0', 49: '1', 50: '2', 51: '3', 52: '4', 53: '5', 54: '6', 55: '7', 56: '8', 57: '9',
+  // Letters A-Z
+  65: 'a', 66: 'b', 67: 'c', 68: 'd', 69: 'e', 70: 'f', 71: 'g', 72: 'h', 73: 'i',
+  74: 'j', 75: 'k', 76: 'l', 77: 'm', 78: 'n', 79: 'o', 80: 'p', 81: 'q', 82: 'r',
+  83: 's', 84: 't', 85: 'u', 86: 'v', 87: 'w', 88: 'x', 89: 'y', 90: 'z',
+  // F-keys
+  112: 'F1', 113: 'F2', 114: 'F3', 115: 'F4', 116: 'F5', 117: 'F6',
+  118: 'F7', 119: 'F8', 120: 'F9', 121: 'F10', 122: 'F11', 123: 'F12',
+  // Punctuation / symbols
+  186: ';', 187: '=', 188: ',', 189: '-', 190: '.', 191: '/', 192: '`',
+  219: '[', 220: '\\', 221: ']', 222: "'",
+};
+
+function keycodeToKeyName(keycode: number): string | undefined {
+  return KEYCODE_TO_KEY[keycode];
+}
+
+/**
  * EVENT command handler
  *
  * EVENT TYPE=CLICK SELECTOR=CSS:.my-button
  * EVENT TYPE=KEYDOWN KEY=Enter
  * EVENT TYPE=MOUSEMOVE POINT=100,200
+ * EVENT TYPE=KEYDOWN KEY=13 (integer keycode, iMacros 8.9.7 format)
+ * EVENT TYPE=MOUSEMOVE POINT=(100,200) (parenthesized coordinates)
  */
 export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   // Get event type
@@ -721,10 +750,12 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
       selector.css = ctx.expand(cssStr);
     } else if (selectorStr) {
       // Parse selector format: TYPE:value (CSS:.class or XPATH://div)
+      // Support both uppercase and lowercase prefixes for iMacros 8.9.7 compatibility
       const expanded = ctx.expand(selectorStr);
-      if (expanded.startsWith('CSS:')) {
+      const expandedUpper = expanded.toUpperCase();
+      if (expandedUpper.startsWith('CSS:')) {
         selector.css = expanded.substring(4);
-      } else if (expanded.startsWith('XPATH:')) {
+      } else if (expandedUpper.startsWith('XPATH:')) {
         selector.xpath = expanded.substring(6);
       } else {
         selector.css = expanded;
@@ -739,10 +770,15 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
   const pointStr = ctx.getParam('POINT');
   const modifiersStr = ctx.getParam('MODIFIERS');
 
-  // Parse point (format: x,y)
+  // Parse point (format: x,y or (x,y) for iMacros 8.9.7 compatibility)
   let point: { x: number; y: number } | undefined;
   if (pointStr) {
-    const [px, py] = ctx.expand(pointStr).split(',').map(s => parseInt(s.trim(), 10));
+    let pointValue = ctx.expand(pointStr).trim();
+    // Strip surrounding parentheses if present
+    if (pointValue.startsWith('(') && pointValue.endsWith(')')) {
+      pointValue = pointValue.substring(1, pointValue.length - 1);
+    }
+    const [px, py] = pointValue.split(',').map(s => parseInt(s.trim(), 10));
     if (!isNaN(px) && !isNaN(py)) {
       point = { x: px, y: py };
     }
@@ -761,6 +797,19 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
     }
   }
 
+  // Resolve KEY parameter: if it's a pure integer, treat as keycode (iMacros 8.9.7 compat)
+  let resolvedKey: string | undefined;
+  if (keyStr) {
+    const expandedKey = ctx.expand(keyStr);
+    const keyAsInt = parseInt(expandedKey, 10);
+    if (!isNaN(keyAsInt) && String(keyAsInt) === expandedKey.trim()) {
+      // Integer keycode - resolve to key name
+      resolvedKey = keycodeToKeyName(keyAsInt) || expandedKey;
+    } else {
+      resolvedKey = expandedKey;
+    }
+  }
+
   // Build message
   const message: EventCommandMessage = {
     id: generateMessageId(),
@@ -770,7 +819,7 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
       eventType,
       selector,
       button: buttonStr ? parseInt(ctx.expand(buttonStr), 10) : undefined,
-      key: keyStr ? ctx.expand(keyStr) : undefined,
+      key: resolvedKey,
       char: charStr ? ctx.expand(charStr) : undefined,
       point,
       modifiers: Object.keys(modifiers).length > 0 ? modifiers : undefined,
@@ -785,9 +834,11 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
     const response = await activeSender.sendMessage(message);
 
     if (!response.success) {
+      // Use error code -921 (ELEMENT_NOT_VISIBLE) for element location failures
+      // matching original iMacros 8.9.7 behavior
       return {
         success: false,
-        errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE,
         errorMessage: response.error || 'Event dispatch failed',
       };
     }
@@ -800,7 +851,7 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
     const msg = error instanceof Error ? error.message : String(error);
     return {
       success: false,
-      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE,
       errorMessage: `EVENT command failed: ${msg}`,
     };
   }

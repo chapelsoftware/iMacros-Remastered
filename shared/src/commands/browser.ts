@@ -502,6 +502,18 @@ export const filterHandler: CommandHandler = async (ctx: CommandContext): Promis
     };
   }
 
+  // For IMAGES type, check !IMAGEFILTER variable (parity with iMacros 8.9.7)
+  if (filterType === 'IMAGES') {
+    const imageFilter = ctx.variables.get('!IMAGEFILTER');
+    if (!imageFilter || imageFilter === '') {
+      ctx.log('info', 'FILTER TYPE=IMAGES skipped: !IMAGEFILTER is not set');
+      return {
+        success: true,
+        errorCode: IMACROS_ERROR_CODES.OK,
+      };
+    }
+  }
+
   // STATUS defaults to ON if not specified
   const status: FilterStatus = statusParam?.toUpperCase() === 'OFF' ? 'OFF' : 'ON';
 

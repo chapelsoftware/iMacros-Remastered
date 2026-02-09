@@ -48,7 +48,7 @@ class MockMacroHandler implements MacroHandler {
   }
 
   getLastExtract(): string {
-    return this._lastExtract;
+    return this._lastExtract || '#nodata#';
   }
 
   getLastError(): string {
@@ -454,11 +454,11 @@ describe('Scripting Interface Integration Tests', () => {
       await server.start();
     });
 
-    it('should return empty string when no extract available', async () => {
+    it('should return #nodata# when no extract available', async () => {
       const response = await sendCommand(testPort, 'iimGetLastExtract()');
 
       expect(response.code).toBe(ReturnCode.OK);
-      expect(response.data).toBe('');
+      expect(response.data).toBe('#nodata#');
     });
 
     it('should return last extracted data', async () => {
@@ -470,13 +470,13 @@ describe('Scripting Interface Integration Tests', () => {
       expect(response.data).toBe('extracted text content');
     });
 
-    it('should return multi-line extracted data', async () => {
-      mockHandler.setLastExtract('line1[EXTRACT]line2[EXTRACT]line3');
+    it('should return multi-value extracted data with #NEXT# delimiter', async () => {
+      mockHandler.setLastExtract('line1#NEXT#line2#NEXT#line3');
 
       const response = await sendCommand(testPort, 'iimGetLastExtract()');
 
       expect(response.code).toBe(ReturnCode.OK);
-      expect(response.data).toBe('line1[EXTRACT]line2[EXTRACT]line3');
+      expect(response.data).toBe('line1#NEXT#line2#NEXT#line3');
     });
 
     it('should handle unicode in extracted data', async () => {

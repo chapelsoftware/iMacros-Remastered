@@ -62,12 +62,12 @@ describe('ExecutorMacroHandler', () => {
       expect(handler.isRunning()).toBe(false);
     });
 
-    it('should capture extract data', async () => {
+    it('should return #nodata# when no extract data', async () => {
       // EXTRACT handler is registered by default
       await handler.play('SET !EXTRACT "test data"');
       // Note: SET !EXTRACT sets the variable but doesn't trigger extract flow
       // The extraction happens through state.addExtract
-      expect(handler.getLastExtract()).toBe(''); // No actual EXTRACT command was run
+      expect(handler.getLastExtract()).toBe('#nodata#'); // No actual EXTRACT command was run
     });
 
     it('should return error for invalid macro syntax', async () => {
@@ -217,7 +217,7 @@ describe('ScriptingInterfaceServer', () => {
       play: vi.fn().mockResolvedValue({ code: ReturnCode.OK }),
       setVariable: vi.fn(),
       getVariable: vi.fn(),
-      getLastExtract: vi.fn().mockReturnValue(''),
+      getLastExtract: vi.fn().mockReturnValue('#nodata#'),
       getLastError: vi.fn().mockReturnValue(''),
       getLastPerformance: vi.fn().mockReturnValue(null),
       isRunning: vi.fn().mockReturnValue(false),

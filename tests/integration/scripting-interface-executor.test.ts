@@ -699,9 +699,9 @@ describe('Scripting Interface with ExecutorMacroHandler', () => {
       await h.play('EXTRACT {{!VAR1}}');
       expect(h.getLastExtract()).toBe('first');
 
-      // Second play with no extract should clear it
+      // Second play with no extract should return #nodata#
       await h.play('SET !VAR1 noextract');
-      expect(h.getLastExtract()).toBe('');
+      expect(h.getLastExtract()).toBe('#nodata#');
     });
   });
 

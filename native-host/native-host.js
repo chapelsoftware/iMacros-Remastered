@@ -414,9 +414,9 @@ async function playJsMacro(macroPath, tabId) {
       // iimGetLastExtract - get extracted data
       iimGetLastExtract: function(index) {
         if (index === undefined || index === 0) {
-          return lastExtract.join('#NEXT#');
+          return lastExtract.length > 0 ? lastExtract.join('#NEXT#') : '#nodata#';
         }
-        return lastExtract[index - 1] || '';
+        return lastExtract[index - 1] || '#nodata#';
       },
 
       // iimGetLastError - get last error code

@@ -590,7 +590,7 @@ export class JSDebugger extends EventEmitter {
     if (this.iimInterface) {
       return this.iimInterface.iimGetLastExtract();
     }
-    return this.lastExtract;
+    return this.lastExtract || '#nodata#';
   }
 
   /**

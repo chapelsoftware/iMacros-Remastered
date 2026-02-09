@@ -916,10 +916,13 @@ export function getErrorMessage(code: IMacrosErrorCode): string {
     [IMACROS_ERROR_CODES.INVALID_PARAMETER]: 'Invalid parameter',
     [IMACROS_ERROR_CODES.MISSING_PARAMETER]: 'Missing required parameter',
     [IMACROS_ERROR_CODES.UNSUPPORTED_COMMAND]: 'Unsupported command',
+    [IMACROS_ERROR_CODES.IMAGE_SEARCH_NOT_CONFIGURED]: 'Image search not configured',
+    [IMACROS_ERROR_CODES.IMAGE_FILE_NOT_FOUND]: 'Image file not found',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND]: 'Element not found',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_VISIBLE]: 'Element not visible',
     [IMACROS_ERROR_CODES.ELEMENT_NOT_ENABLED]: 'Element not enabled',
     [IMACROS_ERROR_CODES.MULTIPLE_ELEMENTS]: 'Multiple elements matched',
+    [IMACROS_ERROR_CODES.IMAGE_NOT_FOUND]: 'Image not found',
     [IMACROS_ERROR_CODES.TIMEOUT]: 'Timeout',
     [IMACROS_ERROR_CODES.PAGE_TIMEOUT]: 'Page load timeout',
     [IMACROS_ERROR_CODES.STEP_TIMEOUT]: 'Step timeout',
@@ -945,6 +948,7 @@ export function getErrorMessage(code: IMacrosErrorCode): string {
     [IMACROS_ERROR_CODES.LOOP_ERROR]: 'Loop error',
     [IMACROS_ERROR_CODES.USER_ABORT]: 'Aborted by user',
     [IMACROS_ERROR_CODES.USER_PAUSE]: 'Paused by user',
+    [IMACROS_ERROR_CODES.UNHANDLED_DIALOG]: 'Unhandled dialog',
     [IMACROS_ERROR_CODES.UNKNOWN_ERROR]: 'Unknown error',
   };
 

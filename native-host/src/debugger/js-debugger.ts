@@ -484,6 +484,7 @@ export class JSDebugger extends EventEmitter {
       context.iimPlay = this.iimPlay.bind(this);
       context.iimSet = this.iimSet.bind(this);
       context.iimGetLastExtract = this.iimGetLastExtract.bind(this);
+      context.iimGetExtract = this.iimGetLastExtract.bind(this);
       context.iimGetLastError = this.iimGetLastError.bind(this);
 
       // Create function with context variables as parameters
@@ -652,6 +653,7 @@ export class JSDebugger extends EventEmitter {
       iimPlay: this.iimPlay.bind(this),
       iimSet: this.iimSet.bind(this),
       iimGetLastExtract: this.iimGetLastExtract.bind(this),
+      iimGetExtract: this.iimGetLastExtract.bind(this),
       iimGetLastError: this.iimGetLastError.bind(this),
       console: console,
     };

@@ -419,6 +419,14 @@ async function playJsMacro(macroPath, tabId) {
         return lastExtract[index - 1] || '#nodata#';
       },
 
+      // iimGetExtract - alias for iimGetLastExtract
+      iimGetExtract: function(index) {
+        if (index === undefined || index === 0) {
+          return lastExtract.length > 0 ? lastExtract.join('#NEXT#') : '#nodata#';
+        }
+        return lastExtract[index - 1] || '#nodata#';
+      },
+
       // iimGetLastError - get last error code
       iimGetLastError: function() {
         return lastError;

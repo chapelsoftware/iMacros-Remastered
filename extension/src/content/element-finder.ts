@@ -22,6 +22,8 @@ export interface TagSelector {
   pos: number | 'random';
   type?: string;
   attrs: Record<string, string>;
+  /** FORM filter conditions (e.g., "NAME:loginform" or "ID:main&&NAME:login") */
+  form?: string;
 }
 
 /**
@@ -267,6 +269,9 @@ export function parseTagSelector(selectorString: string): TagSelector | null {
           selector.attrs[attrName] = attrValue;
         }
       }
+    } else if (upperToken.startsWith('FORM=')) {
+      // FORM filter: FORM=NAME:loginform or FORM=ID:mainform&&NAME:login
+      selector.form = token.substring(5);
     } else if (upperToken.startsWith('ATTR:')) {
       // Alternate format: ATTR:name=value or ATTR:name:value
       const attrPart = token.substring(5);
@@ -364,6 +369,42 @@ export function matchesType(element: Element, typeSpec: string): boolean {
 }
 
 /**
+ * Find the form element matching FORM filter conditions.
+ * Supports conditions like "NAME:loginform" or "ID:mainform&&NAME:login".
+ */
+export function findMatchingForm(
+  formFilter: string,
+  contextNode: Element | Document = document
+): HTMLFormElement | null {
+  const forms = Array.from(contextNode.querySelectorAll('form'));
+  const conditions = formFilter.split('&&');
+
+  for (const form of forms) {
+    let matches = true;
+    for (const condition of conditions) {
+      const trimmed = condition.trim();
+      if (!trimmed) continue;
+      const colonIndex = trimmed.indexOf(':');
+      if (colonIndex <= 0) {
+        matches = false;
+        break;
+      }
+      const attrName = trimmed.substring(0, colonIndex).toLowerCase();
+      const attrValue = trimmed.substring(colonIndex + 1);
+      const formAttrValue = form.getAttribute(attrName);
+      if (formAttrValue === null || !matchesWildcard(formAttrValue, attrValue)) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return form as HTMLFormElement;
+    }
+  }
+  return null;
+}
+
+/**
  * Find elements using TAG POS TYPE ATTR selector
  */
 export function findByTagSelector(
@@ -376,9 +417,19 @@ export function findByTagSelector(
     return { element: null, elements: [], count: 0 };
   }
 
+  // If FORM filter is specified, narrow the search context to that form
+  let searchContext: Element | Document = contextNode;
+  if (parsedSelector.form) {
+    const matchingForm = findMatchingForm(parsedSelector.form, contextNode);
+    if (!matchingForm) {
+      return { element: null, elements: [], count: 0 };
+    }
+    searchContext = matchingForm;
+  }
+
   // Get all potential elements
   const tagName = parsedSelector.tag.toUpperCase() === '*' ? '*' : parsedSelector.tag;
-  const allElements = Array.from(contextNode.querySelectorAll(tagName));
+  const allElements = Array.from(searchContext.querySelectorAll(tagName));
 
   // Filter by type and attributes
   const matchingElements: Element[] = [];
@@ -575,4 +626,5 @@ export default {
   matchesAttribute,
   matchesTextContent,
   matchesType,
+  findMatchingForm,
 };

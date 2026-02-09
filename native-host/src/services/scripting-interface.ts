@@ -657,6 +657,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
         return this.handleIimSet(args);
 
       case 'iimgetlastextract':
+      case 'iimgetextract':
         return this.handleIimGetLastExtract(args);
 
       case 'iimgetlasterror':

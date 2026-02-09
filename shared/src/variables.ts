@@ -570,6 +570,18 @@ export class VariableContext {
     const upperName = name.toUpperCase();
     const currentValue = this.get(upperName);
 
+    // Adding empty string is a no-op — return current value unchanged
+    // (original iMacros behavior: empty value concatenates, which changes nothing)
+    if (value === '') {
+      return {
+        success: true,
+        previousValue: currentValue,
+        addedValue: '',
+        newValue: currentValue ?? '',
+        error: undefined,
+      };
+    }
+
     // Empty/null is treated as 0 for numeric operations (original iMacros behavior)
     const currentStr = String(currentValue ?? '');
     const isCurrentEmpty = currentStr === '';

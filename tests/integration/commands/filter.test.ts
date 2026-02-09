@@ -41,8 +41,8 @@ describe('FILTER Command Integration Tests', () => {
   // ===== Basic Filter Types =====
 
   describe('FILTER TYPE=IMAGES', () => {
-    it('should send setFilter with filterType=IMAGES, status=ON', async () => {
-      executor.loadMacro('FILTER TYPE=IMAGES');
+    it('should send setFilter with filterType=IMAGES, status=ON when !IMAGEFILTER is set', async () => {
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -56,7 +56,7 @@ describe('FILTER Command Integration Tests', () => {
     });
 
     it('should send status=ON when STATUS=ON is explicit', async () => {
-      executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES STATUS=ON');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -70,7 +70,7 @@ describe('FILTER Command Integration Tests', () => {
     });
 
     it('should send status=OFF when STATUS=OFF', async () => {
-      executor.loadMacro('FILTER TYPE=IMAGES STATUS=OFF');
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES STATUS=OFF');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -81,6 +81,15 @@ describe('FILTER Command Integration Tests', () => {
       expect(msg.type).toBe('setFilter');
       expect(msg.filterType).toBe('IMAGES');
       expect(msg.status).toBe('OFF');
+    });
+
+    it('should skip execution when !IMAGEFILTER is not set', async () => {
+      executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(0);
     });
   });
 
@@ -174,7 +183,7 @@ describe('FILTER Command Integration Tests', () => {
         return { success: false, error: 'Filter operation failed' };
       });
 
-      executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES STATUS=ON');
       const result = await executor.execute();
 
       expect(result.success).toBe(false);
@@ -186,7 +195,7 @@ describe('FILTER Command Integration Tests', () => {
         throw new Error('Bridge connection lost');
       });
 
-      executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES STATUS=ON');
       const result = await executor.execute();
 
       expect(result.success).toBe(false);
@@ -200,7 +209,7 @@ describe('FILTER Command Integration Tests', () => {
     it('should return success when no bridge is configured (testing mode)', async () => {
       setBrowserCommandBridge(null as unknown as BrowserCommandBridge);
 
-      executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      executor.loadMacro('SET !IMAGEFILTER YES\nFILTER TYPE=IMAGES STATUS=ON');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);

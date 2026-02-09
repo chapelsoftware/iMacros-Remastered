@@ -67,6 +67,7 @@ function buildMockCtx(
       realState.setVariable(name, value);
     },
     getVariables: () => variables,
+    getStatus: () => realState.getStatus(),
   } as any;
 
   const params = (overrides.params ?? []).map(p => ({

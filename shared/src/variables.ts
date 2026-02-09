@@ -151,7 +151,7 @@ export interface SetResult {
 export interface AddResult {
   success: boolean;
   previousValue: VariableValue;
-  addedValue: number;
+  addedValue: VariableValue;
   newValue: VariableValue;
   error?: string;
 }
@@ -427,10 +427,25 @@ export class VariableContext {
       previousValue = this.systemVars.get(upperName) ?? null;
       this.systemVars.set(upperName, value);
 
-      // Special handling for !EXTRACT - also update !EXTRACTADD accumulator
+      // Special handling for !EXTRACT and !EXTRACTADD (iMacros 8.9.7 behavior)
+      // SET !EXTRACT = clears accumulator, then adds value (unless "null")
+      // SET !EXTRACTADD = just appends to accumulator
       if (upperName === '!EXTRACT') {
+        // Clear and restart accumulator
+        this.extractAccumulator = [];
+        const strValue = String(value);
+        if (!/^null$/i.test(strValue)) {
+          this.extractAccumulator.push(strValue);
+        }
+        const accumulated = this.extractAccumulator.join('[EXTRACT]');
+        this.systemVars.set('!EXTRACT', accumulated);
+        this.systemVars.set('!EXTRACTADD', accumulated);
+      } else if (upperName === '!EXTRACTADD') {
+        // Just append to accumulator
         this.extractAccumulator.push(String(value));
-        this.systemVars.set('!EXTRACTADD', this.extractAccumulator.join('[EXTRACT]'));
+        const accumulated = this.extractAccumulator.join('[EXTRACT]');
+        this.systemVars.set('!EXTRACT', accumulated);
+        this.systemVars.set('!EXTRACTADD', accumulated);
       }
 
       return {
@@ -452,31 +467,39 @@ export class VariableContext {
   }
 
   /**
-   * Add a numeric value to a variable (for ADD command)
+   * Add a value to a variable (for ADD command)
+   * Matches original iMacros behavior:
+   * - If both current and added values are numeric, does numeric addition
+   * - Empty/null current value is treated as 0 for numeric operations
+   * - Otherwise, falls back to string concatenation
    */
-  add(name: string, value: number): AddResult {
+  add(name: string, value: string): AddResult {
     const upperName = name.toUpperCase();
     const currentValue = this.get(upperName);
 
-    // Parse current value as number
-    let currentNum = 0;
-    if (currentValue !== null && currentValue !== '') {
-      const parsed = parseFloat(String(currentValue));
-      if (isNaN(parsed)) {
-        return {
-          success: false,
-          previousValue: currentValue,
-          addedValue: value,
-          newValue: currentValue,
-          error: `Cannot add to non-numeric value: ${currentValue}`,
-        };
-      }
-      currentNum = parsed;
+    // Empty/null is treated as 0 for numeric operations (original iMacros behavior)
+    const currentStr = String(currentValue ?? '');
+    const isCurrentEmpty = currentStr === '';
+    const currentNum = isCurrentEmpty ? 0 : parseFloat(currentStr);
+    const addNum = parseFloat(value);
+
+    // If added value is numeric and current is either empty or numeric, do numeric addition
+    if (!isNaN(addNum) && (isCurrentEmpty || !isNaN(currentNum))) {
+      // Both are numeric (or current is empty/0) - do numeric addition
+      const newValue = currentNum + addNum;
+      const setResult = this.set(name, newValue);
+
+      return {
+        success: setResult.success,
+        previousValue: currentValue,
+        addedValue: addNum,
+        newValue: setResult.success ? newValue : currentValue,
+        error: setResult.error,
+      };
     }
 
-    const newValue = currentNum + value;
-
-    // Set the new value
+    // Fallback to string concatenation (original iMacros behavior)
+    const newValue = currentStr + value;
     const setResult = this.set(name, newValue);
 
     return {
@@ -485,6 +508,34 @@ export class VariableContext {
       addedValue: value,
       newValue: setResult.success ? newValue : currentValue,
       error: setResult.error,
+    };
+  }
+
+  /**
+   * Add data to the extract accumulator (for ADD !EXTRACT)
+   * Matches original iMacros behavior: appends with [EXTRACT] delimiter
+   */
+  addExtractData(value: string): AddResult {
+    const previousValue = this.systemVars.get('!EXTRACT') ?? null;
+
+    if (this.extractAccumulator.length > 0) {
+      // Append with [EXTRACT] delimiter
+      this.extractAccumulator.push(value);
+    } else {
+      // First value - no delimiter
+      this.extractAccumulator.push(value);
+    }
+
+    // Update both !EXTRACT and !EXTRACTADD
+    const newValue = this.extractAccumulator.join('[EXTRACT]');
+    this.systemVars.set('!EXTRACT', newValue);
+    this.systemVars.set('!EXTRACTADD', newValue);
+
+    return {
+      success: true,
+      previousValue,
+      addedValue: value,
+      newValue,
     };
   }
 
@@ -909,6 +960,10 @@ export function executeSet(
 
 /**
  * Execute an ADD command
+ * Matches original iMacros 8.9.7 behavior:
+ * - !EXTRACT: calls addExtractData() to append with [EXTRACT] delimiter
+ * - !VAR0-9 and user vars: numeric addition if both values are numeric,
+ *   otherwise string concatenation
  */
 export function executeAdd(
   context: VariableContext,
@@ -917,26 +972,15 @@ export function executeAdd(
 ): AddResult {
   // Expand any variables in the value
   const { expanded } = context.expand(value);
+  const upperName = varName.toUpperCase();
 
-  // Treat empty string as 0 (iMacros compatibility)
-  const trimmed = expanded.trim();
-  if (trimmed === '') {
-    return context.add(varName, 0);
+  // Special handling for !EXTRACT - use addExtractData with [EXTRACT] delimiter
+  if (upperName === '!EXTRACT') {
+    return context.addExtractData(expanded);
   }
 
-  // Parse as number
-  const numValue = parseFloat(trimmed);
-  if (isNaN(numValue)) {
-    return {
-      success: false,
-      previousValue: context.get(varName),
-      addedValue: 0,
-      newValue: context.get(varName),
-      error: `Invalid numeric value: ${value}`,
-    };
-  }
-
-  return context.add(varName, numValue);
+  // For all other variables, use add() which handles numeric vs string
+  return context.add(varName, expanded);
 }
 
 /**

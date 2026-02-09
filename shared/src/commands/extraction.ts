@@ -157,21 +157,10 @@ export const EXTRACT_DELIMITER = '[EXTRACT]';
 /**
  * Append extracted value to !EXTRACT variable
  *
- * If !EXTRACT already has a value, the new value is appended with [EXTRACT] delimiter.
+ * Uses addExtractData to properly accumulate with [EXTRACT] delimiter (iMacros 8.9.7 behavior).
  */
 export function appendExtract(ctx: CommandContext, value: string): void {
-  const currentExtract = ctx.variables.get('!EXTRACT');
-  let newValue: string;
-
-  if (currentExtract && currentExtract !== '') {
-    // Append with delimiter
-    newValue = String(currentExtract) + EXTRACT_DELIMITER + value;
-  } else {
-    // First extraction
-    newValue = value;
-  }
-
-  ctx.variables.set('!EXTRACT', newValue);
+  // addExtract handles both the state extractData array and the variables accumulator
   ctx.state.addExtract(value);
   ctx.log('debug', `EXTRACT: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`);
 }

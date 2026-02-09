@@ -270,10 +270,10 @@ describe('StateManager', () => {
       expect(sm.getExtractData()).toEqual(['a', 'b', 'c']);
     });
 
-    it('addExtract sets !EXTRACT to last value', () => {
+    it('addExtract accumulates !EXTRACT with [EXTRACT] delimiter (iMacros 8.9.7 behavior)', () => {
       sm.addExtract('first');
       sm.addExtract('second');
-      expect(sm.getVariable('!EXTRACT')).toBe('second');
+      expect(sm.getVariable('!EXTRACT')).toBe('first[EXTRACT]second');
     });
 
     it('getExtractData returns a copy', () => {

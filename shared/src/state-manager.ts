@@ -326,11 +326,12 @@ export class StateManager {
   // ===== Extract Data Management =====
 
   /**
-   * Add extracted data
+   * Add extracted data (appends with [EXTRACT] delimiter per iMacros 8.9.7)
    */
   addExtract(data: string): void {
     this.extractData.push(data);
-    this.variables.set('!EXTRACT', data);
+    // Use addExtractData to properly accumulate with [EXTRACT] delimiter
+    this.variables.addExtractData(data);
     this.updateTimestamp();
   }
 

@@ -250,10 +250,11 @@ describe('MacroExecutor', () => {
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.MISSING_PARAMETER);
     });
 
-    it('should fail ADD with non-numeric value', async () => {
-      executor.loadMacro('ADD !VAR0 abc', false);
+    it('should concatenate ADD with non-numeric value (iMacros 8.9.7 behavior)', async () => {
+      executor.loadMacro('SET !VAR0 prefix_\nADD !VAR0 abc', false);
       const result = await executor.execute();
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR0']).toBe('prefix_abc');
     });
   });
 

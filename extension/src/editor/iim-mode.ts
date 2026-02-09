@@ -211,9 +211,7 @@ export const iimHighlightStyle = HighlightStyle.define([
  * Create iMacros language support with highlighting
  */
 export function iim(): LanguageSupport {
-  return new LanguageSupport(iimLanguage, [
-    syntaxHighlighting(iimHighlightStyle),
-  ]);
+  return new LanguageSupport(iimLanguage);
 }
 
 /**

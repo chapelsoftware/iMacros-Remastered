@@ -352,21 +352,18 @@ async function playJsMacro(macroPath, tabId) {
 
         const macroContent = stripBOM(fs.readFileSync(resolvedPath, 'utf8'));
 
-        // Create executor
+        // Create executor with JS variables as initialVariables
+        // (must be passed via options so they survive resetForExecution)
         const executor = new sharedLib.MacroExecutor({
           macroName: macroName,
           maxLoops: 1,
+          initialVariables: { ...jsVariables },
           onLog: (level, msg) => {
             log(`[${level}] ${msg}`);
           },
           onNativeEval: nativeEval,
           onDatasourceLoad: loadDatasource,
         });
-
-        // Copy JS variables to executor
-        for (const [key, value] of Object.entries(jsVariables)) {
-          executor.state.setVariable(key, value);
-        }
 
         // Register browser handlers
         const handlers = createBrowserHandlers(browserBridge);
@@ -482,21 +479,18 @@ async function playJsMacro(macroPath, tabId) {
           browserBridge.setActiveTab(tabId);
         }
 
-        // Create executor
+        // Create executor with JS variables as initialVariables
+        // (must be passed via options so they survive resetForExecution)
         const executor = new sharedLib.MacroExecutor({
           macroName: 'inline',
           maxLoops: 1,
+          initialVariables: { ...jsVariables },
           onLog: (level, msg) => {
             log(`[${level}] ${msg}`);
           },
           onNativeEval: nativeEval,
           onDatasourceLoad: loadDatasource,
         });
-
-        // Copy JS variables to executor
-        for (const [key, value] of Object.entries(jsVariables)) {
-          executor.state.setVariable(key, value);
-        }
 
         // Register browser handlers
         const handlers = createBrowserHandlers(browserBridge);

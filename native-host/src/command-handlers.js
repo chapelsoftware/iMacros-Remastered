@@ -659,8 +659,11 @@ function createBrowserHandlers(bridge) {
         let content = '';
 
         if (saveType === 'EXTRACT') {
-          // Get content from !EXTRACT variable
-          content = String(ctx.state.getVariable('!EXTRACT') || '');
+          // Get content from !EXTRACT variable and format as CSV
+          // (iMacros 8.9.7 parity: escape quotes, replace [EXTRACT] with "," delimiter)
+          const raw = String(ctx.state.getVariable('!EXTRACT') || '');
+          const escaped = raw.replace(/"/g, '""');
+          content = '"' + escaped.replace(/\[EXTRACT\]/g, '","') + '"';
         } else if (saveType === 'TXT') {
           // For TXT, also use !EXTRACT by default
           content = String(ctx.state.getVariable('!EXTRACT') || '');
@@ -682,7 +685,7 @@ function createBrowserHandlers(bridge) {
 
         // Write file (append if file exists for EXTRACT type)
         if (saveType === 'EXTRACT' && fs.existsSync(fullPath)) {
-          fs.appendFileSync(fullPath, content + '\n', 'utf8');
+          fs.appendFileSync(fullPath, content + '\r\n', 'utf8');
           ctx.log('info', `Appended to ${fullPath}`);
         } else {
           fs.writeFileSync(fullPath, content, 'utf8');

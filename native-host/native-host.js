@@ -394,6 +394,18 @@ async function playJsMacro(macroPath, tabId) {
 
       // iimSet - set a variable
       iimSet: function(varName, value) {
+        // Strip -var_ prefix (e.g., "-var_myvar" -> "myvar")
+        var prefixMatch = varName.match(/^(?:-var_)?(\w+)$/);
+        if (prefixMatch) {
+          varName = prefixMatch[1];
+        }
+
+        // Map var1-var9 to !VAR1-!VAR9
+        var varMatch = varName.match(/^var([0-9])$/i);
+        if (varMatch) {
+          varName = '!VAR' + varMatch[1];
+        }
+
         jsVariables[varName] = value;
         log('iimSet:', varName, '=', value);
         return 1;

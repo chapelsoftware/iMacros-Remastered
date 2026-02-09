@@ -563,6 +563,18 @@ export class JSDebugger extends EventEmitter {
    * iimSet - Set a variable
    */
   iimSet(name: string, value: string): number {
+    // Strip -var_ prefix (e.g., "-var_myvar" -> "myvar")
+    const prefixMatch = name.match(/^(?:-var_)?(\w+)$/);
+    if (prefixMatch) {
+      name = prefixMatch[1];
+    }
+
+    // Map var1-var9 to !VAR1-!VAR9
+    const varMatch = name.match(/^var([0-9])$/i);
+    if (varMatch) {
+      name = `!VAR${varMatch[1]}`;
+    }
+
     this.variables.set(name, value);
     if (this.iimInterface) {
       return this.iimInterface.iimSet(name, value);

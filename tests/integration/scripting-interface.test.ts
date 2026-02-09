@@ -365,13 +365,41 @@ describe('Scripting Interface Integration Tests', () => {
     });
 
     it('should handle multiple variable sets', async () => {
-      await sendCommand(testPort, 'iimSet("var1", "value1")');
-      await sendCommand(testPort, 'iimSet("var2", "value2")');
-      await sendCommand(testPort, 'iimSet("var3", "value3")');
+      await sendCommand(testPort, 'iimSet("myA", "value1")');
+      await sendCommand(testPort, 'iimSet("myB", "value2")');
+      await sendCommand(testPort, 'iimSet("myC", "value3")');
 
-      expect(mockHandler.getVariable('var1')).toBe('value1');
-      expect(mockHandler.getVariable('var2')).toBe('value2');
-      expect(mockHandler.getVariable('var3')).toBe('value3');
+      expect(mockHandler.getVariable('myA')).toBe('value1');
+      expect(mockHandler.getVariable('myB')).toBe('value2');
+      expect(mockHandler.getVariable('myC')).toBe('value3');
+    });
+
+    it('should strip -var_ prefix from variable name', async () => {
+      await sendCommand(testPort, 'iimSet("-var_myvar", "hello")');
+
+      expect(mockHandler.getVariable('myvar')).toBe('hello');
+    });
+
+    it('should map var1-var9 to !VAR1-!VAR9', async () => {
+      await sendCommand(testPort, 'iimSet("var1", "value1")');
+      await sendCommand(testPort, 'iimSet("var9", "value9")');
+
+      expect(mockHandler.getVariable('!VAR1')).toBe('value1');
+      expect(mockHandler.getVariable('!VAR9')).toBe('value9');
+    });
+
+    it('should handle -var_ prefix with var1-var9 mapping', async () => {
+      await sendCommand(testPort, 'iimSet("-var_var3", "combined")');
+
+      expect(mockHandler.getVariable('!VAR3')).toBe('combined');
+    });
+
+    it('should handle case-insensitive var1-var9 mapping', async () => {
+      await sendCommand(testPort, 'iimSet("VAR5", "upper")');
+      await sendCommand(testPort, 'iimSet("Var7", "mixed")');
+
+      expect(mockHandler.getVariable('!VAR5')).toBe('upper');
+      expect(mockHandler.getVariable('!VAR7')).toBe('mixed');
     });
 
     it('should overwrite existing variable', async () => {
@@ -618,7 +646,7 @@ describe('Scripting Interface Integration Tests', () => {
         for (let i = 0; i < 10; i++) {
           const response = await sendOnClient(
             client,
-            `iimSet("var${i}", "value${i}")`
+            `iimSet("seq${i}", "value${i}")`
           );
           responses.push(response);
         }
@@ -628,7 +656,7 @@ describe('Scripting Interface Integration Tests', () => {
         });
 
         for (let i = 0; i < 10; i++) {
-          expect(mockHandler.getVariable(`var${i}`)).toBe(`value${i}`);
+          expect(mockHandler.getVariable(`seq${i}`)).toBe(`value${i}`);
         }
       } finally {
         client.destroy();

@@ -715,16 +715,15 @@ export function validateCommand(command: ParsedCommand): ParseError | null {
     }
 
     case 'STOPWATCH': {
-      // STOPWATCH accepts: ID=<name> | LABEL=<name> | START ID=<name> | STOP ID=<name>
-      const idParam = command.parameters.find(p => p.key.toUpperCase() === 'ID');
-      const labelParam = command.parameters.find(p => p.key.toUpperCase() === 'LABEL');
-      if (!idParam && !labelParam) {
-        return {
-          lineNumber: command.lineNumber,
-          message: 'STOPWATCH command requires ID or LABEL parameter',
-          raw: command.raw,
-        };
-      }
+      // STOPWATCH accepts multiple syntaxes:
+      // - STOPWATCH ID=<name>                 (toggle: start/stop)
+      // - STOPWATCH START ID=<name>           (explicit start)
+      // - STOPWATCH STOP ID=<name>            (explicit stop)
+      // - STOPWATCH LABEL=<name>              (record label)
+      // - STOPWATCH ID=<name> ACTION=<action> (extended syntax)
+      // - STOPWATCH                           (toggle default stopwatch)
+      // - STOPWATCH ACTION=<action>           (action on default stopwatch)
+      // No validation needed - bare STOPWATCH is valid (toggles default)
       break;
     }
 

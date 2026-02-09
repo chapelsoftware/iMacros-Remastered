@@ -380,17 +380,12 @@ describe('STOPWATCH handler', () => {
     expect(elapsed).toBeGreaterThanOrEqual(0);
   });
 
-  it('STOPWATCH ACTION=STOP when not running returns success (warn)', async () => {
+  it('STOPWATCH ACTION=STOP when not running returns error (original 962)', async () => {
     const result = await run('STOPWATCH ACTION=STOP');
 
-    expect(result.success).toBe(true);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-
-    // Should have logged a warning
-    const warnings = logs.filter(
-      l => l.level === 'warn' && l.message.includes('not running')
-    );
-    expect(warnings.length).toBeGreaterThan(0);
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorMessage).toContain("wasn't started");
   });
 
   it('STOPWATCH ACTION=LAP records a lap time', async () => {

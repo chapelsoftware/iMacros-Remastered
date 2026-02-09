@@ -2,18 +2,12 @@
  * STOPWATCH Command Integration Tests
  *
  * Tests the STOPWATCH command handler via the MacroExecutor.
- * The STOPWATCH command supports four actions:
- * - START: starts or resets a stopwatch
- * - STOP: stops a stopwatch, stores elapsed time
- * - LAP: records a lap time on a running stopwatch
- * - READ: reads current elapsed time without stopping
- *
- * Variables set by the handler (e.g. !STOPWATCH, !STOPWATCH_<ID>,
- * !STOPWATCH_LAP1, etc.) are not part of the recognized system variable
- * set, so VariableContext.set() silently drops them. Tests therefore
- * verify behaviour through command success/error codes and through the
- * internal stopwatch state (e.g. LAP on a stopped watch errors, STOP on
- * a non-running watch succeeds, etc.).
+ * Supports original iMacros 8.9.7 syntax and behavior:
+ * - Toggle: STOPWATCH ID=x (start if not running, stop if running)
+ * - Explicit: STOPWATCH START ID=x / STOPWATCH STOP ID=x
+ * - Extended: STOPWATCH ID=x ACTION=START/STOP/LAP/READ
+ * - Label: STOPWATCH LABEL=name (record timestamp)
+ * - !STOPWATCHTIME: set on stop and label operations
  *
  * Uses vi.useFakeTimers() to control Date.now() for deterministic timing.
  */
@@ -66,20 +60,16 @@ describe('STOPWATCH command integration tests', () => {
 
     const resultPromise = executor.execute();
 
-    // Advance past the 1-second WAIT
     await vi.advanceTimersByTimeAsync(1000);
 
     const result = await resultPromise;
 
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-    // The stopwatch ran for ~1000ms; verify that STOP succeeds (no error)
-    // and that a subsequent LAP on the same stopped watch errors
   });
 
   // -----------------------------------------------------------------------
-  // 3. ACTION=START, advance 1000ms, ACTION=READ returns ~1000ms
-  //    (verified by the fact that READ succeeds on a running stopwatch)
+  // 3. ACTION=READ succeeds on a running stopwatch
   // -----------------------------------------------------------------------
   it('should read elapsed time after advancing timers by 1000ms', async () => {
     const executor = createStopwatchExecutor();
@@ -91,7 +81,6 @@ describe('STOPWATCH command integration tests', () => {
 
     const resultPromise = executor.execute();
 
-    // Advance timers to let the WAIT complete and the READ to fire
     await vi.advanceTimersByTimeAsync(1000);
 
     const result = await resultPromise;
@@ -115,20 +104,17 @@ describe('STOPWATCH command integration tests', () => {
 
     const resultPromise = executor.execute();
 
-    // Advance for first WAIT (1s)
     await vi.advanceTimersByTimeAsync(1000);
-    // Advance for second WAIT (1s)
     await vi.advanceTimersByTimeAsync(1000);
 
     const result = await resultPromise;
 
-    // Both LAPs should succeed because the stopwatch is running
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
   });
 
   // -----------------------------------------------------------------------
-  // 5. Custom ID=timer1 uses !STOPWATCH_TIMER1 variable
+  // 5. Custom ID=timer1
   // -----------------------------------------------------------------------
   it('should accept a custom ID=timer1 and operate independently', async () => {
     const executor = createStopwatchExecutor();
@@ -149,11 +135,11 @@ describe('STOPWATCH command integration tests', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 6. STOPWATCH without ACTION defaults to START
+  // 6. Bare STOPWATCH toggles (starts on first call)
   // -----------------------------------------------------------------------
-  it('should default to ACTION=START when ACTION is omitted', async () => {
+  it('should toggle: start on first call, stop on second', async () => {
     const executor = createStopwatchExecutor();
-    // No ACTION param: should default to START
+    // First bare STOPWATCH: toggles → starts (not running)
     executor.loadMacro('STOPWATCH');
 
     const result = await executor.execute();
@@ -161,14 +147,29 @@ describe('STOPWATCH command integration tests', () => {
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
 
-    // Verify the stopwatch is running by doing a LAP on it in a second macro
+    // Verify it's running by doing a LAP
     const executor2 = createStopwatchExecutor();
     executor2.loadMacro('STOPWATCH ACTION=LAP');
 
     const result2 = await executor2.execute();
-    // LAP should succeed because the stopwatch was started (global state)
     expect(result2.success).toBe(true);
     expect(result2.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Second bare STOPWATCH: toggles → stops (was running)
+    const executor3 = createStopwatchExecutor();
+    executor3.loadMacro('STOPWATCH');
+
+    const result3 = await executor3.execute();
+    expect(result3.success).toBe(true);
+    expect(result3.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+    // Verify it's stopped: LAP should now fail
+    const executor4 = createStopwatchExecutor();
+    executor4.loadMacro('STOPWATCH ACTION=LAP');
+
+    const result4 = await executor4.execute();
+    expect(result4.success).toBe(false);
+    expect(result4.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
   });
 
   // -----------------------------------------------------------------------
@@ -189,7 +190,6 @@ describe('STOPWATCH command integration tests', () => {
   // -----------------------------------------------------------------------
   it('should return SCRIPT_ERROR for LAP on a non-running stopwatch', async () => {
     const executor = createStopwatchExecutor();
-    // LAP without a prior START
     executor.loadMacro('STOPWATCH ACTION=LAP');
 
     const result = await executor.execute();
@@ -199,17 +199,16 @@ describe('STOPWATCH command integration tests', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 9. ACTION=STOP on non-running stopwatch returns success (not an error)
+  // 9. Explicit STOP on non-running stopwatch returns error (original 962)
   // -----------------------------------------------------------------------
-  it('should return success for STOP on a non-running stopwatch', async () => {
+  it('should return SCRIPT_ERROR for explicit STOP on a non-running stopwatch', async () => {
     const executor = createStopwatchExecutor();
-    // STOP without a prior START
     executor.loadMacro('STOPWATCH ACTION=STOP');
 
     const result = await executor.execute();
 
-    expect(result.success).toBe(true);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
   });
 
   // -----------------------------------------------------------------------
@@ -222,16 +221,13 @@ describe('STOPWATCH command integration tests', () => {
       'WAIT SECONDS=1',
       'STOPWATCH ID=beta ACTION=START',
       'WAIT SECONDS=1',
-      // alpha has been running for ~2s, beta for ~1s
       'STOPWATCH ID=alpha ACTION=STOP',
       'STOPWATCH ID=beta ACTION=STOP',
     ].join('\n'));
 
     const resultPromise = executor.execute();
 
-    // First WAIT (1s)
     await vi.advanceTimersByTimeAsync(1000);
-    // Second WAIT (1s)
     await vi.advanceTimersByTimeAsync(1000);
 
     const result = await resultPromise;
@@ -239,21 +235,13 @@ describe('STOPWATCH command integration tests', () => {
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
 
-    // Verify independence: LAP on alpha should fail (it's stopped)
-    // while a new executor can still observe the stopped state
+    // LAP on alpha should fail (it's stopped)
     const executor2 = createStopwatchExecutor();
     executor2.loadMacro('STOPWATCH ID=alpha ACTION=LAP');
 
     const result2 = await executor2.execute();
     expect(result2.success).toBe(false);
     expect(result2.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
-    // And beta should also fail LAP (also stopped)
-    const executor3 = createStopwatchExecutor();
-    executor3.loadMacro('STOPWATCH ID=beta ACTION=LAP');
-
-    const result3 = await executor3.execute();
-    expect(result3.success).toBe(false);
-    expect(result3.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
   });
 
   // -----------------------------------------------------------------------
@@ -277,10 +265,9 @@ describe('STOPWATCH command integration tests', () => {
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
 
-    // Verify the stopwatch with the expanded ID "mywatch" was actually
-    // started and stopped by checking that LAP on it now fails
+    // Verify the stopwatch with the expanded ID was stopped
     const executor2 = createStopwatchExecutor();
-    executor2.loadMacro('STOPWATCH ID=mywatch ACTION=LAP');
+    executor2.loadMacro('STOPWATCH ID=MYWATCH ACTION=LAP');
 
     const result2 = await executor2.execute();
     expect(result2.success).toBe(false);
@@ -288,48 +275,142 @@ describe('STOPWATCH command integration tests', () => {
   });
 
   // -----------------------------------------------------------------------
-  // 12. ACTION=START resets a previously used stopwatch
+  // 12. ACTION=START on already-running stopwatch returns error (original 961)
   // -----------------------------------------------------------------------
-  it('should reset a previously used stopwatch on ACTION=START', async () => {
+  it('should return SCRIPT_ERROR for START on already-running stopwatch', async () => {
     const executor = createStopwatchExecutor();
     executor.loadMacro([
       'STOPWATCH ACTION=START',
-      'WAIT SECONDS=2',
+      'STOPWATCH ACTION=START',
+    ].join('\n'));
+
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+  });
+
+  // -----------------------------------------------------------------------
+  // 13. PREFIX SYNTAX: STOPWATCH START ID=timer1
+  // -----------------------------------------------------------------------
+  it('should support START ID=x prefix syntax', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro([
+      'STOPWATCH START ID=timer1',
+      'WAIT SECONDS=1',
+      'STOPWATCH STOP ID=timer1',
+    ].join('\n'));
+
+    const resultPromise = executor.execute();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  // -----------------------------------------------------------------------
+  // 14. LABEL parameter records a timestamp
+  // -----------------------------------------------------------------------
+  it('should support LABEL parameter', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro([
+      'STOPWATCH ACTION=START',
+      'WAIT SECONDS=1',
+      'STOPWATCH LABEL=checkpoint1',
+    ].join('\n'));
+
+    const resultPromise = executor.execute();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  // -----------------------------------------------------------------------
+  // 15. Toggle with ID (original sample macro pattern)
+  // -----------------------------------------------------------------------
+  it('should toggle stopwatch with ID (start then stop)', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro([
+      'STOPWATCH ID=Total',          // Toggle → start (not running)
+      'STOPWATCH ID=Firstpage',      // Toggle → start
+      'WAIT SECONDS=1',
+      'STOPWATCH ID=Firstpage',      // Toggle → stop (was running)
+      'STOPWATCH ID=Total',          // Toggle → stop (was running)
+    ].join('\n'));
+
+    const resultPromise = executor.execute();
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await resultPromise;
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  // -----------------------------------------------------------------------
+  // 16. Explicit START after STOP works (restart)
+  // -----------------------------------------------------------------------
+  it('should allow explicit START after STOP', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro([
+      'STOPWATCH ACTION=START',
+      'WAIT SECONDS=1',
       'STOPWATCH ACTION=STOP',
-      // Stopwatch is now stopped with ~2000ms elapsed
-      // Re-starting should reset it
       'STOPWATCH ACTION=START',
     ].join('\n'));
 
     const resultPromise = executor.execute();
 
-    // Advance for the 2s WAIT
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(1000);
 
     const result = await resultPromise;
 
     expect(result.success).toBe(true);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
 
-    // After the reset START, the stopwatch should be running again.
-    // A LAP should succeed.
+    // Verify the stopwatch is running again
     const executor2 = createStopwatchExecutor();
     executor2.loadMacro('STOPWATCH ACTION=LAP');
 
     const result2 = await executor2.execute();
     expect(result2.success).toBe(true);
     expect(result2.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
 
-    // And laps were reset (the internal lapTimes array was cleared by START)
-    // We can verify this by doing two more laps and checking both succeed
-    const executor3 = createStopwatchExecutor();
-    executor3.loadMacro([
-      'STOPWATCH ACTION=LAP',
-      'STOPWATCH ACTION=LAP',
+  // -----------------------------------------------------------------------
+  // 17. PREFIX SYNTAX: STOP on non-started errors
+  // -----------------------------------------------------------------------
+  it('should error on prefix STOP for non-started stopwatch', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro('STOPWATCH STOP ID=nonexistent');
+
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+  });
+
+  // -----------------------------------------------------------------------
+  // 18. PREFIX SYNTAX: START on already-running errors
+  // -----------------------------------------------------------------------
+  it('should error on prefix START for already-running stopwatch', async () => {
+    const executor = createStopwatchExecutor();
+    executor.loadMacro([
+      'STOPWATCH START ID=timer1',
+      'STOPWATCH START ID=timer1',
     ].join('\n'));
 
-    const result3 = await executor3.execute();
-    expect(result3.success).toBe(true);
-    expect(result3.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
   });
 });

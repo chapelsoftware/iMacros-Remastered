@@ -89,6 +89,12 @@ const stopwatches: Map<string, StopwatchData> = new Map();
 const DEFAULT_STOPWATCH_ID = 'default';
 
 /**
+ * Global start time for LABEL elapsed time calculation.
+ * Set when the first stopwatch is started in a session.
+ */
+let globalStartTime: number | null = null;
+
+/**
  * Get or create a stopwatch
  */
 function getStopwatch(id: string = DEFAULT_STOPWATCH_ID): StopwatchData {
@@ -109,7 +115,7 @@ function getStopwatch(id: string = DEFAULT_STOPWATCH_ID): StopwatchData {
  * Clear a stopwatch
  */
 export function clearStopwatch(id: string = DEFAULT_STOPWATCH_ID): void {
-  stopwatches.delete(id);
+  stopwatches.delete(id === DEFAULT_STOPWATCH_ID ? id : id.toUpperCase());
 }
 
 /**
@@ -117,6 +123,7 @@ export function clearStopwatch(id: string = DEFAULT_STOPWATCH_ID): void {
  */
 export function clearAllStopwatches(): void {
   stopwatches.clear();
+  globalStartTime = null;
 }
 
 /**
@@ -124,7 +131,8 @@ export function clearAllStopwatches(): void {
  * Returns the elapsed time, or 0 if the stopwatch doesn't exist
  */
 export function getStopwatchElapsed(id: string = DEFAULT_STOPWATCH_ID): number {
-  const sw = stopwatches.get(id);
+  const lookupId = id === DEFAULT_STOPWATCH_ID ? id : id.toUpperCase();
+  const sw = stopwatches.get(lookupId);
   if (!sw) {
     return 0;
   }
@@ -295,38 +303,120 @@ export const versionHandler: CommandHandler = async (ctx: CommandContext): Promi
 /**
  * STOPWATCH command handler
  *
- * Syntax:
- * - STOPWATCH ID=<id> ACTION=START - Start/reset a stopwatch
- * - STOPWATCH ID=<id> ACTION=STOP - Stop a stopwatch
- * - STOPWATCH ID=<id> ACTION=LAP - Record a lap time
- * - STOPWATCH ID=<id> ACTION=READ - Read current elapsed time
+ * Supports original iMacros 8.9.7 syntax:
+ * - STOPWATCH ID=<id>                   - Toggle: start if not running, stop if running
+ * - STOPWATCH START ID=<id>             - Explicit start (error if already running)
+ * - STOPWATCH STOP ID=<id>              - Explicit stop (error if not running)
+ * - STOPWATCH LABEL=<name>              - Record a timestamp label
+ * - STOPWATCH ID=<id> ACTION=START      - Extended syntax: explicit start
+ * - STOPWATCH ID=<id> ACTION=STOP       - Extended syntax: explicit stop
+ * - STOPWATCH ID=<id> ACTION=LAP        - Record a lap time
+ * - STOPWATCH ID=<id> ACTION=READ       - Read current elapsed time
  *
  * Time is stored in !STOPWATCH_<ID> variable in milliseconds.
+ * !STOPWATCHTIME is set on stop and label operations (seconds, 3 decimal places).
  * If ID is omitted, uses "default".
  *
- * Examples:
- * - STOPWATCH ID=timer1 ACTION=START
- * - STOPWATCH ACTION=START
- * - STOPWATCH ID=timer1 ACTION=LAP
- * - STOPWATCH ID=timer1 ACTION=STOP
+ * Error codes (matching original iMacros):
+ * - 961: START on already-running stopwatch
+ * - 962: STOP on non-existent/not-started stopwatch
  */
 export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const idParam = ctx.getParam('ID');
   const actionParam = ctx.getParam('ACTION');
+  const labelParam = ctx.getParam('LABEL');
 
-  const id = idParam ? ctx.expand(idParam) : DEFAULT_STOPWATCH_ID;
-  const action = actionParam ? ctx.expand(actionParam).toUpperCase() : 'START';
+  // Check for original prefix syntax: STOPWATCH START ID=x / STOPWATCH STOP ID=x
+  // These appear as boolean flag parameters (key=START/STOP, value=true)
+  const hasStartFlag = ctx.getParam('START') === 'true';
+  const hasStopFlag = ctx.getParam('STOP') === 'true';
+
+  // Handle LABEL parameter - records a timestamp label
+  if (labelParam) {
+    const labelName = ctx.expand(labelParam).toUpperCase();
+    const elapsed = Date.now() - (globalStartTime || Date.now());
+    const elapsedSec = (elapsed / 1000).toFixed(3);
+
+    ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
+    ctx.log('info', `Stopwatch label "${labelName}": ${elapsed}ms`);
+
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+      output: String(elapsed),
+    };
+  }
+
+  const id = idParam ? ctx.expand(idParam).toUpperCase() : DEFAULT_STOPWATCH_ID;
+
+  // Determine action from prefix flags, ACTION param, or default to toggle
+  let action: string;
+  if (hasStartFlag) {
+    action = 'START';
+  } else if (hasStopFlag) {
+    action = 'STOP';
+  } else if (actionParam) {
+    action = ctx.expand(actionParam).toUpperCase();
+  } else {
+    // No action specified - toggle behavior (original iMacros default)
+    action = 'TOGGLE';
+  }
 
   const sw = getStopwatch(id);
-  const varName = id === DEFAULT_STOPWATCH_ID ? '!STOPWATCH' : `!STOPWATCH_${id.toUpperCase()}`;
+  const varName = id === DEFAULT_STOPWATCH_ID ? '!STOPWATCH' : `!STOPWATCH_${id}`;
 
   switch (action) {
+    case 'TOGGLE': {
+      // Original iMacros behavior: if running, stop it; if not running, start it
+      if (sw.running) {
+        // Stop
+        const elapsed = Date.now() - sw.startTime + sw.accumulated;
+        sw.running = false;
+        sw.accumulated = elapsed;
+        const elapsedSec = (elapsed / 1000).toFixed(3);
+
+        ctx.state.setVariable(varName, elapsed);
+        ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
+        ctx.log('info', `Stopwatch "${id}" stopped at ${elapsed}ms`);
+
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+          output: String(elapsed),
+        };
+      } else {
+        // Start
+        sw.startTime = Date.now();
+        sw.lapTimes = [];
+        sw.running = true;
+        sw.accumulated = 0;
+        if (!globalStartTime) globalStartTime = Date.now();
+
+        ctx.state.setVariable(varName, 0);
+        ctx.log('info', `Stopwatch "${id}" started`);
+
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+        };
+      }
+    }
+
     case 'START': {
-      // Start or reset the stopwatch
+      // Explicit start - error if already running (original error 961)
+      if (sw.running) {
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+          errorMessage: `Stopwatch ID=${id} already started`,
+        };
+      }
+
       sw.startTime = Date.now();
       sw.lapTimes = [];
       sw.running = true;
       sw.accumulated = 0;
+      if (!globalStartTime) globalStartTime = Date.now();
 
       ctx.state.setVariable(varName, 0);
       ctx.log('info', `Stopwatch "${id}" started`);
@@ -339,18 +429,21 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
 
     case 'STOP': {
       if (!sw.running) {
-        ctx.log('warn', `Stopwatch "${id}" is not running`);
+        // Original error 962: stop on non-existent/not-started stopwatch
         return {
-          success: true,
-          errorCode: IMACROS_ERROR_CODES.OK,
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+          errorMessage: `Stopwatch ID=${id} wasn't started`,
         };
       }
 
       const elapsed = Date.now() - sw.startTime + sw.accumulated;
       sw.running = false;
       sw.accumulated = elapsed;
+      const elapsedSec = (elapsed / 1000).toFixed(3);
 
       ctx.state.setVariable(varName, elapsed);
+      ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
       ctx.log('info', `Stopwatch "${id}" stopped at ${elapsed}ms`);
 
       return {
@@ -374,9 +467,11 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
 
       const lapNumber = sw.lapTimes.length;
       const lapVarName = `${varName}_LAP${lapNumber}`;
+      const lapTimeSec = (lapTime / 1000).toFixed(3);
 
       ctx.state.setVariable(varName, lapTime);
       ctx.state.setVariable(lapVarName, lapTime);
+      ctx.state.setVariable('!STOPWATCHTIME', lapTimeSec);
       ctx.log('info', `Stopwatch "${id}" lap ${lapNumber}: ${lapTime}ms`);
 
       return {

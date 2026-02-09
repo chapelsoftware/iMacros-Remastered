@@ -280,12 +280,72 @@ export const LAST_DOWNLOAD_ID_KEY = '!LAST_DOWNLOAD_ID';
 const ILLEGAL_FILENAME_CHARS = /[<>:"/\\|?*\x00-\x1F]/;
 
 /**
+ * Regex for sanitizing filenames (matches iMacros 8.9.7 behavior)
+ * Replaces sequences of illegal chars (and surrounding whitespace) with underscore
+ */
+const FILENAME_SANITIZE_RE = /\s*[:*?|<>"\/]+\s*/g;
+
+/**
  * Validate a filename for illegal characters
  * Returns the illegal character found or null if valid
  */
 function validateFilename(filename: string): string | null {
   const match = filename.match(ILLEGAL_FILENAME_CHARS);
   return match ? match[0] : null;
+}
+
+/**
+ * Sanitize a filename by replacing illegal characters with underscores.
+ * Matches iMacros 8.9.7 behavior: replaces sequences of [:*?|<>"/] and
+ * surrounding whitespace with a single underscore.
+ */
+export function sanitizeFilename(filename: string): string {
+  return filename.replace(FILENAME_SANITIZE_RE, '_');
+}
+
+/**
+ * Derive a document name from a URL, mimicking iMacros 8.9.7 __doc_name.
+ * Extracts the last path segment (without extension), falls back to hostname
+ * (stripping www.), then to "unknown".
+ */
+export function deriveDocumentName(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    // Try last path segment
+    const pathMatch = parsed.pathname.match(/\/([^/]*)$/);
+    let name = pathMatch ? pathMatch[1] : '';
+
+    // Fall back to hostname (strip www.)
+    if (!name.length) {
+      const hostMatch = parsed.hostname.match(/^(?:www\.)(.+)/);
+      if (hostMatch) {
+        name = hostMatch[1];
+      }
+    }
+
+    if (!name.length) return 'unknown';
+
+    // Strip file extension if present
+    const extMatch = name.match(/^(.+)\.\w+$/);
+    if (extMatch) return extMatch[1];
+
+    return name;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Format extract data as CSV (iMacros 8.9.7 parity).
+ * Escapes double quotes, wraps fields in quotes, and converts [EXTRACT]
+ * delimiters to comma-separated values.
+ */
+export function formatExtractAsCsv(data: string): string {
+  // Escape existing double quotes
+  const escaped = data.replace(/"/g, '""');
+  // Replace [EXTRACT] delimiters with "," to form CSV fields
+  return '"' + escaped.replace(/\[EXTRACT\]/g, '","') + '"';
 }
 
 /**
@@ -513,7 +573,47 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
 
   // Expand variables
   const folder = folderParam ? ctx.expand(folderParam) : ctx.state.getVariable(DOWNLOAD_FOLDER_KEY)?.toString();
-  const file = ctx.expand(fileParam);
+  let file = ctx.expand(fileParam);
+
+  // Validate folder path (iMacros 8.9.7 error 932)
+  if (folder && folder !== '*') {
+    const folderError = validateFolderPath(folder);
+    if (folderError) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_FOLDER_ACCESS,
+        errorMessage: `Wrong path ${folder}`,
+      };
+    }
+  }
+
+  // Resolve FILE wildcards (iMacros 8.9.7 parity)
+  // FILE=* derives name from page URL/title (or "extract.csv" for EXTRACT type)
+  // FILE=+suffix appends suffix to derived name
+  const currentUrl = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
+
+  if (saveType === 'EXTRACT') {
+    if (file === '*') {
+      file = 'extract.csv';
+    } else {
+      const suffixMatch = file.match(/^\+(.+)$/);
+      if (suffixMatch) {
+        file = 'extract' + suffixMatch[1] + '.csv';
+      }
+    }
+  } else {
+    if (file === '*') {
+      file = deriveDocumentName(currentUrl);
+    } else {
+      const suffixMatch = file.match(/^\+(.+)$/);
+      if (suffixMatch) {
+        file = deriveDocumentName(currentUrl) + suffixMatch[1];
+      }
+    }
+  }
+
+  // Sanitize filename (iMacros 8.9.7 parity)
+  file = sanitizeFilename(file);
 
   // Parse quality for JPG
   let quality: number | undefined;
@@ -530,10 +630,12 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
 
   ctx.log('info', `Saving as ${saveType}: ${folder ? folder + '/' : ''}${file}`);
 
-  // For EXTRACT type, get the content from !EXTRACT variable
+  // For EXTRACT type, format as CSV and clear extract data (iMacros 8.9.7 parity)
   let content: string | undefined;
   if (saveType === 'EXTRACT') {
-    content = ctx.state.getVariable('!EXTRACT')?.toString() || '';
+    const extractData = ctx.state.getVariable('!EXTRACT')?.toString() || '';
+    content = formatExtractAsCsv(extractData);
+    ctx.state.clearExtract();
   }
 
   // Send save request to browser extension

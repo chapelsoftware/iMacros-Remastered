@@ -16,6 +16,7 @@ import {
   CommandResult,
   IMACROS_ERROR_CODES,
 } from '../executor';
+import { sanitizeFilename, deriveDocumentName } from './downloads';
 
 // ===== Browser Message Types =====
 
@@ -866,8 +867,38 @@ export const screenshotHandler: CommandHandler = async (ctx: CommandContext): Pr
 
   // Expand variables
   const folder = folderParam ? ctx.expand(folderParam) : undefined;
-  const file = ctx.expand(fileParam);
+  let file = ctx.expand(fileParam);
   const selector = selectorParam ? ctx.expand(selectorParam) : undefined;
+
+  // Resolve FOLDER=* (use browser default download path)
+  const resolvedFolder = folder === '*' ? undefined : folder;
+
+  // Validate folder path (skip for wildcard '*' which means browser default)
+  if (folder && folder !== '*') {
+    if (folder.includes('\0')) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+        errorMessage: 'Folder path contains null byte',
+      };
+    }
+  }
+
+  // Resolve FILE wildcards (iMacros 8.9.7 parity)
+  // FILE=* derives name from page URL/title
+  // FILE=+suffix appends suffix to derived name
+  const currentUrl = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
+  if (file === '*') {
+    file = deriveDocumentName(currentUrl) + '.png';
+  } else {
+    const suffixMatch = file.match(/^\+(.+)$/);
+    if (suffixMatch) {
+      file = deriveDocumentName(currentUrl) + suffixMatch[1];
+    }
+  }
+
+  // Sanitize filename (iMacros 8.9.7 parity)
+  file = sanitizeFilename(file);
 
   // Determine format from filename
   const format = getScreenshotFormat(file);
@@ -889,7 +920,7 @@ export const screenshotHandler: CommandHandler = async (ctx: CommandContext): Pr
     }
   }
 
-  ctx.log('info', `Taking ${captureType.toLowerCase()} screenshot: ${folder ? folder + '/' : ''}${file}`);
+  ctx.log('info', `Taking ${captureType.toLowerCase()} screenshot: ${resolvedFolder ? resolvedFolder + '/' : ''}${file}`);
 
   const response = await sendBrowserCommandMessage(
     {
@@ -897,7 +928,7 @@ export const screenshotHandler: CommandHandler = async (ctx: CommandContext): Pr
       captureType,
       format,
       quality,
-      folder,
+      folder: resolvedFolder,
       file,
       selector,
     },

@@ -1190,6 +1190,33 @@ describe('TAG Command Helper Functions', () => {
       expect(selector.pos).toBeUndefined();
       expect(selector.attr).toBeUndefined();
     });
+
+    it('should build FORM parameter in selector', () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT FORM=NAME:loginform ATTR=ID:username CONTENT=test');
+      const selector = buildSelector(ctx);
+      expect(selector.form).toBe('NAME:loginform');
+      expect(selector.type).toBe('INPUT');
+      expect(selector.attr).toBe('ID:username');
+    });
+
+    it('should build FORM parameter with multiple conditions', () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT FORM=ID:mainform&&NAME:login ATTR=NAME:user');
+      const selector = buildSelector(ctx);
+      expect(selector.form).toBe('ID:mainform&&NAME:login');
+    });
+
+    it('should expand variables in FORM parameter', () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT FORM=NAME:{{!VAR1}} ATTR=NAME:user');
+      ctx.variables.set('!VAR1', 'myform');
+      const selector = buildSelector(ctx);
+      expect(selector.form).toBe('NAME:myform');
+    });
+
+    it('should not include FORM when param not present', () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT ATTR=NAME:q CONTENT=hello');
+      const selector = buildSelector(ctx);
+      expect(selector.form).toBeUndefined();
+    });
   });
 
   describe('buildAction', () => {
@@ -1556,6 +1583,24 @@ describe('TAG Command Handler Integration (with mock ContentScriptSender)', () =
 
       const msg = sentMessages[0] as TagCommandMessage;
       expect(msg.payload.selector.type).toBe('*');
+    });
+
+    it('should send FORM parameter in selector', async () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT FORM=NAME:loginform ATTR=NAME:user CONTENT=test');
+      await tagHandler(ctx);
+
+      const msg = sentMessages[0] as TagCommandMessage;
+      expect(msg.payload.selector.form).toBe('NAME:loginform');
+      expect(msg.payload.selector.type).toBe('INPUT');
+      expect(msg.payload.selector.attr).toBe('NAME:user');
+    });
+
+    it('should send FORM parameter with multiple conditions', async () => {
+      const { ctx } = buildContextFromLine('TAG POS=1 TYPE=INPUT FORM=ID:mainform&&NAME:login ATTR=NAME:user CONTENT=test');
+      await tagHandler(ctx);
+
+      const msg = sentMessages[0] as TagCommandMessage;
+      expect(msg.payload.selector.form).toBe('ID:mainform&&NAME:login');
     });
 
     it('should handle negative POS (last element)', async () => {

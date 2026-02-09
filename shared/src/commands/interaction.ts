@@ -56,6 +56,8 @@ export interface ElementSelector {
   css?: string;
   /** Whether this is relative positioning (POS=R<n>) */
   relative?: boolean;
+  /** FORM filter (e.g., "NAME:loginform" or "ID:mainform&&NAME:login") */
+  form?: string;
 }
 
 /**
@@ -426,6 +428,11 @@ export function buildSelector(ctx: CommandContext): ElementSelector {
   const attr = ctx.getParam('ATTR');
   if (attr) {
     selector.attr = ctx.expand(attr);
+  }
+
+  const form = ctx.getParam('FORM');
+  if (form) {
+    selector.form = ctx.expand(form);
   }
 
   return selector;

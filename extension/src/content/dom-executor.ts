@@ -381,6 +381,9 @@ async function resolveSelector(
       // Quote the attr value to preserve spaces during tokenization
       parts.push(`ATTR="${selector.attr}"`);
     }
+    if (selector.form) {
+      parts.push(`FORM="${selector.form}"`);
+    }
     selectorString = parts.join(' ');
   } else {
     // No valid selector provided
@@ -521,7 +524,8 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
           (element.type === 'checkbox' || element.type === 'radio')) {
         return element.checked ? 'YES' : 'NO';
       }
-      return EANF;
+      // Original iMacros throws error on non-checkbox/radio elements
+      throw new Error(`EXTRACT=CHECKED is only valid for checkbox and radio elements, not ${element.tagName}`);
 
     case 'ID':
       return element.id || '';

@@ -40,6 +40,7 @@ import {
   matchesType,
   matchesAllAttributes,
   parseTagSelector,
+  findMatchingForm,
   type TagSelector,
   type ElementFinderResult,
 } from '@extension/content/element-finder';
@@ -1543,6 +1544,192 @@ describe('Element Finder', () => {
     it('should preserve attribute value case', () => {
       const attrs = parseAttrString('NAME:TestValue');
       expect(attrs['NAME']).toBe('TestValue');
+    });
+  });
+
+  // ============================================================
+  // SECTION: FORM Parameter Support
+  // ============================================================
+  describe('FORM Parameter', () => {
+    let context: DomContext;
+
+    beforeEach(() => {
+      context = createDomContext(`
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <form id="loginForm" name="loginform">
+            <input type="text" name="username" id="login-user" />
+            <input type="password" name="password" id="login-pass" />
+            <button type="submit">Login</button>
+          </form>
+          <form id="searchForm" name="searchform">
+            <input type="text" name="query" id="search-query" />
+            <button type="submit">Search</button>
+          </form>
+          <form id="regForm" name="registration">
+            <input type="text" name="username" id="reg-user" />
+            <input type="email" name="email" id="reg-email" />
+            <button type="submit">Register</button>
+          </form>
+          <div id="outside">
+            <input type="text" name="standalone" id="standalone-input" />
+          </div>
+        </body>
+        </html>
+      `);
+    });
+
+    it('should find element within form filtered by NAME', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'username' },
+        form: 'NAME:loginform',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).not.toBeNull();
+      expect(result.element?.getAttribute('id')).toBe('login-user');
+    });
+
+    it('should find element within form filtered by ID', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'query' },
+        form: 'ID:searchForm',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).not.toBeNull();
+      expect(result.element?.getAttribute('id')).toBe('search-query');
+    });
+
+    it('should find correct element when multiple forms have same input name', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'username' },
+        form: 'NAME:registration',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).not.toBeNull();
+      expect(result.element?.getAttribute('id')).toBe('reg-user');
+    });
+
+    it('should support multiple FORM conditions with &&', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'username' },
+        form: 'ID:loginForm&&NAME:loginform',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).not.toBeNull();
+      expect(result.element?.getAttribute('id')).toBe('login-user');
+    });
+
+    it('should return null when form is not found', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'username' },
+        form: 'NAME:nonexistent',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).toBeNull();
+      expect(result.count).toBe(0);
+    });
+
+    it('should not find elements outside the matched form', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: { NAME: 'standalone' },
+        form: 'NAME:loginform',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.element).toBeNull();
+    });
+
+    it('should only count elements inside the form', () => {
+      const selector: TagSelector = {
+        tag: 'INPUT',
+        pos: 1,
+        attrs: {},
+        form: 'NAME:registration',
+      };
+      const result = findByTagSelector(selector, context.document);
+      expect(result.count).toBe(2); // username + email in registration form
+    });
+
+    it('should parse FORM parameter via parseTagSelector', () => {
+      const parsed = parseTagSelector('TAG POS=1 TYPE=INPUT FORM=NAME:loginform ATTR=ID:username');
+      expect(parsed).not.toBeNull();
+      expect(parsed!.form).toBe('NAME:loginform');
+      expect(parsed!.attrs['ID']).toBe('username');
+    });
+
+    it('should parse FORM parameter with multiple conditions via parseTagSelector', () => {
+      const parsed = parseTagSelector('TAG POS=1 TYPE=INPUT FORM=ID:mainform&&NAME:login ATTR=NAME:user');
+      expect(parsed).not.toBeNull();
+      expect(parsed!.form).toBe('ID:mainform&&NAME:login');
+    });
+  });
+
+  // ============================================================
+  // SECTION: findMatchingForm Tests
+  // ============================================================
+  describe('findMatchingForm', () => {
+    let context: DomContext;
+
+    beforeEach(() => {
+      context = createDomContext(`
+        <!DOCTYPE html>
+        <html>
+        <body>
+          <form id="form1" name="login" action="/login">
+            <input type="text" name="user" />
+          </form>
+          <form id="form2" name="search" action="/search">
+            <input type="text" name="q" />
+          </form>
+        </body>
+        </html>
+      `);
+    });
+
+    it('should find form by NAME', () => {
+      const form = findMatchingForm('NAME:login', context.document);
+      expect(form).not.toBeNull();
+      expect(form?.getAttribute('id')).toBe('form1');
+    });
+
+    it('should find form by ID', () => {
+      const form = findMatchingForm('ID:form2', context.document);
+      expect(form).not.toBeNull();
+      expect(form?.getAttribute('name')).toBe('search');
+    });
+
+    it('should find form by ACTION', () => {
+      const form = findMatchingForm('ACTION:/search', context.document);
+      expect(form).not.toBeNull();
+      expect(form?.getAttribute('id')).toBe('form2');
+    });
+
+    it('should find form with multiple conditions', () => {
+      const form = findMatchingForm('ID:form1&&NAME:login', context.document);
+      expect(form).not.toBeNull();
+      expect(form?.getAttribute('id')).toBe('form1');
+    });
+
+    it('should return null when no form matches', () => {
+      const form = findMatchingForm('NAME:nonexistent', context.document);
+      expect(form).toBeNull();
+    });
+
+    it('should return null when conditions conflict', () => {
+      const form = findMatchingForm('ID:form1&&NAME:search', context.document);
+      expect(form).toBeNull();
     });
   });
 });

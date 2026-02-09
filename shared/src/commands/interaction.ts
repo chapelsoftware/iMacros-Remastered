@@ -111,7 +111,7 @@ export interface ClickCommandMessage extends ContentScriptMessage {
     x: number;
     /** Y coordinate (relative to viewport or element) */
     y: number;
-    /** Optional content/button identifier */
+    /** Optional content for form interaction (like TAG CONTENT=) */
     content?: string;
     /** Click type */
     button: 'left' | 'middle' | 'right';
@@ -592,7 +592,8 @@ export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<C
  * CLICK command handler
  *
  * CLICK X=100 Y=200
- * CLICK X=50 Y=50 CONTENT=left
+ * CLICK X=50 Y=50 BUTTON=right
+ * CLICK X=50 Y=50 CONTENT=somevalue (triggers form interaction on element at coords)
  */
 export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   // Get coordinates
@@ -618,15 +619,19 @@ export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise
     };
   }
 
-  // Get optional parameters
+  // CONTENT triggers form-interaction logic (like TAG CONTENT=)
   const content = ctx.getParam('CONTENT');
+  const expandedContent = content ? parseContentParam(ctx.expand(content)) : undefined;
+
+  // BUTTON param determines mouse button type (separate from CONTENT)
+  const buttonParam = ctx.getParam('BUTTON');
   let button: 'left' | 'middle' | 'right' = 'left';
 
-  if (content) {
-    const contentLower = ctx.expand(content).toLowerCase();
-    if (contentLower === 'middle' || contentLower === 'center') {
+  if (buttonParam) {
+    const buttonLower = ctx.expand(buttonParam).toLowerCase();
+    if (buttonLower === 'middle' || buttonLower === 'center') {
       button = 'middle';
-    } else if (contentLower === 'right') {
+    } else if (buttonLower === 'right') {
       button = 'right';
     }
   }
@@ -639,14 +644,14 @@ export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise
     payload: {
       x,
       y,
-      content: content ? ctx.expand(content) : undefined,
+      content: expandedContent,
       button,
       clickCount: 1,
       modifiers: {},
     },
   };
 
-  ctx.log('debug', `CLICK: X=${x}, Y=${y}, button=${button}`);
+  ctx.log('debug', `CLICK: X=${x}, Y=${y}, button=${button}${expandedContent ? `, content=${expandedContent}` : ''}`);
 
   try {
     const response = await activeSender.sendMessage(message);

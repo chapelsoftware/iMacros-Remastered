@@ -115,16 +115,19 @@ export const DEFAULT_VALUES: Record<string, VariableValue> = {
   '!URLSTART': '',
   '!URLCURRENT': '',
   // Stopwatch
+  // !FILESTOPWATCH: native-host-only - file creation requires native messaging
   '!FILESTOPWATCH': '',
   '!STOPWATCH': 'NO',
   '!STOPWATCHTIME': 0,
   '!STOPWATCH_HEADER': 'YES',
-  // Clipboard
+  // Clipboard (native-host-only: system clipboard write requires native messaging)
   '!CLIPBOARD': '',
   // Download/PDF
   '!DOWNLOADPDF': 'NO',
   // Browser/Page control
+  // !USERAGENT: native-host-only - browser user agent requires extension API
   '!USERAGENT': '',
+  // !POPUP_ALLOWED: native-host-only - popup permission manager requires extension API
   '!POPUP_ALLOWED': 'NO',
   '!WAITPAGECOMPLETE': 'YES',
   // Profiler
@@ -255,6 +258,76 @@ export class VariableContext {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Validate a value for a system variable (iMacros 8.9.7 parity).
+   * Returns an error message string if invalid, or null if valid.
+   */
+  private validateSystemVariable(upperName: string, value: VariableValue): string | null {
+    const strValue = String(value).toUpperCase();
+    const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+
+    // YES/NO boolean variables
+    const yesNoVars = [
+      '!ERRORIGNORE', '!ERRORLOOP', '!SINGLESTEP',
+      '!EXTRACT_TEST_POPUP', '!STOPWATCH', '!STOPWATCH_HEADER',
+      '!WAITPAGECOMPLETE', '!DOWNLOADPDF', '!POPUP_ALLOWED',
+    ];
+    if (yesNoVars.includes(upperName)) {
+      if (strValue !== 'YES' && strValue !== 'NO') {
+        return `${upperName} must be YES or NO, got: ${value}`;
+      }
+      return null;
+    }
+
+    // Timeout variables must be non-negative numbers
+    const timeoutVars = [
+      '!TIMEOUT', '!TIMEOUT_STEP', '!TIMEOUT_PAGE',
+      '!TIMEOUT_TAG', '!TIMEOUT_MACRO',
+    ];
+    if (timeoutVars.includes(upperName)) {
+      if (isNaN(numValue) || numValue < 0) {
+        return `${upperName} must be a non-negative number, got: ${value}`;
+      }
+      return null;
+    }
+
+    // !REPLAYSPEED must be one of the valid values
+    if (upperName === '!REPLAYSPEED') {
+      const validSpeeds = ['SLOW', 'MEDIUM', 'FAST'];
+      if (!validSpeeds.includes(strValue)) {
+        return `${upperName} must be SLOW, MEDIUM, or FAST, got: ${value}`;
+      }
+      return null;
+    }
+
+    // !LOOP must be a positive integer
+    if (upperName === '!LOOP') {
+      if (isNaN(numValue) || numValue < 1 || !Number.isInteger(numValue)) {
+        return `${upperName} must be a positive integer, got: ${value}`;
+      }
+      return null;
+    }
+
+    // !DATASOURCE_LINE must be a positive integer
+    if (upperName === '!DATASOURCE_LINE') {
+      if (isNaN(numValue) || numValue < 1 || !Number.isInteger(numValue)) {
+        return `${upperName} must be a positive integer, got: ${value}`;
+      }
+      return null;
+    }
+
+    // !DATASOURCE_DELIMITER must be a single character
+    if (upperName === '!DATASOURCE_DELIMITER') {
+      const rawStr = String(value);
+      if (rawStr.length !== 1) {
+        return `${upperName} must be a single character, got: ${value}`;
+      }
+      return null;
+    }
+
+    return null;
   }
 
   /**
@@ -424,8 +497,28 @@ export class VariableContext {
         };
       }
 
+      // Validate system variable values (iMacros 8.9.7 parity)
+      const validationError = this.validateSystemVariable(upperName, value);
+      if (validationError) {
+        return {
+          success: false,
+          previousValue: this.get(upperName),
+          newValue: value,
+          error: validationError,
+        };
+      }
+
       previousValue = this.systemVars.get(upperName) ?? null;
       this.systemVars.set(upperName, value);
+
+      // !TIMEOUT cascade: setting !TIMEOUT also sets !TIMEOUT_TAG = timeout/10
+      // (iMacros 8.9.7 behavior)
+      if (upperName === '!TIMEOUT') {
+        const numValue = typeof value === 'number' ? value : parseFloat(String(value));
+        if (!isNaN(numValue)) {
+          this.systemVars.set('!TIMEOUT_TAG', Math.max(1, Math.round(numValue / 10)));
+        }
+      }
 
       // Special handling for !EXTRACT and !EXTRACTADD (iMacros 8.9.7 behavior)
       // SET !EXTRACT = clears accumulator, then adds value (unless "null")

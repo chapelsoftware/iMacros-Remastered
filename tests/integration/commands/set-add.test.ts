@@ -616,3 +616,192 @@ describe('SET and ADD edge cases', () => {
     });
   });
 });
+
+describe('SET !LOOP first-loop guard (iMacros 8.9.7 parity)', () => {
+  it('should apply SET !LOOP on first loop iteration', async () => {
+    const result = await executeMacro('SET !LOOP 3');
+    expect(result.success).toBe(true);
+    expect(result.variables['!LOOP']).toBe('3');
+  });
+
+  it('should count loops correctly with maxLoops', async () => {
+    const script = [
+      'SET !VAR0 EVAL("{{!LOOP}}")',
+    ].join('\n');
+    const result = await executeMacro(script, { maxLoops: 3 });
+    expect(result.success).toBe(true);
+    // After 3 loops, !VAR0 should be 3 (the last loop number)
+    expect(result.variables['!VAR0']).toBe(3);
+  });
+
+  it('should accumulate across loops with ADD', async () => {
+    // Only ADD (no SET to reset), so value accumulates across loops
+    const script = [
+      'ADD !VAR1 1',
+    ].join('\n');
+    const result = await executeMacro(script, { maxLoops: 3 });
+    expect(result.success).toBe(true);
+    // Should have run 3 loops, adding 1 each time (starting from 0/empty)
+    expect(result.variables['!VAR1']).toBe(3);
+  });
+});
+
+describe('SET !TIMEOUT cascade (iMacros 8.9.7 parity)', () => {
+  it('should cascade !TIMEOUT to !TIMEOUT_TAG = timeout/10', async () => {
+    const result = await executeMacro('SET !TIMEOUT 60');
+    expect(result.success).toBe(true);
+    expect(result.variables['!TIMEOUT']).toBe('60');
+    expect(result.variables['!TIMEOUT_TAG']).toBe(6);
+  });
+
+  it('should cascade !TIMEOUT 30 to !TIMEOUT_TAG 3', async () => {
+    const result = await executeMacro('SET !TIMEOUT 30');
+    expect(result.success).toBe(true);
+    expect(result.variables['!TIMEOUT_TAG']).toBe(3);
+  });
+
+  it('should cascade !TIMEOUT 5 to !TIMEOUT_TAG 1 (minimum 1)', async () => {
+    const result = await executeMacro('SET !TIMEOUT 5');
+    expect(result.success).toBe(true);
+    expect(result.variables['!TIMEOUT_TAG']).toBe(1);
+  });
+
+  it('should not cascade when setting !TIMEOUT_TAG directly', async () => {
+    const script = [
+      'SET !TIMEOUT 60',
+      'SET !TIMEOUT_TAG 20',
+    ].join('\n');
+    const result = await executeMacro(script);
+    expect(result.success).toBe(true);
+    expect(result.variables['!TIMEOUT_TAG']).toBe('20');
+  });
+});
+
+describe('SET parameter validation (iMacros 8.9.7 parity)', () => {
+  describe('YES/NO boolean variables', () => {
+    it('should accept YES for !ERRORIGNORE', async () => {
+      const result = await executeMacro('SET !ERRORIGNORE YES');
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept NO for !ERRORIGNORE', async () => {
+      const result = await executeMacro('SET !ERRORIGNORE NO');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid value for !ERRORIGNORE', async () => {
+      const result = await executeMacro('SET !ERRORIGNORE MAYBE');
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject invalid value for !ERRORLOOP', async () => {
+      const result = await executeMacro('SET !ERRORLOOP SOMETIMES');
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept YES for !SINGLESTEP', async () => {
+      const result = await executeMacro('SET !SINGLESTEP YES');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid value for !WAITPAGECOMPLETE', async () => {
+      const result = await executeMacro('SET !WAITPAGECOMPLETE MAYBE');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('timeout variables', () => {
+    it('should accept numeric values for !TIMEOUT', async () => {
+      const result = await executeMacro('SET !TIMEOUT 30');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject negative values for !TIMEOUT', async () => {
+      const result = await executeMacro('SET !TIMEOUT -5');
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject non-numeric values for !TIMEOUT', async () => {
+      const result = await executeMacro('SET !TIMEOUT abc');
+      expect(result.success).toBe(false);
+    });
+
+    it('should accept 0 for !TIMEOUT', async () => {
+      const result = await executeMacro('SET !TIMEOUT 0');
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('!REPLAYSPEED validation', () => {
+    it('should accept SLOW', async () => {
+      const result = await executeMacro('SET !REPLAYSPEED SLOW');
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept MEDIUM', async () => {
+      const result = await executeMacro('SET !REPLAYSPEED MEDIUM');
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept FAST', async () => {
+      const result = await executeMacro('SET !REPLAYSPEED FAST');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid speed', async () => {
+      const result = await executeMacro('SET !REPLAYSPEED TURBO');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('!LOOP validation', () => {
+    it('should accept positive integer for !LOOP', async () => {
+      const result = await executeMacro('SET !LOOP 5');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject 0 for !LOOP', async () => {
+      const result = await executeMacro('SET !LOOP 0');
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject negative for !LOOP', async () => {
+      const result = await executeMacro('SET !LOOP -1');
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject non-integer for !LOOP', async () => {
+      const result = await executeMacro('SET !LOOP 2.5');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('!DATASOURCE_LINE validation', () => {
+    it('should accept positive integer', async () => {
+      const result = await executeMacro('SET !DATASOURCE_LINE 1');
+      expect(result.success).toBe(true);
+    });
+
+    it('should reject 0', async () => {
+      const result = await executeMacro('SET !DATASOURCE_LINE 0');
+      expect(result.success).toBe(false);
+    });
+
+    it('should reject non-numeric', async () => {
+      const result = await executeMacro('SET !DATASOURCE_LINE abc');
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe('!DATASOURCE_DELIMITER validation', () => {
+    it('should accept a single character', async () => {
+      const result = await executeMacro('SET !DATASOURCE_DELIMITER ;');
+      expect(result.success).toBe(true);
+    });
+
+    it('should accept comma', async () => {
+      const result = await executeMacro('SET !DATASOURCE_DELIMITER ,');
+      expect(result.success).toBe(true);
+    });
+  });
+});

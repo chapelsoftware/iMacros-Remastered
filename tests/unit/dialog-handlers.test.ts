@@ -494,6 +494,46 @@ describe('Dialog Command Handlers Unit Tests', () => {
       expect(msg.payload.config.button).toBe('OK');
       expect(msg.payload.config.active).toBe(true);
     });
+
+    it('should send stopOnError=true when CONTINUE=NO', async () => {
+      executor.loadMacro('ONERRORDIALOG BUTTON=OK CONTINUE=NO');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+      const msg = sentMessages[0] as ErrorDialogConfigMessage;
+      expect(msg.payload.config.stopOnError).toBe(true);
+    });
+
+    it('should send stopOnError=true when CONTINUE=FALSE', async () => {
+      executor.loadMacro('ONERRORDIALOG CONTINUE=FALSE');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+      const msg = sentMessages[0] as ErrorDialogConfigMessage;
+      expect(msg.payload.config.stopOnError).toBe(true);
+    });
+
+    it('should send stopOnError=false when CONTINUE not specified', async () => {
+      executor.loadMacro('ONERRORDIALOG BUTTON=OK');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+      const msg = sentMessages[0] as ErrorDialogConfigMessage;
+      expect(msg.payload.config.stopOnError).toBe(false);
+    });
+
+    it('should send stopOnError=false when CONTINUE=YES', async () => {
+      executor.loadMacro('ONERRORDIALOG BUTTON=OK CONTINUE=YES');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+      const msg = sentMessages[0] as ErrorDialogConfigMessage;
+      expect(msg.payload.config.stopOnError).toBe(false);
+    });
   });
 
   // =========================================================================

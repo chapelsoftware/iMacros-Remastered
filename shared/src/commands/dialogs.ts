@@ -138,6 +138,8 @@ export interface ErrorDialogConfig {
   button: DialogButton;
   /** Whether this config is active */
   active: boolean;
+  /** Whether to stop macro on JS errors (CONTINUE=NO/FALSE sets this true) */
+  stopOnError: boolean;
 }
 
 /**
@@ -507,15 +509,24 @@ export const onCertificateDialogHandler: CommandHandler = async (ctx: CommandCon
  * ONERRORDIALOG command handler
  *
  * Configures automatic handling of error dialogs.
+ * When CONTINUE=NO or CONTINUE=FALSE, JavaScript errors on the page
+ * will stop macro execution (iMacros v8.9.7 shouldStopOnError behavior).
  *
  * Syntax:
  * - ONERRORDIALOG BUTTON=OK
+ * - ONERRORDIALOG BUTTON=OK CONTINUE=NO
+ * - ONERRORDIALOG CONTINUE=FALSE
  */
 export const onErrorDialogHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const buttonStr = ctx.getParam('BUTTON');
   const button = buttonStr ? parseButton(ctx.expand(buttonStr)) : 'OK';
 
-  ctx.log('info', `Configuring error dialog handler: BUTTON=${button}`);
+  // Parse CONTINUE parameter - when NO/FALSE, JS errors should stop execution
+  const continueStr = ctx.getParam('CONTINUE');
+  const continueVal = continueStr ? ctx.expand(continueStr) : '';
+  const stopOnError = /^no|false$/i.test(continueVal);
+
+  ctx.log('info', `Configuring error dialog handler: BUTTON=${button}${continueStr ? ` CONTINUE=${continueVal}` : ''}`);
 
   // Store configuration in state
   ctx.state.setVariable('!ERROR_DIALOG_BUTTON', button);
@@ -528,6 +539,7 @@ export const onErrorDialogHandler: CommandHandler = async (ctx: CommandContext):
         config: {
           button,
           active: true,
+          stopOnError,
         },
       },
     },

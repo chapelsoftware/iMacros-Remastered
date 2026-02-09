@@ -577,6 +577,76 @@ describe('dialogs.ts', () => {
       expect(result.success).toBe(false);
       expect(result.errorMessage).toBe('err throw');
     });
+
+    it('should set stopOnError=true when CONTINUE=NO', async () => {
+      const bridge: DialogBridge = {
+        sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      };
+      setDialogBridge(bridge);
+
+      const ctx = createMockCtx({ BUTTON: 'OK', CONTINUE: 'NO' });
+      const result = await onErrorDialogHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      const msg = (bridge.sendMessage as any).mock.calls[0][0];
+      expect(msg.payload.config.stopOnError).toBe(true);
+    });
+
+    it('should set stopOnError=true when CONTINUE=FALSE', async () => {
+      const bridge: DialogBridge = {
+        sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      };
+      setDialogBridge(bridge);
+
+      const ctx = createMockCtx({ CONTINUE: 'FALSE' });
+      const result = await onErrorDialogHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      const msg = (bridge.sendMessage as any).mock.calls[0][0];
+      expect(msg.payload.config.stopOnError).toBe(true);
+    });
+
+    it('should set stopOnError=true when CONTINUE=false (case insensitive)', async () => {
+      const bridge: DialogBridge = {
+        sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      };
+      setDialogBridge(bridge);
+
+      const ctx = createMockCtx({ CONTINUE: 'false' });
+      const result = await onErrorDialogHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      const msg = (bridge.sendMessage as any).mock.calls[0][0];
+      expect(msg.payload.config.stopOnError).toBe(true);
+    });
+
+    it('should set stopOnError=false when CONTINUE=YES', async () => {
+      const bridge: DialogBridge = {
+        sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      };
+      setDialogBridge(bridge);
+
+      const ctx = createMockCtx({ CONTINUE: 'YES' });
+      const result = await onErrorDialogHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      const msg = (bridge.sendMessage as any).mock.calls[0][0];
+      expect(msg.payload.config.stopOnError).toBe(false);
+    });
+
+    it('should set stopOnError=false when CONTINUE not provided', async () => {
+      const bridge: DialogBridge = {
+        sendMessage: vi.fn().mockResolvedValue({ success: true }),
+      };
+      setDialogBridge(bridge);
+
+      const ctx = createMockCtx({ BUTTON: 'OK' });
+      const result = await onErrorDialogHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      const msg = (bridge.sendMessage as any).mock.calls[0][0];
+      expect(msg.payload.config.stopOnError).toBe(false);
+    });
   });
 
   // =========================================================================

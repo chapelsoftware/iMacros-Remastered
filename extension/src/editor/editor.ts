@@ -4,7 +4,7 @@
  */
 
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment, Extension } from '@codemirror/state';
+import { EditorState, Compartment, Extension, Prec } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { autocompletion, CompletionContext, CompletionResult } from '@codemirror/autocomplete';
@@ -54,7 +54,7 @@ function getFileType(path: string | null): 'iim' | 'js' {
  */
 function getLanguageExtension(fileType: 'iim' | 'js'): Extension {
   if (fileType === 'js') {
-    return javascript();
+    return [javascript(), Prec.highest(syntaxHighlighting(iimHighlightStyle))];
   }
   return iim();
 }
@@ -190,7 +190,6 @@ function createEditor(container: HTMLElement, initialContent: string = '', fileT
       completionConf.of(getCompletionExtension(fileType)),
       lintGutter(),
       linterConf.of(getLinterExtension(fileType)),
-      syntaxHighlighting(iimHighlightStyle),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           const content = update.state.doc.toString();

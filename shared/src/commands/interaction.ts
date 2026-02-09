@@ -237,6 +237,8 @@ export interface ContentScriptResponse {
   success: boolean;
   /** Error message if failed */
   error?: string;
+  /** Error code from DOM executor (e.g., -920 for element not found) */
+  errorCode?: number;
   /** Extracted data (for TAG with EXTRACT) */
   extractedData?: string;
   /** Element info (for debugging) */
@@ -314,13 +316,18 @@ export function parseAttrParam(attrStr: string): Record<string, string> {
 }
 
 /**
- * Parse EXTRACT parameter value
+ * Valid extract types for TAG EXTRACT parameter (iMacros 8.9.7)
  */
+const VALID_EXTRACT_TYPES = [
+  'TXT', 'HTM', 'HREF', 'TITLE', 'ALT', 'VALUE', 'SRC',
+  'ID', 'CLASS', 'NAME', 'TXTALL', 'CHECKED',
+];
+
 export function parseExtractParam(extractStr: string): ExtractType {
   const upper = extractStr.toUpperCase();
 
   // Standard extract types
-  if (['TXT', 'HTM', 'HREF', 'TITLE', 'ALT', 'VALUE', 'SRC', 'ID', 'CLASS', 'NAME'].includes(upper)) {
+  if (VALID_EXTRACT_TYPES.includes(upper)) {
     return upper as ExtractType;
   }
 
@@ -329,7 +336,8 @@ export function parseExtractParam(extractStr: string): ExtractType {
     return extractStr.substring(5);
   }
 
-  return extractStr;
+  // Original iMacros throws BadParameter for unrecognized extract types
+  throw new Error(`BadParameter: Invalid EXTRACT type "${extractStr}". Valid types: ${VALID_EXTRACT_TYPES.join(', ')}, or ATTR:<name>`);
 }
 
 /**
@@ -530,7 +538,18 @@ export function getContentScriptSender(): ContentScriptSender {
  */
 export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const selector = buildSelector(ctx);
-  const action = buildAction(ctx);
+
+  let action: TagAction;
+  try {
+    action = buildAction(ctx);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: msg,
+    };
+  }
 
   // Validate selector
   if (!selector.xpath && !selector.css && !selector.type) {
@@ -573,9 +592,24 @@ export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<C
     const response = await activeSender.sendMessage(message);
 
     if (!response.success) {
+      // iMacros 8.9.7: when element not found and EXTRACT is specified,
+      // store #EANF# and return success instead of throwing error.
+      // Only for element-not-found (-920); other errors (e.g. CHECKED on
+      // non-checkbox) should propagate as real errors.
+      const isElementNotFound = response.errorCode === -920;
+      if (action.extract && isElementNotFound) {
+        const eanf = '#EANF#';
+        ctx.state.addExtract(eanf);
+        ctx.log('info', `Extracted: ${eanf} (element not found)`);
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+          output: eanf,
+        };
+      }
       return {
         success: false,
-        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorCode: response.errorCode || IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
         errorMessage: response.error || 'Element not found',
       };
     }

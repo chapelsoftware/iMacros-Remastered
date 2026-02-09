@@ -944,8 +944,17 @@ describe('TAG Command Helper Functions', () => {
       expect(parseExtractParam('attr:data-id')).toBe('data-id');
     });
 
-    it('should pass through unknown extract types as-is', () => {
-      expect(parseExtractParam('CUSTOM')).toBe('CUSTOM');
+    it('should parse TXTALL extract type', () => {
+      expect(parseExtractParam('TXTALL')).toBe('TXTALL');
+    });
+
+    it('should parse CHECKED extract type', () => {
+      expect(parseExtractParam('CHECKED')).toBe('CHECKED');
+    });
+
+    it('should throw BadParameter for unknown extract types', () => {
+      expect(() => parseExtractParam('CUSTOM')).toThrow('BadParameter');
+      expect(() => parseExtractParam('INVALID')).toThrow('BadParameter');
     });
   });
 

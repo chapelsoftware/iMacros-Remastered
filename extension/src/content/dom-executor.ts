@@ -1438,6 +1438,7 @@ function toContentScriptResponse(result: DOMExecutorResult): ContentScriptRespon
   return {
     success: result.success,
     error: result.errorMessage,
+    errorCode: result.errorCode,
     extractedData: result.extractedData,
     elementInfo: result.elementInfo,
   };

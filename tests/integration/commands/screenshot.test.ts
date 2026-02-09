@@ -16,6 +16,7 @@ import {
   BrowserCommandResponse,
   ScreenshotMessage,
 } from '@shared/commands/browser';
+import { registerNavigationHandlers } from '@shared/commands/navigation';
 
 describe('SCREENSHOT Command Integration Tests', () => {
   let executor: MacroExecutor;
@@ -33,6 +34,7 @@ describe('SCREENSHOT Command Integration Tests', () => {
     setBrowserCommandBridge(mockBridge);
     executor = createExecutor();
     registerBrowserCommandHandlers(executor);
+    registerNavigationHandlers(executor);
   });
 
   afterEach(() => {
@@ -306,6 +308,135 @@ describe('SCREENSHOT Command Integration Tests', () => {
       expect(msg.type).toBe('screenshot');
       expect(msg.file).toBe('myscreen.png');
       expect(msg.format).toBe('png');
+    });
+  });
+
+  // ===== FILE Wildcards (iMacros 8.9.7 Parity) =====
+
+  describe('FILE wildcard support', () => {
+    it('FILE=* derives filename from current URL with .png extension', async () => {
+      const script = [
+        'URL GOTO=https://www.example.com/products/widget',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('widget.png');
+    });
+
+    it('FILE=* with URL ending in slash derives from hostname', async () => {
+      const script = [
+        'URL GOTO=https://www.example.com/',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('example.png');
+    });
+
+    it('FILE=* with no URL falls back to unknown.png', async () => {
+      executor.loadMacro('SCREENSHOT TYPE=BROWSER FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('unknown.png');
+    });
+
+    it('FILE=+suffix appends suffix to derived name', async () => {
+      const script = [
+        'URL GOTO=https://www.example.com/products/widget',
+        'SCREENSHOT TYPE=BROWSER FILE=+_capture.png',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('widget_capture.png');
+    });
+
+    it('FILE=* strips file extension from URL path segment', async () => {
+      const script = [
+        'URL GOTO=https://www.example.com/docs/readme.html',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('readme.png');
+    });
+  });
+
+  // ===== Filename Sanitization =====
+
+  describe('Filename sanitization', () => {
+    it('sanitizes illegal characters in filename', async () => {
+      executor.loadMacro('SCREENSHOT TYPE=BROWSER FILE=my:screen*shot.png');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.file).toBe('my_screen_shot.png');
+    });
+
+    it('sanitizes wildcard-derived filenames', async () => {
+      const script = [
+        'URL GOTO=https://www.example.com/page?q=test&x=1',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      // URL query params with ? should get sanitized
+      expect(msg.file).not.toMatch(/[?*|<>"]/);
+    });
+  });
+
+  // ===== FOLDER=* Support =====
+
+  describe('FOLDER=* support', () => {
+    it('FOLDER=* sends undefined folder (browser default)', async () => {
+      executor.loadMacro('SCREENSHOT TYPE=BROWSER FOLDER=* FILE=screen.png');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.folder).toBeUndefined();
+      expect(msg.file).toBe('screen.png');
+    });
+
+    it('FOLDER with normal path sends the path', async () => {
+      executor.loadMacro('SCREENSHOT TYPE=BROWSER FOLDER=/my/screenshots FILE=screen.png');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      expect(msg.folder).toBe('/my/screenshots');
+    });
+  });
+
+  // ===== Folder Validation =====
+
+  describe('Folder validation', () => {
+    it('rejects folder path with null byte', async () => {
+      const script = 'SCREENSHOT TYPE=BROWSER FOLDER=/path\0evil FILE=screen.png';
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('null byte');
     });
   });
 

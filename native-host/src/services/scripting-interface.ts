@@ -274,7 +274,7 @@ export class ExecutorMacroHandler implements MacroHandler {
 
       // Capture extract data
       if (result.extractData && result.extractData.length > 0) {
-        this.lastExtract = result.extractData.join('[EXTRACT]');
+        this.lastExtract = result.extractData.join('#NEXT#');
       }
 
       // Capture performance data and error info
@@ -339,7 +339,7 @@ export class ExecutorMacroHandler implements MacroHandler {
   }
 
   getLastExtract(): string {
-    return this.lastExtract;
+    return this.lastExtract || '#nodata#';
   }
 
   getLastError(): string {
@@ -788,7 +788,7 @@ export class ScriptingInterfaceServer extends EventEmitter {
   /**
    * Handle iimGetLastExtract command - Get the last extracted data
    *
-   * @param args - [n?] optional 1-based index to return nth value split on [EXTRACT]
+   * @param args - [n?] optional 1-based index to return nth value split on #NEXT#
    */
   private handleIimGetLastExtract(args: string[]): CommandResult {
     const extract = this.handler.getLastExtract();
@@ -797,11 +797,14 @@ export class ScriptingInterfaceServer extends EventEmitter {
     if (args.length > 0) {
       const n = parseInt(args[0], 10);
       if (!isNaN(n) && n > 0) {
-        const parts = extract.split('[EXTRACT]');
+        if (extract === '#nodata#') {
+          return { code: ReturnCode.OK, data: '#nodata#' };
+        }
+        const parts = extract.split('#NEXT#');
         if (n <= parts.length) {
           return { code: ReturnCode.OK, data: parts[n - 1] };
         }
-        return { code: ReturnCode.INVALID_PARAMETER, data: `Extract index ${n} out of range (${parts.length} values)` };
+        return { code: ReturnCode.OK, data: '#nodata#' };
       }
     }
 

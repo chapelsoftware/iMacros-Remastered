@@ -2,7 +2,8 @@
  * System Command Handlers for iMacros
  *
  * Implements handlers for system-level commands:
- * - CMDLINE: Execute shell commands via child_process
+ * - CMDLINE: Set variables from command-line arguments (original iMacros 8.9.7)
+ * - EXEC: Execute shell commands via child_process
  * - DISCONNECT/REDIAL: Network connection control (OS-specific)
  * - STOPWATCH: Start/stop/lap timing functionality
  * - VERSION: Return iMacros version information
@@ -413,9 +414,9 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
 };
 
 /**
- * CMDLINE command handler
+ * EXEC command handler (formerly CMDLINE)
  *
- * Syntax: CMDLINE CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
+ * Syntax: EXEC CMD=<command> [WAIT=YES|NO] [TIMEOUT=<seconds>]
  * Executes a shell command via the native messaging host.
  *
  * Parameters:
@@ -429,21 +430,21 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
  * - !CMDLINE_STDERR: Standard error
  *
  * Examples:
- * - CMDLINE CMD="dir /b"
- * - CMDLINE CMD="notepad.exe" WAIT=NO
- * - CMDLINE CMD="ping -n 1 localhost" TIMEOUT=10
+ * - EXEC CMD="dir /b"
+ * - EXEC CMD="notepad.exe" WAIT=NO
+ * - EXEC CMD="ping -n 1 localhost" TIMEOUT=10
  *
  * SECURITY NOTE: This command requires native messaging host support
  * and appropriate permissions.
  */
-export const cmdlineHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
+export const execHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const cmdParam = ctx.getParam('CMD');
 
   if (!cmdParam) {
     return {
       success: false,
       errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
-      errorMessage: 'CMDLINE command requires CMD parameter',
+      errorMessage: 'EXEC command requires CMD parameter',
     };
   }
 
@@ -458,11 +459,11 @@ export const cmdlineHandler: CommandHandler = async (ctx: CommandContext): Promi
   ctx.log('info', `Executing command: ${command}`);
 
   if (!cmdlineExecutor) {
-    ctx.log('warn', 'No command line executor configured - CMDLINE command requires native messaging support');
+    ctx.log('warn', 'No command line executor configured - EXEC command requires native messaging support');
     return {
       success: false,
       errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-      errorMessage: 'CMDLINE command requires native messaging support. No executor configured.',
+      errorMessage: 'EXEC command requires native messaging support. No executor configured.',
     };
   }
 
@@ -509,6 +510,124 @@ export const cmdlineHandler: CommandHandler = async (ctx: CommandContext): Promi
       errorMessage: `Command execution failed: ${errorMessage}`,
     };
   }
+};
+
+// ===== Supported system variables for CMDLINE =====
+
+/**
+ * System variables that can be set via CMDLINE command.
+ * Matches original iMacros 8.9.7 behavior.
+ */
+const CMDLINE_SUPPORTED_SYSVARS = new Set([
+  '!TIMEOUT', '!LOOP', '!DATASOURCE',
+  '!VAR0', '!VAR1', '!VAR2', '!VAR3', '!VAR4',
+  '!VAR5', '!VAR6', '!VAR7', '!VAR8', '!VAR9',
+]);
+
+/**
+ * CMDLINE command handler (original iMacros 8.9.7 semantics)
+ *
+ * Syntax: CMDLINE <variable> <value>
+ * Sets variables from command-line arguments.
+ *
+ * Supported system variables:
+ * - !TIMEOUT: Sets macro timeout
+ * - !LOOP: Sets current loop counter
+ * - !DATASOURCE: Loads datasource file
+ * - !VAR0 through !VAR9: Sets user system variables
+ *
+ * User-defined variables must already exist (via SET), otherwise
+ * throws 'unknown variable' error.
+ *
+ * Examples:
+ * - CMDLINE !VAR1 myvalue
+ * - CMDLINE !TIMEOUT 30
+ * - CMDLINE !LOOP 5
+ * - CMDLINE myvar somevalue  (myvar must already exist from SET)
+ */
+export const cmdlineHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
+  // CMDLINE uses positional parameters: first = variable name, second = value
+  const params = ctx.command.parameters;
+
+  if (params.length < 2) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.MISSING_PARAMETER,
+      errorMessage: 'CMDLINE command requires variable name and value',
+    };
+  }
+
+  const varName = ctx.expand(params[0].key);
+  const value = ctx.expand(params[1].key);
+  const upperVarName = varName.toUpperCase();
+
+  ctx.log('info', `CMDLINE: Setting ${varName} = ${value}`);
+
+  // System variable
+  if (upperVarName.startsWith('!')) {
+    if (!CMDLINE_SUPPORTED_SYSVARS.has(upperVarName)) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+        errorMessage: `CMDLINE: Unsupported system variable: ${varName}`,
+      };
+    }
+
+    // Special handling for specific system variables
+    if (upperVarName === '!TIMEOUT') {
+      const seconds = parseFloat(value);
+      if (isNaN(seconds) || seconds <= 0) {
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `CMDLINE: Invalid timeout value: ${value}`,
+        };
+      }
+      ctx.state.setVariable('!TIMEOUT', seconds);
+      ctx.log('debug', `CMDLINE: Set !TIMEOUT to ${seconds} seconds`);
+    } else if (upperVarName === '!LOOP') {
+      const loopNum = parseInt(value, 10);
+      if (isNaN(loopNum)) {
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: `CMDLINE: Invalid loop value: ${value}`,
+        };
+      }
+      ctx.state.setVariable('!LOOP', loopNum);
+      ctx.log('debug', `CMDLINE: Set !LOOP to ${loopNum}`);
+    } else if (upperVarName === '!DATASOURCE') {
+      ctx.state.setVariable('!DATASOURCE', value);
+      ctx.log('debug', `CMDLINE: Set !DATASOURCE to ${value}`);
+    } else {
+      // !VAR0-9
+      ctx.state.setVariable(upperVarName, value);
+      ctx.log('debug', `CMDLINE: Set ${upperVarName} to ${value}`);
+    }
+
+    return {
+      success: true,
+      errorCode: IMACROS_ERROR_CODES.OK,
+    };
+  }
+
+  // User-defined variable: must already exist
+  const existingValue = ctx.variables.get(upperVarName);
+  if (existingValue === null) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+      errorMessage: `CMDLINE: Unknown variable: ${varName}`,
+    };
+  }
+
+  ctx.state.setVariable(upperVarName, value);
+  ctx.log('debug', `CMDLINE: Set ${varName} to ${value}`);
+
+  return {
+    success: true,
+    errorCode: IMACROS_ERROR_CODES.OK,
+  };
 };
 
 /**
@@ -629,6 +748,7 @@ export const systemHandlers: Partial<Record<CommandType, CommandHandler>> = {
   VERSION: versionHandler,
   STOPWATCH: stopwatchHandler,
   CMDLINE: cmdlineHandler,
+  EXEC: execHandler,
   DISCONNECT: disconnectHandler,
   REDIAL: redialHandler,
 };

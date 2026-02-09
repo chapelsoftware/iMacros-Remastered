@@ -1,10 +1,10 @@
 /**
- * CMDLINE Command Integration Tests
+ * EXEC Command Integration Tests
  *
- * Tests the CMDLINE command handler via the MacroExecutor with a mock
- * CmdlineExecutor.
+ * Tests the EXEC command handler (formerly CMDLINE) via the MacroExecutor
+ * with a mock CmdlineExecutor.
  *
- * The CMDLINE command:
+ * The EXEC command:
  * - Requires CMD parameter (MISSING_PARAMETER if missing)
  * - Optional WAIT param (default YES, NO for async)
  * - Optional TIMEOUT param (default 30 seconds, minimum 1 second)
@@ -51,7 +51,7 @@ function createMockCmdlineExecutor(
   return { mock, calls };
 }
 
-describe('CMDLINE command integration tests', () => {
+describe('EXEC command integration tests', () => {
   // -----------------------------------------------------------------------
   // 8. No executor configured returns SCRIPT_ERROR
   //    (Must run FIRST before any setCmdlineExecutor call, because the
@@ -67,7 +67,7 @@ describe('CMDLINE command integration tests', () => {
 
     it('should return SCRIPT_ERROR when no executor is configured', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="echo hello"');
+      executor.loadMacro('EXEC CMD="echo hello"');
 
       const result = await executor.execute();
 
@@ -104,7 +104,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should succeed with exitCode=0', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="echo hello"');
+      executor.loadMacro('EXEC CMD="echo hello"');
 
       const result = await executor.execute();
 
@@ -117,7 +117,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should pass the command string through to the executor', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="echo hello"');
+      executor.loadMacro('EXEC CMD="echo hello"');
 
       await executor.execute();
 
@@ -130,7 +130,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should pass the exact command string to the executor', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="ls -la /tmp"');
+      executor.loadMacro('EXEC CMD="ls -la /tmp"');
 
       await executor.execute();
 
@@ -144,7 +144,7 @@ describe('CMDLINE command integration tests', () => {
     it('should return stdout as output on success', async () => {
       // The default mock returns stdout: 'hello output'
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="echo hello"');
+      executor.loadMacro('EXEC CMD="echo hello"');
 
       const result = await executor.execute();
 
@@ -168,7 +168,7 @@ describe('CMDLINE command integration tests', () => {
       setCmdlineExecutor(failing.mock);
 
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="failing" WAIT=YES');
+      executor.loadMacro('EXEC CMD="failing" WAIT=YES');
 
       const result = await executor.execute();
 
@@ -181,7 +181,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should send wait=false when WAIT=NO is specified', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test" WAIT=NO');
+      executor.loadMacro('EXEC CMD="test" WAIT=NO');
 
       await executor.execute();
 
@@ -194,7 +194,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should send timeout=10000ms when TIMEOUT=10 is specified', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test" TIMEOUT=10');
+      executor.loadMacro('EXEC CMD="test" TIMEOUT=10');
 
       await executor.execute();
 
@@ -207,7 +207,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should send default timeout=30000ms when TIMEOUT is not specified', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test"');
+      executor.loadMacro('EXEC CMD="test"');
 
       await executor.execute();
 
@@ -220,7 +220,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should return MISSING_PARAMETER when CMD is missing', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE WAIT=YES');
+      executor.loadMacro('EXEC WAIT=YES');
 
       const result = await executor.execute();
 
@@ -241,7 +241,7 @@ describe('CMDLINE command integration tests', () => {
       setCmdlineExecutor(throwingExecutor);
 
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test"');
+      executor.loadMacro('EXEC CMD="test"');
 
       const result = await executor.execute();
 
@@ -256,7 +256,7 @@ describe('CMDLINE command integration tests', () => {
       const executor = createCmdlineExecutor();
       executor.loadMacro([
         'SET !VAR1 mycommand',
-        'CMDLINE CMD={{!VAR1}}',
+        'EXEC CMD={{!VAR1}}',
       ].join('\n'));
 
       await executor.execute();
@@ -270,7 +270,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should send wait=true when WAIT=YES is specified', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test" WAIT=YES');
+      executor.loadMacro('EXEC CMD="test" WAIT=YES');
 
       await executor.execute();
 
@@ -283,7 +283,7 @@ describe('CMDLINE command integration tests', () => {
     // ---------------------------------------------------------------------
     it('should default wait=true when WAIT is not specified', async () => {
       const executor = createCmdlineExecutor();
-      executor.loadMacro('CMDLINE CMD="test"');
+      executor.loadMacro('EXEC CMD="test"');
 
       await executor.execute();
 

@@ -20,6 +20,7 @@ import {
   IMACROS_ERROR_CODES,
 } from '../executor';
 import type { CommandType } from '../parser';
+import { decryptString, isEncrypted, EncryptionError } from '../encryption';
 
 // ===== Dialog Message Types =====
 
@@ -94,6 +95,8 @@ export interface LoginConfig {
   password: string;
   /** Whether this config is active */
   active: boolean;
+  /** Timeout in seconds from !TIMEOUT_STEP */
+  timeout?: number;
 }
 
 /**
@@ -104,6 +107,8 @@ export interface LoginConfigMessage extends DialogMessage {
   payload: {
     /** Login configuration */
     config: LoginConfig;
+    /** When true, append to queue instead of replacing (multiple ONLOGIN commands stack) */
+    append?: boolean;
   };
 }
 
@@ -405,6 +410,8 @@ export const onDialogHandler: CommandHandler = async (ctx: CommandContext): Prom
  * ONLOGIN command handler
  *
  * Configures automatic handling of HTTP authentication dialogs.
+ * Multiple ONLOGIN commands stack (push to action queue) matching
+ * original iMacros v8.9.7 behavior.
  *
  * Syntax:
  * - ONLOGIN USER=username PASSWORD=password
@@ -422,7 +429,29 @@ export const onLoginHandler: CommandHandler = async (ctx: CommandContext): Promi
   }
 
   const user = ctx.expand(userStr);
-  const password = ctx.expand(passwordStr);
+  let password = ctx.expand(passwordStr);
+
+  // Decrypt password if encryption is enabled (matches original iMacros behavior)
+  const encryptionKey = ctx.state.getVariable('!ENCRYPTION');
+  if (encryptionKey && typeof encryptionKey === 'string' && encryptionKey !== '' && isEncrypted(password)) {
+    try {
+      password = decryptString(password, encryptionKey);
+    } catch (e) {
+      if (e instanceof EncryptionError) {
+        return {
+          success: false,
+          errorCode: e.code,
+          errorMessage: `ONLOGIN password decryption failed: ${e.message}`,
+        };
+      }
+      throw e;
+    }
+  }
+
+  // Get timeout from !TIMEOUT_STEP (matches original's obj.timeout = this.delay)
+  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
+  const timeout = typeof timeoutStep === 'number' ? timeoutStep :
+    typeof timeoutStep === 'string' ? parseFloat(timeoutStep) : undefined;
 
   ctx.log('info', `Configuring HTTP auth handler: USER=${user}`);
 
@@ -430,7 +459,8 @@ export const onLoginHandler: CommandHandler = async (ctx: CommandContext): Promi
   ctx.state.setVariable('!LOGIN_USER', user);
   ctx.state.setVariable('!LOGIN_PASSWORD', password);
 
-  // Send configuration to extension
+  // Send configuration to extension with append=true for queue support
+  // (multiple ONLOGIN commands stack, matching original behavior)
   const response = await sendDialogMessage(
     {
       type: 'LOGIN_CONFIG',
@@ -439,7 +469,9 @@ export const onLoginHandler: CommandHandler = async (ctx: CommandContext): Promi
           user,
           password,
           active: true,
+          timeout: timeout !== undefined && !isNaN(timeout) ? timeout : undefined,
         },
+        append: true,
       },
     },
     ctx

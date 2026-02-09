@@ -945,22 +945,14 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
  * Execute CLICK command
  */
 export async function executeClickCommand(message: ClickCommandMessage): Promise<DOMExecutorResult> {
-  const { x, y, button, clickCount, modifiers } = message.payload;
+  const { x, y, content, button, clickCount, modifiers } = message.payload;
 
   try {
     // Get the document from the currently selected frame
     const doc = getCurrentFrameDocument() || document;
 
-    // Find element at coordinates in the current frame's document
-    const element = doc.elementFromPoint(x, y);
-
-    if (!element) {
-      return {
-        success: false,
-        errorCode: DOM_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: `No element found at coordinates (${x}, ${y})`,
-      };
-    }
+    // Find element at coordinates, fall back to documentElement (matches original iMacros 8.9.7)
+    const element = doc.elementFromPoint(x, y) || doc.documentElement;
 
     // Build mouse event options
     const mouseOptions: MouseEventOptions = {
@@ -980,11 +972,24 @@ export async function executeClickCommand(message: ClickCommandMessage): Promise
     } else if (button === 'middle') {
       mouseOptions.button = 1;
       mouseOptions.buttons = 4;
+      dispatchMouseEvent(element, 'mouseover', mouseOptions);
       dispatchMouseEvent(element, 'mousedown', mouseOptions);
       dispatchMouseEvent(element, 'mouseup', mouseOptions);
       dispatchMouseEvent(element, 'click', mouseOptions);
     } else {
       dispatchClick(element, mouseOptions);
+    }
+
+    // If CONTENT is provided, apply form interaction after click (like TAG CONTENT=)
+    if (content) {
+      const result = setElementContent(element, content);
+      if (!result.success) {
+        return {
+          success: false,
+          errorCode: DOM_ERROR_CODES.EXECUTION_ERROR,
+          errorMessage: result.errorMessage || 'Failed to set content on element',
+        };
+      }
     }
 
     return {

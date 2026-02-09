@@ -183,35 +183,39 @@ describe('Event Dispatcher', () => {
   // ============================================================
 
   describe('dispatchClick', () => {
-    it('should dispatch mousedown, mouseup, click in sequence', () => {
+    it('should dispatch mouseover, mousedown, mouseup, click in sequence', () => {
       const events: string[] = [];
+      target.addEventListener('mouseover', () => events.push('mouseover'));
       target.addEventListener('mousedown', () => events.push('mousedown'));
       target.addEventListener('mouseup', () => events.push('mouseup'));
       target.addEventListener('click', () => events.push('click'));
 
       const result = dispatchClick(target);
 
+      expect(result.mouseover).toBe(true);
       expect(result.mousedown).toBe(true);
       expect(result.mouseup).toBe(true);
       expect(result.click).toBe(true);
-      expect(events).toEqual(['mousedown', 'mouseup', 'click']);
+      expect(events).toEqual(['mouseover', 'mousedown', 'mouseup', 'click']);
     });
 
     it('should pass options through to all click events', () => {
       const shiftStates: boolean[] = [];
+      target.addEventListener('mouseover', (e: Event) => shiftStates.push((e as MouseEvent).shiftKey));
       target.addEventListener('mousedown', (e: Event) => shiftStates.push((e as MouseEvent).shiftKey));
       target.addEventListener('mouseup', (e: Event) => shiftStates.push((e as MouseEvent).shiftKey));
       target.addEventListener('click', (e: Event) => shiftStates.push((e as MouseEvent).shiftKey));
 
       dispatchClick(target, { shiftKey: true });
 
-      expect(shiftStates).toEqual([true, true, true]);
+      expect(shiftStates).toEqual([true, true, true, true]);
     });
   });
 
   describe('dispatchDoubleClick', () => {
     it('should dispatch two full click sequences followed by dblclick', () => {
       const events: string[] = [];
+      target.addEventListener('mouseover', () => events.push('mouseover'));
       target.addEventListener('mousedown', () => events.push('mousedown'));
       target.addEventListener('mouseup', () => events.push('mouseup'));
       target.addEventListener('click', () => events.push('click'));
@@ -223,17 +227,21 @@ describe('Event Dispatcher', () => {
       expect(result.secondClick.click).toBe(true);
       expect(result.dblclick).toBe(true);
       expect(events).toEqual([
-        'mousedown', 'mouseup', 'click',
-        'mousedown', 'mouseup', 'click',
+        'mouseover', 'mousedown', 'mouseup', 'click',
+        'mouseover', 'mousedown', 'mouseup', 'click',
         'dblclick',
       ]);
     });
   });
 
   describe('dispatchRightClick', () => {
-    it('should dispatch mousedown, mouseup, contextmenu with button=2', () => {
+    it('should dispatch mouseover, mousedown, mouseup, contextmenu with button=2', () => {
       const events: string[] = [];
       const buttonValues: number[] = [];
+      target.addEventListener('mouseover', (e: Event) => {
+        events.push('mouseover');
+        buttonValues.push((e as MouseEvent).button);
+      });
       target.addEventListener('mousedown', (e: Event) => {
         events.push('mousedown');
         buttonValues.push((e as MouseEvent).button);
@@ -249,11 +257,13 @@ describe('Event Dispatcher', () => {
 
       const result = dispatchRightClick(target);
 
+      expect(result.mouseover).toBe(true);
       expect(result.mousedown).toBe(true);
       expect(result.mouseup).toBe(true);
       expect(result.contextmenu).toBe(true);
-      expect(events).toEqual(['mousedown', 'mouseup', 'contextmenu']);
-      expect(buttonValues).toEqual([2, 2, 2]);
+      expect(events).toEqual(['mouseover', 'mousedown', 'mouseup', 'contextmenu']);
+      // mouseover uses default button (0), mousedown/mouseup/contextmenu use button=2
+      expect(buttonValues).toEqual([0, 2, 2, 2]);
     });
   });
 

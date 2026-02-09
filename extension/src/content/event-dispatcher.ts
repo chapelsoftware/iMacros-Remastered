@@ -97,17 +97,19 @@ export function dispatchMouseEvent(
 }
 
 /**
- * Dispatches a complete click sequence (mousedown, mouseup, click)
+ * Dispatches a complete click sequence (mouseover, mousedown, mouseup, click)
+ * Includes mouseover before mousedown to match original iMacros 8.9.7 behavior.
  */
 export function dispatchClick(
   element: Element,
   options: MouseEventOptions = {}
-): { mousedown: boolean; mouseup: boolean; click: boolean } {
+): { mouseover: boolean; mousedown: boolean; mouseup: boolean; click: boolean } {
+  const mouseover = dispatchMouseEvent(element, 'mouseover', options);
   const mousedown = dispatchMouseEvent(element, 'mousedown', options);
   const mouseup = dispatchMouseEvent(element, 'mouseup', options);
   const click = dispatchMouseEvent(element, 'click', options);
 
-  return { mousedown, mouseup, click };
+  return { mouseover, mousedown, mouseup, click };
 }
 
 /**
@@ -130,14 +132,15 @@ export function dispatchDoubleClick(
 export function dispatchRightClick(
   element: Element,
   options: MouseEventOptions = {}
-): { mousedown: boolean; mouseup: boolean; contextmenu: boolean } {
+): { mouseover: boolean; mousedown: boolean; mouseup: boolean; contextmenu: boolean } {
   const rightClickOptions = { ...options, button: 2, buttons: 2 };
 
+  const mouseover = dispatchMouseEvent(element, 'mouseover', options);
   const mousedown = dispatchMouseEvent(element, 'mousedown', rightClickOptions);
   const mouseup = dispatchMouseEvent(element, 'mouseup', rightClickOptions);
   const contextmenu = dispatchMouseEvent(element, 'contextmenu', rightClickOptions);
 
-  return { mousedown, mouseup, contextmenu };
+  return { mouseover, mousedown, mouseup, contextmenu };
 }
 
 /**

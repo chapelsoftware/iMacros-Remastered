@@ -421,4 +421,124 @@ describe('EVENT Handler via MacroExecutor (with mock ContentScriptSender)', () =
       expect(msg.payload.key).toBe('Enter');
     });
   });
+
+  // ===== KEYS Array Parameter =====
+
+  describe('KEYS array parameter', () => {
+    it('should parse KEYS=[13,9,27] into resolved key names', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEYS=[13,9,27]');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.keys).toEqual(['Enter', 'Tab', 'Escape']);
+    });
+
+    it('should parse KEYS=[65,66,67] into letter key names', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEYS=[65,66,67]');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.keys).toEqual(['a', 'b', 'c']);
+    });
+
+    it('should parse KEYS with string key names', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEYS=[Enter,Tab]');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.keys).toEqual(['Enter', 'Tab']);
+    });
+
+    it('should handle KEYS without brackets', async () => {
+      executor.loadMacro('EVENT TYPE=keydown KEYS=13,9');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.keys).toEqual(['Enter', 'Tab']);
+    });
+  });
+
+  // ===== CHARS String Parameter =====
+
+  describe('CHARS string parameter', () => {
+    it('should parse CHARS="hello" into chars string', async () => {
+      executor.loadMacro('EVENT TYPE=keypress CHARS="hello"');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.chars).toBe('hello');
+    });
+
+    it('should parse CHARS without quotes', async () => {
+      executor.loadMacro('EVENT TYPE=keypress CHARS=abc');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.chars).toBe('abc');
+    });
+  });
+
+  // ===== POINTS Array Parameter =====
+
+  describe('POINTS array parameter', () => {
+    it('should parse POINTS=(100,200),(300,400) into points array', async () => {
+      executor.loadMacro('EVENT TYPE=mousemove POINTS=(100,200),(300,400)');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.points).toEqual([
+        { x: 100, y: 200 },
+        { x: 300, y: 400 },
+      ]);
+    });
+
+    it('should parse single POINTS=(50,75)', async () => {
+      executor.loadMacro('EVENT TYPE=mousemove POINTS=(50,75)');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.points).toEqual([{ x: 50, y: 75 }]);
+    });
+
+    it('should parse three POINTS', async () => {
+      executor.loadMacro('EVENT TYPE=mousemove POINTS=(0,0),(50,50),(100,100)');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      expect(msg.payload.points).toEqual([
+        { x: 0, y: 0 },
+        { x: 50, y: 50 },
+        { x: 100, y: 100 },
+      ]);
+    });
+  });
+
+  // ===== Default Target =====
+
+  describe('Default target', () => {
+    it('should not set selector when no targeting params are provided', async () => {
+      executor.loadMacro('EVENT TYPE=click');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as EventCommandMessage;
+      // No selector means dom-executor should use documentElement as default
+      expect(msg.payload.selector).toBeUndefined();
+    });
+  });
 });

@@ -597,6 +597,91 @@ export function matchesSelectTextPattern(optionText: string, pattern: string): b
   return optionText.trim().toLowerCase() === pattern.trim().toLowerCase();
 }
 
+// ===== Download Helpers for EVENT: commands =====
+
+/**
+ * Walk up the DOM tree to find an href or src attribute on the element or its ancestors.
+ * Original iMacros 8.9.7 traverses parent elements for SAVETARGETAS.
+ */
+function findDownloadUrl(element: Element): string {
+  let current: Element | null = element;
+  while (current) {
+    // Check href first (anchor links), then src (images, media)
+    const href = current.getAttribute('href');
+    if (href) return href;
+    const src = current.getAttribute('src');
+    if (src) return src;
+    current = current.parentElement;
+  }
+  return '';
+}
+
+/**
+ * Get the media/image URL from an element.
+ * Checks src, data-src, poster, and background-image for images and media elements.
+ * Used by EVENT:SAVEITEM and EVENT:SAVEPICTUREAS (original iMacros savePictureAs).
+ */
+function getElementMediaUrl(element: Element): string {
+  // Direct src attribute (IMG, VIDEO, AUDIO, SOURCE, IFRAME, EMBED)
+  const src = element.getAttribute('src');
+  if (src) return src;
+
+  // data-src for lazy-loaded images
+  const dataSrc = element.getAttribute('data-src');
+  if (dataSrc) return dataSrc;
+
+  // poster attribute for video elements
+  const poster = element.getAttribute('poster');
+  if (poster) return poster;
+
+  // For SVG elements, check xlink:href
+  const xlinkHref = element.getAttribute('xlink:href') || element.getAttributeNS('http://www.w3.org/1999/xlink', 'href');
+  if (xlinkHref) return xlinkHref;
+
+  // CSS background-image as last resort
+  if (element instanceof HTMLElement) {
+    const style = window.getComputedStyle(element);
+    const bgImage = style.backgroundImage;
+    if (bgImage && bgImage !== 'none') {
+      const urlMatch = bgImage.match(/url\(["']?([^"')]+)["']?\)/);
+      if (urlMatch) return urlMatch[1];
+    }
+  }
+
+  // Fallback: check href (for linked images inside anchors)
+  const href = element.getAttribute('href');
+  if (href) return href;
+
+  return '';
+}
+
+/**
+ * Trigger a download via anchor click and background message.
+ */
+function triggerDownload(url: string, filename: string, element: Element): void {
+  // Try to download via temporary anchor click
+  try {
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+  } catch (e) {
+    console.warn('[iMacros] Download fallback to background message', e);
+  }
+
+  // Also send message to background for cross-origin downloads
+  if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    chrome.runtime.sendMessage({
+      type: 'DOWNLOAD_URL',
+      url: url.startsWith('http') ? url : new URL(url, window.location.href).href,
+      filename,
+    });
+  }
+}
+
 /**
  * Result of setElementContent operation
  */
@@ -615,38 +700,48 @@ function setElementContent(element: Element, content: string): SetContentResult 
     const eventCommand = content.substring(6).toUpperCase();
 
     if (eventCommand.startsWith('SAVETARGETAS')) {
-      // Get the download URL from the element
-      const url = element.getAttribute('href') || element.getAttribute('src') || '';
+      // Get the download URL from the element, walking up to parent elements
+      // to find href/src (iMacros 8.9.7 traverses DOM tree)
+      const url = findDownloadUrl(element);
       if (!url) {
-        return { success: false, errorMessage: 'EVENT:SAVETARGETAS - no href or src on element' };
+        return { success: false, errorMessage: 'EVENT:SAVETARGETAS - no href or src found on element or ancestors' };
       }
 
-      // Try to download via temporary anchor click
-      try {
-        const anchor = document.createElement('a');
-        anchor.href = url;
-        anchor.download = '';
-        // Extract filename from SAVETARGETAS if provided (e.g., EVENT:SAVETARGETAS=filename.pdf)
-        const eqIndex = eventCommand.indexOf('=');
-        if (eqIndex > 0) {
-          anchor.download = eventCommand.substring(eqIndex + 1);
-        }
-        anchor.style.display = 'none';
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-      } catch (e) {
-        console.warn('[iMacros] EVENT:SAVETARGETAS fallback to message', e);
+      // Extract filename from SAVETARGETAS if provided (e.g., EVENT:SAVETARGETAS=filename.pdf)
+      const eqIndex = eventCommand.indexOf('=');
+      const filename = eqIndex > 0 ? eventCommand.substring(eqIndex + 1) : '';
+
+      triggerDownload(url, filename, element);
+      return { success: true };
+    }
+
+    if (eventCommand.startsWith('SAVEITEM') || eventCommand.startsWith('SAVEPICTUREAS')) {
+      // SAVEITEM/SAVEPICTUREAS: save the element's image/media source
+      // Original iMacros calls savePictureAs(element) for images
+      const url = getElementMediaUrl(element);
+      if (!url) {
+        return { success: false, errorMessage: `EVENT:${eventCommand.split('=')[0]} - no image/media source found on element` };
       }
 
-      // Also send message to background for cross-origin downloads
+      // Extract filename if provided (e.g., EVENT:SAVEITEM=image.png)
+      const eqIndex = eventCommand.indexOf('=');
+      const filename = eqIndex > 0 ? eventCommand.substring(eqIndex + 1) : '';
+
+      triggerDownload(url, filename, element);
+      return { success: true };
+    }
+
+    if (eventCommand.startsWith('SAVE_ELEMENT_SCREENSHOT')) {
+      // Capture a screenshot of the specific element
+      // Extract filename if provided (e.g., EVENT:SAVE_ELEMENT_SCREENSHOT=element.png)
+      const eqIndex = eventCommand.indexOf('=');
+      const filename = eqIndex > 0 ? eventCommand.substring(eqIndex + 1) : '';
+
       if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-        const filename = eventCommand.indexOf('=') > 0
-          ? eventCommand.substring(eventCommand.indexOf('=') + 1)
-          : '';
+        const rect = element.getBoundingClientRect();
         chrome.runtime.sendMessage({
-          type: 'DOWNLOAD_URL',
-          url: url.startsWith('http') ? url : new URL(url, window.location.href).href,
+          type: 'SAVE_ELEMENT_SCREENSHOT',
+          rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           filename,
         });
       }

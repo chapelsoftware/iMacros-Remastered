@@ -765,7 +765,20 @@ export class ScriptingInterfaceServer extends EventEmitter {
       };
     }
 
-    const [name, value] = args;
+    let [name, value] = args;
+
+    // Strip -var_ prefix (e.g., "-var_myvar" -> "myvar")
+    const prefixMatch = name.match(/^(?:-var_)?(\w+)$/);
+    if (prefixMatch) {
+      name = prefixMatch[1];
+    }
+
+    // Map var1-var9 to !VAR1-!VAR9
+    const varMatch = name.match(/^var([0-9])$/i);
+    if (varMatch) {
+      name = `!VAR${varMatch[1]}`;
+    }
+
     this.handler.setVariable(name, value);
     this.emit('set', name, value);
 

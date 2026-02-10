@@ -423,6 +423,44 @@ describe('Variable System Unit Tests', () => {
     });
   });
 
+  describe('#novar# escape sequence', () => {
+    it('should protect literal {{ from variable expansion', () => {
+      ctx.set('!VAR0', 'test');
+      const result = ctx.expand('#novar#{{!VAR0}} stays literal');
+      expect(result.expanded).toBe('{{!VAR0}} stays literal');
+    });
+
+    it('should expand other variables while protecting #novar# ones', () => {
+      ctx.set('!VAR0', 'hello');
+      ctx.set('!VAR1', 'world');
+      const result = ctx.expand('{{!VAR0}} #novar#{{!VAR1}}');
+      expect(result.expanded).toBe('hello {{!VAR1}}');
+    });
+
+    it('should be case-insensitive', () => {
+      ctx.set('!VAR0', 'test');
+      const result = ctx.expand('#NOVAR#{{!VAR0}} stays literal');
+      expect(result.expanded).toBe('{{!VAR0}} stays literal');
+    });
+
+    it('should handle #novar# with no variables to expand', () => {
+      const result = ctx.expand('text with #novar#{{literal}} braces');
+      expect(result.expanded).toBe('text with {{literal}} braces');
+    });
+
+    it('should handle multiple #novar# escapes', () => {
+      ctx.set('!VAR0', 'expanded');
+      const result = ctx.expand('#novar#{{a}} {{!VAR0}} #novar#{{b}}');
+      expect(result.expanded).toBe('{{a}} expanded {{b}}');
+    });
+
+    it('should handle #novar# at end of string', () => {
+      ctx.set('!VAR0', 'test');
+      const result = ctx.expand('{{!VAR0}} #novar#{{end}}');
+      expect(result.expanded).toBe('test {{end}}');
+    });
+  });
+
   describe('ADD Operations on Variables', () => {
     it('should add to numeric variable', () => {
       ctx.set('!VAR0', '10');

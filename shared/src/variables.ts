@@ -852,19 +852,25 @@ export class VariableContext {
       customResolver,
     } = options;
 
-    const variables = extractVariables(text);
+    // Step 1: Replace #novar#{{ with sentinel #NOVAR#{ to protect from expansion
+    // (iMacros 8.9.7 MacroPlayer.js:4977)
+    let processed = text.replace(/#novar#\{\{/gi, '#NOVAR#{');
+
+    const variables = extractVariables(processed);
     if (variables.length === 0) {
+      // Step 3: Restore sentinel #NOVAR#{ → {{ even when no variables found
+      const expanded = processed.replace(/#NOVAR#\{(?=[^{])/g, '{{');
       return {
-        expanded: text,
+        expanded,
         hadVariables: false,
         unresolvedVariables: [],
       };
     }
 
     const unresolvedVariables: string[] = [];
-    let result = text;
+    let result = processed;
 
-    // Process variables in reverse order to maintain correct positions
+    // Step 2: Process variables in reverse order to maintain correct positions
     for (let i = variables.length - 1; i >= 0; i--) {
       const varRef = variables[i];
       let value: VariableValue = null;
@@ -894,6 +900,9 @@ export class VariableContext {
       // Replace in string
       result = result.slice(0, varRef.start) + String(value) + result.slice(varRef.end);
     }
+
+    // Step 3: Restore sentinel #NOVAR#{ → {{ (iMacros 8.9.7 MacroPlayer.js:5067)
+    result = result.replace(/#NOVAR#\{(?=[^{])/g, '{{');
 
     return {
       expanded: result,

@@ -119,6 +119,13 @@ export interface PerformanceData {
   success: boolean;
   /** Error code if failed (0 = success) */
   errorCode: number;
+  /**
+   * Stopwatch data from the macro execution (matching original iMacros format).
+   * String format: "TotalRuntime=<sec>[!S!]<id>=<sec>[!S!]..."
+   * Array format: [{name, value}, ...]
+   */
+  stopwatchData?: string;
+  stopwatchArray?: Array<{ name: string; value: string }>;
 }
 
 /**
@@ -290,6 +297,21 @@ export class ExecutorMacroHandler implements MacroHandler {
         success: result.success,
         errorCode: returnCode,
       };
+
+      // Populate stopwatch data for iimGetLastPerformance (matching original format)
+      if (result.stopwatchRecords && result.stopwatchRecords.length > 0) {
+        const totalRuntimeSec = (result.executionTimeMs / 1000).toFixed(3);
+        const entries: Array<{ name: string; value: string }> = [
+          { name: 'TotalRuntime', value: totalRuntimeSec },
+        ];
+        for (const rec of result.stopwatchRecords) {
+          entries.push({ name: rec.id, value: rec.elapsedSec });
+        }
+        this.lastPerformance.stopwatchData = entries
+          .map(e => `${e.name}=${e.value}`)
+          .join('[!S!]');
+        this.lastPerformance.stopwatchArray = entries;
+      }
 
       if (!result.success) {
         this.lastError = result.errorMessage ?? `Error code: ${result.errorCode}`;

@@ -207,7 +207,10 @@ function createBrowserBridge(sendMessage, createMessageId) {
    */
   async function selectFrame(frameIndex) {
     const response = await sendBrowserCommand('selectFrame', { frameIndex });
-    currentFrameId = frameIndex;
+    // Don't update currentFrameId here. The iMacros frame index (0, 1, 2...)
+    // is NOT the same as Chrome's internal frame ID. All subsequent commands
+    // should route to the main frame's content script (frameId 0), which uses
+    // its FrameHandler to execute in the correct frame context.
     return response;
   }
 
@@ -218,9 +221,9 @@ function createBrowserBridge(sendMessage, createMessageId) {
    */
   async function selectFrameByName(frameName) {
     const response = await sendBrowserCommand('selectFrameByName', { frameName });
-    if (response.frameId !== undefined) {
-      currentFrameId = response.frameId;
-    }
+    // Don't update currentFrameId here. The response frameId is an iMacros index,
+    // not Chrome's internal frame ID. Commands route to the main frame's content
+    // script, which uses its FrameHandler to execute in the correct frame context.
     return response;
   }
 

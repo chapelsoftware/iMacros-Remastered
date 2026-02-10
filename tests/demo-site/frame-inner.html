@@ -8,6 +8,9 @@
     h3 { margin-top: 0; }
     .frame-label { display: inline-block; padding: 4px 10px; border-radius: 4px; color: white; font-weight: bold; margin-bottom: 8px; }
     #frame-input { width: 200px; padding: 4px; }
+    .status { font-family: monospace; font-size: 13px; margin-top: 6px; }
+    .status.pass { color: #2e7d32; font-weight: bold; }
+    .status.pending { color: #aaa; }
   </style>
 </head>
 <body>
@@ -21,20 +24,80 @@
   </div>
 
   <div style="margin-top: 8px;">
-    <button id="frame-btn" onclick="document.getElementById('frame-result').textContent='Button in frame clicked!'">Frame Button</button>
+    <button id="frame-btn">Frame Button</button>
     <span id="frame-result"></span>
   </div>
 
+  <div id="status-area"></div>
+
   <script>
-    const params = new URLSearchParams(window.location.search);
-    const frameNum = params.get('frame') || '?';
-    const color = params.get('color') || '#007bff';
+    var params = new URLSearchParams(window.location.search);
+    var frameNum = params.get('frame') || '?';
+    var color = params.get('color') || '#007bff';
+    var expectedInput = params.get('expect') || '';
 
     document.getElementById('frame-label').textContent = 'Frame ' + frameNum;
     document.getElementById('frame-label').style.backgroundColor = color;
     document.getElementById('frame-title').textContent = 'Content of Frame ' + frameNum;
     document.getElementById('frame-text').textContent = 'This is content inside frame ' + frameNum + '.';
     document.title = 'Frame ' + frameNum + ' Inner';
+
+    var statusArea = document.getElementById('status-area');
+
+    function addStatus(text, cls) {
+      var div = document.createElement('div');
+      div.className = 'status ' + cls;
+      div.textContent = text;
+      statusArea.appendChild(div);
+    }
+
+    function notifyParent(step, status) {
+      try {
+        // Walk up to the top-level window to post the message
+        var target = window;
+        while (target !== target.parent) { target = target.parent; }
+        target.postMessage({ step: step, status: status }, '*');
+      } catch(e) { /* cross-origin, ignore */ }
+    }
+
+    // Determine step prefix based on frame number
+    var prefix = '';
+    if (frameNum === '1') prefix = 'f1';
+    else if (frameNum === '2') prefix = 'f2';
+    else if (frameNum === 'nested') prefix = 'nested';
+
+    // Watch for title extraction (data-extracted attribute set by content script)
+    var titleEl = document.getElementById('frame-title');
+    new MutationObserver(function() {
+      addStatus('PASS: title extracted', 'pass');
+      if (prefix) notifyParent(prefix + '-extract', 'pass');
+    }).observe(titleEl, { attributes: true, attributeFilter: ['data-extracted'] });
+
+    // Watch for input value change
+    var inputEl = document.getElementById('frame-input');
+    inputEl.addEventListener('input', function() {
+      if (expectedInput && inputEl.value === expectedInput) {
+        addStatus('PASS: input set to "' + inputEl.value + '"', 'pass');
+        if (prefix) notifyParent(prefix + '-input', 'pass');
+      }
+    });
+
+    // Watch for button click
+    var btnEl = document.getElementById('frame-btn');
+    var resultEl = document.getElementById('frame-result');
+    btnEl.addEventListener('click', function() {
+      resultEl.textContent = 'Button clicked!';
+      addStatus('PASS: button clicked', 'pass');
+      if (prefix) notifyParent(prefix + '-click', 'pass');
+    });
+
+    // Watch for result extraction (after button click)
+    new MutationObserver(function() {
+      if (resultEl.textContent === 'Button clicked!') {
+        addStatus('PASS: button result extracted', 'pass');
+        if (prefix) notifyParent(prefix + '-btn-extract', 'pass');
+      }
+    }).observe(resultEl, { attributes: true, attributeFilter: ['data-extracted'] });
   </script>
 </body>
 </html>

@@ -64,7 +64,7 @@ function createBrowserHandlers(bridge) {
       if (gotoParam) {
         // URL GOTO=<url> - navigate
         const url = ctx.expand(gotoParam);
-        ctx.log('info', `Navigating to: ${url}`);
+        ctx.log('info', `Navigating to: ${url} (raw param: ${JSON.stringify(gotoParam)})`);
         try {
           await bridge.navigate(url);
           ctx.state.setVariable('!URLCURRENT', url);
@@ -684,9 +684,13 @@ function createBrowserHandlers(bridge) {
         }
 
         // Write file (append if file exists for EXTRACT type)
+        // iMacros 8.9.7: EXTRACT always writes a line with trailing \r\n
         if (saveType === 'EXTRACT' && fs.existsSync(fullPath)) {
           fs.appendFileSync(fullPath, content + '\r\n', 'utf8');
           ctx.log('info', `Appended to ${fullPath}`);
+        } else if (saveType === 'EXTRACT') {
+          fs.writeFileSync(fullPath, content + '\r\n', 'utf8');
+          ctx.log('info', `Saved to ${fullPath}`);
         } else {
           fs.writeFileSync(fullPath, content, 'utf8');
           ctx.log('info', `Saved to ${fullPath}`);

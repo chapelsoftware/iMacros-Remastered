@@ -42,6 +42,16 @@ interface Settings {
   errorContinue: boolean;
   debugMode: boolean;
   replaySpeed: number;
+
+  // Visual effects
+  visualEffectScrollToElement: boolean;
+  visualEffectHighlightElement: boolean;
+
+  // Keyboard shortcuts
+  toggleSidebarHotkey: string;
+
+  // External editor
+  externalEditorPath: string;
 }
 
 /**
@@ -71,7 +81,7 @@ const DEFAULT_SETTINGS: Settings = {
   masterPassword: '',
 
   // Scripting Interface
-  siEnabled: true,
+  siEnabled: false,
   siPort: 4951,
   siLocalhostOnly: true,
 
@@ -79,6 +89,16 @@ const DEFAULT_SETTINGS: Settings = {
   errorContinue: false,
   debugMode: false,
   replaySpeed: 5,
+
+  // Visual effects
+  visualEffectScrollToElement: true,
+  visualEffectHighlightElement: true,
+
+  // Keyboard shortcuts
+  toggleSidebarHotkey: 'Ctrl+Shift+M',
+
+  // External editor
+  externalEditorPath: '',
 };
 
 // ============================================================================
@@ -198,6 +218,13 @@ function getFormValues(): Settings {
     errorContinue: formData.get('errorContinue') === 'on',
     debugMode: formData.get('debugMode') === 'on',
     replaySpeed: parseInt(formData.get('replaySpeed') as string, 10) || DEFAULT_SETTINGS.replaySpeed,
+
+    visualEffectScrollToElement: formData.get('visualEffectScrollToElement') === 'on',
+    visualEffectHighlightElement: formData.get('visualEffectHighlightElement') === 'on',
+
+    toggleSidebarHotkey: (formData.get('toggleSidebarHotkey') as string) || DEFAULT_SETTINGS.toggleSidebarHotkey,
+
+    externalEditorPath: (formData.get('externalEditorPath') as string) || '',
   };
 }
 
@@ -233,6 +260,16 @@ function setFormValues(settings: Settings): void {
 
   (document.getElementById('error-continue') as HTMLInputElement).checked = settings.errorContinue;
   (document.getElementById('debug-mode') as HTMLInputElement).checked = settings.debugMode;
+
+  // Visual effects
+  (document.getElementById('visual-scroll') as HTMLInputElement).checked = settings.visualEffectScrollToElement;
+  (document.getElementById('visual-highlight') as HTMLInputElement).checked = settings.visualEffectHighlightElement;
+
+  // Keyboard shortcuts
+  (document.getElementById('toggle-sidebar-hotkey') as HTMLInputElement).value = settings.toggleSidebarHotkey;
+
+  // External editor
+  (document.getElementById('external-editor-path') as HTMLInputElement).value = settings.externalEditorPath;
 
   // Update visibility
   updateEncryptionFieldsVisibility();

@@ -68,7 +68,7 @@ Each command and JS API function is documented with:
 | 38 | [TAG](commands/TAG.md) | Complete | commands/TAG.md |
 | 39 | [URL](commands/URL.md) | Complete | commands/URL.md |
 | 40 | [VERSION](commands/VERSION.md) | Complete | commands/VERSION.md |
-| 41 | [WAIT](commands/WAIT.md) | Pending | |
+| 41 | [WAIT](commands/WAIT.md) | Complete | commands/WAIT.md |
 | 42 | [WINCLICK](commands/WINCLICK.md) | Pending | |
 
 ---
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 38/42 complete
+- Commands: 39/42 complete
 - JS API: 11/16 complete
-- **Total: 49/58 complete**
+- **Total: 50/58 complete**

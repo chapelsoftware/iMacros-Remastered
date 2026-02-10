@@ -312,9 +312,9 @@ export function sanitizeFilename(filename: string): string {
 /**
  * Derive a document name from a URL, mimicking iMacros 8.9.7 __doc_name.
  * Extracts the last path segment (without extension), falls back to hostname
- * (stripping www.), then to "unknown".
+ * (stripping www.), then to document title, then to "unknown".
  */
-export function deriveDocumentName(url: string): string {
+export function deriveDocumentName(url: string, documentTitle?: string): string {
   try {
     const parsed = new URL(url);
 
@@ -328,6 +328,11 @@ export function deriveDocumentName(url: string): string {
       if (hostMatch) {
         name = hostMatch[1];
       }
+    }
+
+    // Fall back to document title (iMacros 8.9.7 parity)
+    if (!name.length && documentTitle) {
+      name = documentTitle;
     }
 
     if (!name.length) return 'unknown';

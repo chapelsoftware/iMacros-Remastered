@@ -468,32 +468,34 @@ describe('DialogInterceptor', () => {
   // POS counter
   // ============================================================
 
-  describe('POS counter', () => {
-    it('should auto-respond only up to POS dialogs', () => {
+  describe('dialog queue consumption', () => {
+    it('should consume queued configs one per dialog', () => {
       interceptor.install();
-      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 2 });
+      // Queue two configs at POS=1 and POS=2
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 1 }, true);
+      interceptor.applyDialogConfig({ active: true, button: 'CANCEL', pos: 2 }, true);
 
       // First two should be auto-responded (CANCEL -> false)
       const r1 = window.confirm('1');
       const r2 = window.confirm('2');
-      // Third should call original (which returns true from our mock)
+      // Third has empty queue - unhandled dialog returns false
       const r3 = window.confirm('3');
 
       expect(r1).toBe(false); // auto-respond: CANCEL
       expect(r2).toBe(false); // auto-respond: CANCEL
-      expect(r3).toBe(true);  // original confirm mock returns true
+      expect(r3).toBe(false); // unhandled dialog (queue empty)
     });
 
-    it('should suppress alerts only up to POS count', () => {
+    it('should suppress alerts when queue has entries and report unhandled when empty', () => {
       interceptor.install();
-      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 });
+      interceptor.applyDialogConfig({ active: true, button: 'OK', pos: 1 }, true);
 
       window.alert('first');
       window.alert('second');
 
-      // First alert should be suppressed; second should call original
-      expect(alertCalls).toHaveLength(1);
-      expect(alertCalls[0]).toBe('second');
+      // Both alerts are suppressed - first by queue config, second as unhandled
+      // Neither calls original alert
+      expect(alertCalls).toHaveLength(0);
     });
 
     it('should reset counter with resetCounter', () => {

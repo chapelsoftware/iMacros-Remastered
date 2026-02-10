@@ -211,8 +211,10 @@ export class DialogInterceptor {
 
   /**
    * Apply ONDIALOG configuration from command
+   * @param config Dialog configuration
+   * @param append When true, append to queue at POS index (queue mode)
    */
-  applyDialogConfig(config: DialogConfig): void {
+  applyDialogConfig(config: DialogConfig, append?: boolean): void {
     currentConfig = {
       enabled: config.active,
       button: config.button,
@@ -220,9 +222,9 @@ export class DialogInterceptor {
       pos: config.pos,
     };
 
-    // Send to main world
+    // Send to main world with append flag for queue support
     window.dispatchEvent(new CustomEvent('__imacros_dialog_config', {
-      detail: { config }
+      detail: { config, append: append ?? false }
     }));
   }
 
@@ -365,9 +367,9 @@ export function initializeDialogInterceptor(): DialogInterceptor {
 /**
  * Handle DIALOG_CONFIG messages from background script
  */
-export function handleDialogConfigMessage(config: DialogConfig): void {
+export function handleDialogConfigMessage(config: DialogConfig, append?: boolean): void {
   const interceptor = getDialogInterceptor();
-  interceptor.applyDialogConfig(config);
+  interceptor.applyDialogConfig(config, append);
 }
 
 /**
@@ -389,7 +391,7 @@ export function setupDialogMessageListener(): void {
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === 'DIALOG_CONFIG') {
       try {
-        handleDialogConfigMessage(message.payload?.config);
+        handleDialogConfigMessage(message.payload?.config, message.payload?.append);
         sendResponse({ success: true });
       } catch (error) {
         sendResponse({

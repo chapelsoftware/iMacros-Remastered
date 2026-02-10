@@ -160,13 +160,13 @@ describe('Dialog Command Handlers Unit Tests', () => {
       expect(sentMessages).toHaveLength(0);
     });
 
-    it('should default unknown BUTTON value to OK', async () => {
+    it('should default unknown BUTTON value to CANCEL', async () => {
       executor.loadMacro('ONDIALOG POS=1 BUTTON=UNKNOWN');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
       const msg = sentMessages[0] as DialogConfigMessage;
-      expect(msg.payload.config.button).toBe('OK');
+      expect(msg.payload.config.button).toBe('CANCEL');
     });
 
     it('should expand variables in CONTENT', async () => {
@@ -1016,14 +1016,14 @@ describe('Dialog Command Handlers Unit Tests', () => {
       expect(msg.payload.config.button).toBe('CANCEL');
     });
 
-    it('should default unrecognized button to OK for all handlers', async () => {
+    it('should default unrecognized button to CANCEL for all handlers', async () => {
       // Test through ONCERTIFICATEDIALOG as representative
       executor.loadMacro('ONCERTIFICATEDIALOG BUTTON=FOOBAR');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
       const msg = sentMessages[0] as CertificateConfigMessage;
-      expect(msg.payload.config.button).toBe('OK');
+      expect(msg.payload.config.button).toBe('CANCEL');
     });
   });
 });

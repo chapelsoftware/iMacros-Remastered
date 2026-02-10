@@ -63,7 +63,7 @@ export type DialogType = 'alert' | 'confirm' | 'prompt' | 'beforeunload';
  * Configuration for ONDIALOG command
  */
 export interface DialogConfig {
-  /** Position indicator (usually 1) */
+  /** Position indicator - used as array index for sequential dialog handling */
   pos: number;
   /** Button to click when dialog appears */
   button: DialogButton;
@@ -71,6 +71,8 @@ export interface DialogConfig {
   content?: string;
   /** Whether this config is active */
   active: boolean;
+  /** Timeout in seconds from !TIMEOUT_STEP */
+  timeout?: number;
 }
 
 /**
@@ -83,6 +85,8 @@ export interface DialogConfigMessage extends DialogMessage {
     config: DialogConfig;
     /** Which dialog types to intercept */
     dialogTypes: DialogType[];
+    /** When true, append to queue at POS index instead of replacing (multiple ONDIALOG commands stack) */
+    append?: boolean;
   };
 }
 
@@ -325,7 +329,8 @@ function parseButton(buttonStr: string): DialogButton {
     case 'CANCEL':
       return upper as DialogButton;
     default:
-      return 'OK';
+      // Original iMacros v8.9.7: invalid button values default to CANCEL
+      return 'CANCEL';
   }
 }
 
@@ -342,7 +347,7 @@ function parseButton(buttonStr: string): DialogButton {
  * - ONDIALOG POS=1 BUTTON=YES CONTENT="response text"
  */
 export const onDialogHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
-  // Get POS parameter (usually 1, indicates dialog position/count)
+  // Get POS parameter - used as array index for sequential dialog handling
   const posStr = ctx.getParam('POS');
   const buttonStr = ctx.getParam('BUTTON');
 
@@ -367,6 +372,11 @@ export const onDialogHandler: CommandHandler = async (ctx: CommandContext): Prom
   const contentStr = ctx.getParam('CONTENT');
   const content = contentStr ? ctx.expand(contentStr) : undefined;
 
+  // Get timeout from !TIMEOUT_STEP (matches original's obj.timeout = this.delay)
+  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
+  const timeout = typeof timeoutStep === 'number' ? timeoutStep :
+    typeof timeoutStep === 'string' ? parseFloat(timeoutStep) : undefined;
+
   ctx.log('info', `Configuring dialog handler: POS=${pos}, BUTTON=${button}${content ? `, CONTENT=${content}` : ''}`);
 
   // Store configuration in state for content script to use
@@ -376,7 +386,8 @@ export const onDialogHandler: CommandHandler = async (ctx: CommandContext): Prom
     ctx.state.setVariable('!DIALOG_CONTENT', content);
   }
 
-  // Send configuration to content script
+  // Send configuration to content script with append=true for queue support
+  // (multiple ONDIALOG commands stack at POS indices, matching original behavior)
   const response = await sendDialogMessage(
     {
       type: 'DIALOG_CONFIG',
@@ -386,8 +397,10 @@ export const onDialogHandler: CommandHandler = async (ctx: CommandContext): Prom
           button,
           content,
           active: true,
+          timeout: timeout !== undefined && !isNaN(timeout) ? timeout : undefined,
         },
         dialogTypes: ['alert', 'confirm', 'prompt', 'beforeunload'],
+        append: true,
       },
     },
     ctx

@@ -165,14 +165,14 @@ describe('ONDIALOG Command Integration Tests', () => {
     });
   });
 
-  describe('Unknown BUTTON value defaults to OK', () => {
-    it('should default button to OK for BUTTON=UNKNOWN', async () => {
+  describe('Unknown BUTTON value defaults to CANCEL', () => {
+    it('should default button to CANCEL for BUTTON=UNKNOWN', async () => {
       executor.loadMacro('ONDIALOG POS=1 BUTTON=UNKNOWN');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
       const msg = sentMessages[0] as DialogConfigMessage;
-      expect(msg.payload.config.button).toBe('OK');
+      expect(msg.payload.config.button).toBe('CANCEL');
     });
   });
 

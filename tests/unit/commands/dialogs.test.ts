@@ -180,12 +180,12 @@ describe('dialogs.ts', () => {
       expect(ctx.state.setVariable).toHaveBeenCalledWith('!DIALOG_BUTTON', 'NO');
     });
 
-    it('should default unknown button to OK', async () => {
+    it('should default unknown button to CANCEL', async () => {
       const ctx = createMockCtx({ POS: '1', BUTTON: 'UNKNOWN' });
       const result = await onDialogHandler(ctx as any);
 
       expect(result.success).toBe(true);
-      expect(ctx.state.setVariable).toHaveBeenCalledWith('!DIALOG_BUTTON', 'OK');
+      expect(ctx.state.setVariable).toHaveBeenCalledWith('!DIALOG_BUTTON', 'CANCEL');
     });
 
     it('should handle case-insensitive button value', async () => {
@@ -230,6 +230,7 @@ describe('dialogs.ts', () => {
       expect((msg as any).payload.config.button).toBe('OK');
       expect((msg as any).payload.config.active).toBe(true);
       expect((msg as any).payload.dialogTypes).toEqual(['alert', 'confirm', 'prompt', 'beforeunload']);
+      expect((msg as any).payload.append).toBe(true);
       expect(msg.id).toMatch(/^dialog_/);
       expect(typeof msg.timestamp).toBe('number');
     });

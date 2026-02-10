@@ -425,7 +425,8 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
   const file = ctx.expand(fileParam);
 
   // WAIT defaults to YES (iMacros 8.9.7 parity)
-  const wait = waitParam ? waitParam.toUpperCase() !== 'NO' : true;
+  // Only YES/TRUE are truthy; everything else (NO, FALSE, etc.) is false
+  const wait = waitParam ? /^(?:yes|true)$/i.test(waitParam) : true;
 
   // Validate folder path (skip for wildcard '*' which means browser default)
   if (folder !== '*') {
@@ -439,8 +440,10 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
     }
   }
 
-  // Validate filename (skip for '+' which means auto-generate)
-  if (file !== '+') {
+  // Validate filename (skip for '+' and '*' which are wildcards)
+  // FILE=+ means auto-generate unique filename
+  // FILE=* means use server-suggested filename (iMacros 8.9.7 parity)
+  if (file !== '+' && file !== '*') {
     const illegalChar = validateFilename(file);
     if (illegalChar) {
       return {
@@ -465,7 +468,16 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
     checksum = `${parsed.algorithm}:${parsed.hash}`;
   }
 
-  ctx.log('info', `Setting download options: folder=${folder === '*' ? '(default)' : folder}, file=${file === '+' ? '(auto)' : file}${checksum ? `, checksum=${checksum}` : ''}`);
+  // CHECKSUM requires WAIT=YES (iMacros 8.9.7 parity)
+  if (checksum && !wait) {
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: 'CHECKSUM requires WAIT=YES',
+    };
+  }
+
+  ctx.log('info', `Setting download options: folder=${folder === '*' ? '(default)' : folder}, file=${file === '+' || file === '*' ? '(auto)' : file}${checksum ? `, checksum=${checksum}` : ''}`);
 
   // Store download settings in state for later use
   ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, folder);
@@ -476,7 +488,7 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
     {
       type: 'setDownloadOptions',
       folder: folder === '*' ? undefined : folder,
-      file: file === '+' ? undefined : file,
+      file: (file === '+' || file === '*') ? undefined : file,
       wait,
       checksum,
     },

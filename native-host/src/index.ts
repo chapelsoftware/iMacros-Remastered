@@ -4,8 +4,11 @@
  * This module initializes the native messaging protocol and handles
  * messages from the browser extension.
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import { Message, ResponseMessage, createMessageId, createTimestamp, parseMacro, createExecutor } from '@shared/index';
 import { initNativeMessaging, NativeMessagingConnection } from './messaging';
+import { RegistryService } from './services/registry-service';
 
 // Export messaging module for external use
 export * from './messaging';
@@ -56,6 +59,42 @@ export async function handleMessage(message: Message): Promise<ResponseMessage> 
             extractData: result.extractData,
             runtime: result.executionTimeMs,
           },
+        };
+      } catch (err: any) {
+        return {
+          type: 'error',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          error: err.message || String(err),
+        };
+      }
+    }
+    case 'save_screenshot': {
+      try {
+        const payload = (message as any).payload as { dataUrl: string };
+        if (!payload?.dataUrl) {
+          return {
+            type: 'error',
+            id: createMessageId(),
+            timestamp: createTimestamp(),
+            error: 'No screenshot data provided',
+          };
+        }
+        const base64Data = payload.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const registry = new RegistryService();
+        const screenshotDir = registry.getScreenshotPath() || path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Documents', 'iMacros', 'Screenshots');
+        if (!fs.existsSync(screenshotDir)) {
+          fs.mkdirSync(screenshotDir, { recursive: true });
+        }
+        const filename = `screenshot_${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+        const filePath = path.join(screenshotDir, filename);
+        fs.writeFileSync(filePath, buffer);
+        return {
+          type: 'result',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { success: true, path: filePath },
         };
       } catch (err: any) {
         return {

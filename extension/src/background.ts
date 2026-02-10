@@ -1656,6 +1656,34 @@ async function handleMessage(
       }
     }
 
+    case 'SAVE_PAGE': {
+      console.log('[iMacros] SAVE_PAGE from panel');
+      try {
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!activeTab?.id) {
+          return { success: false, error: 'No active tab found' };
+        }
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: activeTab.id },
+          func: () => document.documentElement.outerHTML,
+        });
+        const html = results?.[0]?.result;
+        if (!html) {
+          return { success: false, error: 'Failed to capture page HTML' };
+        }
+        await sendToNativeHostNoWait({
+          type: 'save_page',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { html, url: activeTab.url || '', title: activeTab.title || '' },
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[iMacros] SAVE_PAGE error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
     case 'CLEAR_CACHE': {
       console.log('[iMacros] CLEAR_CACHE from panel');
       try {

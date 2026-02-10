@@ -13,7 +13,8 @@
     "declarativeNetRequest",
     "downloads",
     "webNavigation",
-    "browsingData"
+    "browsingData",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"

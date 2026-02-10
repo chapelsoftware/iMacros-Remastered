@@ -69,6 +69,44 @@ export async function handleMessage(message: Message): Promise<ResponseMessage> 
         };
       }
     }
+    case 'save_page': {
+      try {
+        const payload = (message as any).payload as { html: string; url: string; title: string };
+        if (!payload?.html) {
+          return {
+            type: 'error',
+            id: createMessageId(),
+            timestamp: createTimestamp(),
+            error: 'No page HTML provided',
+          };
+        }
+        const registry = new RegistryService();
+        const downloadDir = registry.getDownloadPath() || path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Documents', 'iMacros', 'Downloads');
+        if (!fs.existsSync(downloadDir)) {
+          fs.mkdirSync(downloadDir, { recursive: true });
+        }
+        // Derive filename from title or URL
+        const baseName = (payload.title || payload.url || 'page')
+          .replace(/[^a-zA-Z0-9_-]/g, '_')
+          .substring(0, 100);
+        const filename = `${baseName}_${new Date().toISOString().replace(/[:.]/g, '-')}.htm`;
+        const filePath = path.join(downloadDir, filename);
+        fs.writeFileSync(filePath, payload.html, 'utf-8');
+        return {
+          type: 'result',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { success: true, path: filePath },
+        };
+      } catch (err: any) {
+        return {
+          type: 'error',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          error: err.message || String(err),
+        };
+      }
+    }
     case 'save_screenshot': {
       try {
         const payload = (message as any).payload as { dataUrl: string };

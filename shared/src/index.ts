@@ -57,7 +57,8 @@ export type RequestMessageType =
   | 'rename_file'
   | 'delete_file'
   | 'move_file'
-  | 'save_screenshot';
+  | 'save_screenshot'
+  | 'save_page';
 
 export type ResponseMessageType =
   | 'pong'

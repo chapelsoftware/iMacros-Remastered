@@ -828,8 +828,13 @@ function setupEventListeners(): void {
 
   // Record options buttons
   document.getElementById('btn-record-options')?.addEventListener('click', openRecordingOptionsDialog);
-  document.getElementById('btn-save-page')?.addEventListener('click', () => {
-    setStatus('idle', 'Save page not yet implemented');
+  document.getElementById('btn-save-page')?.addEventListener('click', async () => {
+    try {
+      await sendToBackground('SAVE_PAGE');
+      setStatus('idle', 'Page saved');
+    } catch (error) {
+      setStatus('error', `Error: ${String(error)}`);
+    }
   });
   document.getElementById('btn-screenshot')?.addEventListener('click', async () => {
     try {

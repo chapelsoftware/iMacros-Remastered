@@ -503,10 +503,13 @@ export const filterHandler: CommandHandler = async (ctx: CommandContext): Promis
   }
 
   // For IMAGES type, check !IMAGEFILTER variable (parity with iMacros 8.9.7)
+  // In original iMacros, shouldFilterImages defaults to true at macro start.
+  // Only SET !IMAGEFILTER OFF disables the gate. So we skip only when
+  // explicitly set to OFF/NO — unset or any other value means enabled.
   if (filterType === 'IMAGES') {
     const imageFilter = ctx.variables.get('!IMAGEFILTER');
-    if (!imageFilter || imageFilter === '') {
-      ctx.log('info', 'FILTER TYPE=IMAGES skipped: !IMAGEFILTER is not set');
+    if (typeof imageFilter === 'string' && /^(off|no)$/i.test(imageFilter)) {
+      ctx.log('info', 'FILTER TYPE=IMAGES skipped: !IMAGEFILTER is OFF');
       return {
         success: true,
         errorCode: IMACROS_ERROR_CODES.OK,

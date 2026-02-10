@@ -267,6 +267,7 @@ function createBrowserBridge(sendMessage, createMessageId) {
       button: params.button || 'left',
       clickCount: params.clickCount || 1,
       modifiers: params.modifiers || {},
+      coordinateMode: params.coordinateMode || 'page',
     });
   }
 

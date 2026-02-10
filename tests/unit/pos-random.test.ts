@@ -17,9 +17,9 @@ describe('POS=R relative positioning', () => {
       expect(parsePosParam('r5')).toBe(5);
     });
 
-    it('returns 1 for just R (invalid relative)', () => {
-      // "R" without a number is invalid, defaults to 1
-      expect(parsePosParam('R')).toBe(1);
+    it('throws for just R (invalid relative)', () => {
+      // "R" without a number is invalid — matches old iMacros BadParameter
+      expect(() => parsePosParam('R')).toThrow('Bad parameter');
     });
 
     it('returns number for numeric POS', () => {
@@ -31,8 +31,9 @@ describe('POS=R relative positioning', () => {
       expect(parsePosParam('-1')).toBe(-1);
     });
 
-    it('defaults to 1 for invalid POS', () => {
-      expect(parsePosParam('abc')).toBe(1);
+    it('throws for invalid POS', () => {
+      // Old iMacros throws BadParameter for non-numeric POS
+      expect(() => parsePosParam('abc')).toThrow('Bad parameter');
     });
   });
 
@@ -55,16 +56,12 @@ describe('POS=R relative positioning', () => {
       expect(result.relative).toBe(false);
     });
 
-    it('returns relative=false for invalid R (no number)', () => {
-      const result = parsePosParamEx('R');
-      expect(result.pos).toBe(1);
-      expect(result.relative).toBe(false);
+    it('throws for invalid R (no number)', () => {
+      expect(() => parsePosParamEx('R')).toThrow('Bad parameter');
     });
 
-    it('returns relative=false for R0 (invalid)', () => {
-      const result = parsePosParamEx('R0');
-      expect(result.pos).toBe(1);
-      expect(result.relative).toBe(false);
+    it('throws for R0 (invalid)', () => {
+      expect(() => parsePosParamEx('R0')).toThrow('Bad parameter');
     });
   });
 });

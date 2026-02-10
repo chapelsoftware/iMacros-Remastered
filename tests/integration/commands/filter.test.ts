@@ -83,8 +83,18 @@ describe('FILTER Command Integration Tests', () => {
       expect(msg.status).toBe('OFF');
     });
 
-    it('should skip execution when !IMAGEFILTER is not set', async () => {
+    it('should execute when !IMAGEFILTER is not set (defaults to enabled like original iMacros)', async () => {
       executor.loadMacro('FILTER TYPE=IMAGES STATUS=ON');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+      expect(sentMessages).toHaveLength(1);
+      expect(sentMessages[0]).toMatchObject({ type: 'setFilter', filterType: 'IMAGES', status: 'ON' });
+    });
+
+    it('should skip execution when !IMAGEFILTER is explicitly OFF', async () => {
+      executor.loadMacro('SET !IMAGEFILTER OFF\nFILTER TYPE=IMAGES STATUS=ON');
       const result = await executor.execute();
 
       expect(result.success).toBe(true);

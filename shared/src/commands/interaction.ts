@@ -110,9 +110,9 @@ export interface TagCommandMessage extends ContentScriptMessage {
 export interface ClickCommandMessage extends ContentScriptMessage {
   type: 'CLICK_COMMAND';
   payload: {
-    /** X coordinate (relative to viewport or element) */
+    /** X coordinate */
     x: number;
-    /** Y coordinate (relative to viewport or element) */
+    /** Y coordinate */
     y: number;
     /** Optional content for form interaction (like TAG CONTENT=) */
     content?: string;
@@ -127,6 +127,9 @@ export interface ClickCommandMessage extends ContentScriptMessage {
       alt?: boolean;
       meta?: boolean;
     };
+    /** Coordinate mode: 'page' treats X/Y as page coordinates (default, matches original iMacros 8.9.7),
+     *  'viewport' treats X/Y as viewport-relative clientX/clientY */
+    coordinateMode?: 'page' | 'viewport';
   };
 }
 
@@ -381,13 +384,16 @@ export function parsePosParamEx(posStr: string): ParsedPos {
     if (!isNaN(num) && num !== 0) {
       return { pos: num, relative: true };
     }
-    // Invalid relative position (R0 or non-numeric), treat as absolute position 1
-    return { pos: 1, relative: false };
+    // R0 or non-numeric after R — matches old iMacros BadParameter behavior
+    throw new Error('Bad parameter: POS=<number> or POS=R<number>');
   }
 
   // Absolute position
   const num = parseInt(trimmed, 10);
-  return { pos: isNaN(num) ? 1 : num, relative: false };
+  if (isNaN(num)) {
+    throw new Error('Bad parameter: POS=<number> or POS=R<number>');
+  }
+  return { pos: num, relative: false };
 }
 
 /**
@@ -538,7 +544,17 @@ export function getContentScriptSender(): ContentScriptSender {
  * TAG CSS=.submit-btn EXTRACT=TXT
  */
 export const tagHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
-  const selector = buildSelector(ctx);
+  let selector: ElementSelector;
+  try {
+    selector = buildSelector(ctx);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      success: false,
+      errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+      errorMessage: msg,
+    };
+  }
 
   let action: TagAction;
   try {
@@ -684,6 +700,16 @@ export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise
     }
   }
 
+  // COORDMODE param: 'page' (default, matches original) or 'viewport'
+  const coordModeParam = ctx.getParam('COORDMODE');
+  let coordinateMode: 'page' | 'viewport' = 'page';
+  if (coordModeParam) {
+    const mode = ctx.expand(coordModeParam).toLowerCase();
+    if (mode === 'viewport') {
+      coordinateMode = 'viewport';
+    }
+  }
+
   // Build message
   const message: ClickCommandMessage = {
     id: generateMessageId(),
@@ -696,6 +722,7 @@ export const clickHandler: CommandHandler = async (ctx: CommandContext): Promise
       button,
       clickCount: 1,
       modifiers: {},
+      coordinateMode,
     },
   };
 

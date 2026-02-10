@@ -1305,6 +1305,36 @@ async function handleMessage(
       }
     }
 
+    case 'STOP_MACRO': {
+      console.log('[iMacros] STOP_MACRO from panel');
+      try {
+        await sendToNativeHostNoWait({
+          type: 'stop_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {},
+        });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
+    case 'PAUSE_MACRO': {
+      console.log('[iMacros] PAUSE_MACRO from panel');
+      try {
+        await sendToNativeHostNoWait({
+          type: 'pause_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {},
+        });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
     // Start recording from panel
     case 'START_RECORDING': {
       console.log('[iMacros] START_RECORDING from panel');

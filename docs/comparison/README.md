@@ -78,7 +78,7 @@ Each command and JS API function is documented with:
 | # | Function | Status | File |
 |---|----------|--------|------|
 | 1 | [iimPlay](js-api/iimPlay.md) | Complete | js-api/iimPlay.md |
-| 2 | [iimPlayCode](js-api/iimPlayCode.md) | Pending | |
+| 2 | [iimPlayCode](js-api/iimPlayCode.md) | Complete | js-api/iimPlayCode.md |
 | 3 | [iimDisplay](js-api/iimDisplay.md) | Pending | |
 | 4 | [iimExit](js-api/iimExit.md) | Pending | |
 | 5 | [iimClose](js-api/iimClose.md) | Pending | |
@@ -99,5 +99,5 @@ Each command and JS API function is documented with:
 ## Completion Progress
 
 - Commands: 13/42 complete
-- JS API: 1/16 complete
-- **Total: 14/58 complete**
+- JS API: 2/16 complete
+- **Total: 15/58 complete**

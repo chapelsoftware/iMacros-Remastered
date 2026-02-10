@@ -471,13 +471,15 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
         await chrome.tabs.update(targetTabId, { url });
         await navigationDone;
         await waitForContentScript(targetTabId);
-        result = { success: true };
+        // Include tab title for document.title fallback in filename derivation
+        const navTab = await chrome.tabs.get(targetTabId);
+        result = { success: true, title: navTab.title || '' };
         break;
       }
 
       case 'getCurrentUrl': {
         const tab = await chrome.tabs.get(targetTabId);
-        result = { success: true, url: tab.url || '' };
+        result = { success: true, url: tab.url || '', title: tab.title || '' };
         break;
       }
 
@@ -618,6 +620,45 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
         }
 
         result = { success: tab.status === 'complete' };
+        break;
+      }
+
+      // Screenshot command - capture visible tab and relay to native host for saving
+      case 'screenshot': {
+        const {
+          captureType, format, quality, folder, file, selector,
+        } = params as {
+          captureType: string; format: string; quality?: number;
+          folder?: string; file: string; selector?: string;
+        };
+
+        console.log(`[iMacros] screenshot: type=${captureType}, format=${format}, file=${file}`);
+
+        // Capture the visible tab
+        const captureFormat = format === 'jpeg' ? 'jpeg' : 'png';
+        const captureOptions: chrome.tabs.CaptureVisibleTabOptions = { format: captureFormat };
+        if (captureFormat === 'jpeg' && quality !== undefined) {
+          captureOptions.quality = quality;
+        }
+
+        const dataUrl = await chrome.tabs.captureVisibleTab(undefined, captureOptions);
+
+        // Relay to native host for file saving
+        const screenshotResponse = await sendToNativeHost({
+          type: 'save_screenshot_file',
+          id: messageId,
+          timestamp: Date.now(),
+          payload: { dataUrl, folder, file, format },
+        });
+
+        const screenshotResult = screenshotResponse.payload as {
+          success?: boolean; path?: string;
+        } | undefined;
+
+        result = {
+          success: screenshotResult?.success ?? true,
+          data: { screenshotPath: screenshotResult?.path || file },
+        };
         break;
       }
 

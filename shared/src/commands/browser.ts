@@ -903,12 +903,13 @@ export const screenshotHandler: CommandHandler = async (ctx: CommandContext): Pr
   // FILE=* derives name from page URL/title
   // FILE=+suffix appends suffix to derived name
   const currentUrl = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
+  const documentTitle = ctx.state.getVariable('!DOCUMENT_TITLE')?.toString() || undefined;
   if (file === '*') {
-    file = deriveDocumentName(currentUrl) + '.png';
+    file = deriveDocumentName(currentUrl, documentTitle) + '.png';
   } else {
     const suffixMatch = file.match(/^\+(.+)$/);
     if (suffixMatch) {
-      file = deriveDocumentName(currentUrl) + suffixMatch[1];
+      file = deriveDocumentName(currentUrl, documentTitle) + suffixMatch[1];
     }
   }
 

@@ -103,6 +103,8 @@ export const SYSTEM_VARIABLES = [
   '!FOLDER_DATASOURCE', '!FOLDER_DOWNLOAD', '!FOLDER_MACROS', '!FOLDER_STOPWATCH',
   // URLs
   '!URLSTART', '!URLCURRENT',
+  // Document title (populated by navigation, used by deriveDocumentName fallback)
+  '!DOCUMENT_TITLE',
   // Stopwatch
   '!FILESTOPWATCH', '!STOPWATCH', '!STOPWATCHTIME', '!STOPWATCH_HEADER',
   // Clipboard

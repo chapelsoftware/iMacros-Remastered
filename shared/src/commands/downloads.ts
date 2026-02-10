@@ -618,6 +618,7 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
   // FILE=* derives name from page URL/title (or "extract.csv" for EXTRACT type)
   // FILE=+suffix appends suffix to derived name
   const currentUrl = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
+  const documentTitle = ctx.state.getVariable('!DOCUMENT_TITLE')?.toString() || undefined;
 
   if (saveType === 'EXTRACT') {
     if (file === '*') {
@@ -630,11 +631,11 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
     }
   } else {
     if (file === '*') {
-      file = deriveDocumentName(currentUrl);
+      file = deriveDocumentName(currentUrl, documentTitle);
     } else {
       const suffixMatch = file.match(/^\+(.+)$/);
       if (suffixMatch) {
-        file = deriveDocumentName(currentUrl) + suffixMatch[1];
+        file = deriveDocumentName(currentUrl, documentTitle) + suffixMatch[1];
       }
     }
   }

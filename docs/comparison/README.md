@@ -41,7 +41,7 @@ Each command and JS API function is documented with:
 | 11 | [FILEDELETE](commands/FILEDELETE.md) | Complete | commands/FILEDELETE.md |
 | 12 | [FILTER](commands/FILTER.md) | Complete | commands/FILTER.md |
 | 13 | [FRAME](commands/FRAME.md) | Complete | commands/FRAME.md |
-| 14 | [IMAGECLICK](commands/IMAGECLICK.md) | Pending | |
+| 14 | [IMAGECLICK](commands/IMAGECLICK.md) | Complete | commands/IMAGECLICK.md |
 | 15 | [IMAGESEARCH](commands/IMAGESEARCH.md) | Complete | commands/IMAGESEARCH.md |
 | 16 | [ONCERTIFICATEDIALOG](commands/ONCERTIFICATEDIALOG.md) | Complete | commands/ONCERTIFICATEDIALOG.md |
 | 17 | [ONDIALOG](commands/ONDIALOG.md) | Complete | commands/ONDIALOG.md |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 37/42 complete
+- Commands: 38/42 complete
 - JS API: 10/16 complete
-- **Total: 47/58 complete**
+- **Total: 48/58 complete**

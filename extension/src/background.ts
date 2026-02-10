@@ -1645,6 +1645,23 @@ async function handleMessage(
       }
     }
 
+    case 'TAKE_SCREENSHOT': {
+      console.log('[iMacros] TAKE_SCREENSHOT from panel');
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab({ format: 'png' });
+        await sendToNativeHostNoWait({
+          type: 'save_screenshot',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { dataUrl },
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[iMacros] TAKE_SCREENSHOT error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
     default:
       console.warn('[iMacros] Unknown message type:', message.type);
       return { success: false, error: `Unknown message type: ${message.type}` };

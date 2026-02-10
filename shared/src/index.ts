@@ -56,7 +56,8 @@ export type RequestMessageType =
   | 'create_folder'
   | 'rename_file'
   | 'delete_file'
-  | 'move_file';
+  | 'move_file'
+  | 'save_screenshot';
 
 export type ResponseMessageType =
   | 'pong'

@@ -1335,6 +1335,21 @@ async function handleMessage(
       }
     }
 
+    case 'RESUME_MACRO': {
+      console.log('[iMacros] RESUME_MACRO from panel');
+      try {
+        await sendToNativeHostNoWait({
+          type: 'resume_macro',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {},
+        });
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: String(error) };
+      }
+    }
+
     // Start recording from panel
     case 'START_RECORDING': {
       console.log('[iMacros] START_RECORDING from panel');

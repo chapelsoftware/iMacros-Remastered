@@ -190,16 +190,26 @@ function delay(ms: number): Promise<void> {
 
 /**
  * Pause-aware delay that checks for pause state during wait.
- * Splits the wait into 100ms chunks and suspends if paused.
+ * Splits the wait into 100ms chunks, suspends if paused,
+ * and emits countdown updates every second for UI consumers.
  */
 async function pauseAwareDelay(ms: number, ctx: CommandContext): Promise<void> {
   const chunkSize = 100;
   let remaining = ms;
+  // Track last reported second so we only log once per second boundary
+  let lastReportedSecond = -1;
 
   while (remaining > 0) {
     // Check for pause state and wait for resume
     while (ctx.state.getStatus() === ExecutionStatus.PAUSED) {
       await delay(50);
+    }
+
+    // Emit countdown update at each new second boundary
+    const remainingSec = Math.ceil(remaining / 1000);
+    if (remainingSec !== lastReportedSecond && remaining > chunkSize) {
+      ctx.log('info', `WAIT: ${remainingSec}s remaining`);
+      lastReportedSecond = remainingSec;
     }
 
     const wait = Math.min(remaining, chunkSize);
@@ -213,7 +223,7 @@ async function pauseAwareDelay(ms: number, ctx: CommandContext): Promise<void> {
  */
 function parseSeconds(value: string): number {
   const parsed = parseFloat(value);
-  return isNaN(parsed) ? 0 : Math.max(0, parsed);
+  return isNaN(parsed) ? -1 : parsed;
 }
 
 // ===== Command Handlers =====
@@ -243,7 +253,7 @@ export const waitHandler: CommandHandler = async (ctx: CommandContext): Promise<
   const expandedValue = ctx.expand(secondsParam);
   const seconds = parseSeconds(expandedValue);
 
-  if (seconds <= 0) {
+  if (seconds < 0) {
     return {
       success: false,
       errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,

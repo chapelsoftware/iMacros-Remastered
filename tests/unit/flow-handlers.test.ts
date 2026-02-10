@@ -220,16 +220,17 @@ describe('Flow Control Handlers', () => {
       expect(result.errorMessage).toContain('SECONDS');
     });
 
-    it('should return INVALID_PARAMETER for WAIT SECONDS=0', async () => {
+    it('should clamp WAIT SECONDS=0 to 10ms and succeed (yield behavior)', async () => {
       const ctx = buildCtx(executor, {
         type: 'WAIT',
         params: [{ key: 'SECONDS', value: '0' }],
         raw: 'WAIT SECONDS=0',
+        expand: (t: string) => t,
       });
 
       const result = await waitHandler(ctx);
-      expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
     });
 
     it('should return INVALID_PARAMETER for WAIT SECONDS=abc', async () => {

@@ -463,8 +463,11 @@ export class MacroExecutor {
         };
       }
 
-      ctx.log('info', `Waiting ${seconds} seconds...`);
-      await this.delay(seconds * 1000);
+      // Clamp SECONDS=0 to 10ms (matches original iMacros 8.9.7 yield behavior)
+      const waitMs = Math.max(10, Math.round((seconds * 1000) / 100) * 100);
+
+      ctx.log('info', `Waiting ${seconds} second${seconds !== 1 ? 's' : ''}...`);
+      await this.delayWithCountdown(waitMs, ctx);
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     });
 
@@ -835,6 +838,29 @@ export class MacroExecutor {
     let remaining = ms;
 
     while (remaining > 0 && !this.abortFlag) {
+      const wait = Math.min(remaining, chunkSize);
+      await new Promise<void>((resolve) => setTimeout(resolve, wait));
+      remaining -= wait;
+    }
+  }
+
+  /**
+   * Delay with countdown updates emitted every second boundary.
+   * Used by the built-in WAIT handler for live countdown display.
+   */
+  private async delayWithCountdown(ms: number, ctx: CommandContext): Promise<void> {
+    const chunkSize = 100;
+    let remaining = ms;
+    let lastReportedSecond = -1;
+
+    while (remaining > 0 && !this.abortFlag) {
+      // Emit countdown update at each new second boundary
+      const remainingSec = Math.ceil(remaining / 1000);
+      if (remainingSec !== lastReportedSecond && remaining > chunkSize) {
+        ctx.log('info', `WAIT: ${remainingSec}s remaining`);
+        lastReportedSecond = remainingSec;
+      }
+
       const wait = Math.min(remaining, chunkSize);
       await new Promise<void>((resolve) => setTimeout(resolve, wait));
       remaining -= wait;

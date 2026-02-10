@@ -265,32 +265,40 @@ export const versionHandler: CommandHandler = async (ctx: CommandContext): Promi
   if (buildParam) {
     const requiredVersion = ctx.expand(buildParam);
 
-    // Parse version strings
-    const parseVersion = (v: string): number[] => {
-      return v.split('.').map(n => parseInt(n, 10) || 0);
-    };
+    // Old iMacros macros use integer build numbers (e.g. VERSION BUILD=7500718).
+    // These are not comparable to semver-style versions (8.9.7).
+    // In the original iMacros, VERSION was a no-op, so skip comparison for these.
+    const isOldStyleBuild = /^\d+$/.test(requiredVersion);
+    if (isOldStyleBuild) {
+      ctx.log('debug', `Skipping version comparison for old-style build number: ${requiredVersion}`);
+    } else {
+      // Parse version strings
+      const parseVersion = (v: string): number[] => {
+        return v.split('.').map(n => parseInt(n, 10) || 0);
+      };
 
-    const current = parseVersion(versionInfo.version);
-    const required = parseVersion(requiredVersion);
+      const current = parseVersion(versionInfo.version);
+      const required = parseVersion(requiredVersion);
 
-    // Compare versions
-    for (let i = 0; i < Math.max(current.length, required.length); i++) {
-      const c = current[i] || 0;
-      const r = required[i] || 0;
+      // Compare versions
+      for (let i = 0; i < Math.max(current.length, required.length); i++) {
+        const c = current[i] || 0;
+        const r = required[i] || 0;
 
-      if (c < r) {
-        return {
-          success: false,
-          errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
-          errorMessage: `This macro requires iMacros version ${requiredVersion} or higher. Current version: ${versionInfo.version}`,
-        };
+        if (c < r) {
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+            errorMessage: `This macro requires iMacros version ${requiredVersion} or higher. Current version: ${versionInfo.version}`,
+          };
+        }
+        if (c > r) {
+          break; // Current version is higher, OK
+        }
       }
-      if (c > r) {
-        break; // Current version is higher, OK
-      }
+
+      ctx.log('debug', `Version check passed: ${versionInfo.version} >= ${requiredVersion}`);
     }
-
-    ctx.log('debug', `Version check passed: ${versionInfo.version} >= ${requiredVersion}`);
   }
 
   return {

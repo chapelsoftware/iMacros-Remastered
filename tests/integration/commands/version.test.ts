@@ -199,4 +199,32 @@ describe('VERSION command integration tests', () => {
     expect(cmdResult.errorCode).toBe(IMACROS_ERROR_CODES.OK);
     expect(cmdResult.output).toBe('8.9.7');
   });
+
+  // -----------------------------------------------------------------------
+  // 11. Old-style integer build numbers should succeed (skip comparison)
+  // -----------------------------------------------------------------------
+  it('should succeed with old-style integer build number (VERSION BUILD=7500718)', async () => {
+    const result = await executeVersionMacro('VERSION BUILD=7500718');
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  it('should succeed with other old-style integer build numbers', async () => {
+    const result = await executeVersionMacro('VERSION BUILD=1000000');
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  // -----------------------------------------------------------------------
+  // 12. Semver-style versions should still be compared normally
+  // -----------------------------------------------------------------------
+  it('should still compare semver-style versions normally after old-style fix', async () => {
+    // This should still fail - it's semver, not old-style
+    const result = await executeVersionMacro('VERSION BUILD=9.0.0');
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+  });
 });

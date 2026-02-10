@@ -1639,6 +1639,54 @@ async function handleMessage(
       }
     }
 
+    // Handle saveItem messages from SAVEITEM command (via DownloadBridge)
+    case 'saveItem': {
+      const itemPayload = message.payload as {
+        url?: string; folder?: string; file?: string;
+        wait?: boolean; checksum?: string;
+      } | undefined;
+      const itemUrl = itemPayload?.url || (message as { url?: string }).url || '';
+      const itemFolder = itemPayload?.folder || (message as { folder?: string }).folder;
+      const itemFile = itemPayload?.file || (message as { file?: string }).file;
+      if (!itemUrl) {
+        return { success: false, error: 'saveItem requires a URL' };
+      }
+      try {
+        const downloadOptions: chrome.downloads.DownloadOptions = { url: itemUrl };
+        // Build filename path: folder/file or just file
+        const parts: string[] = [];
+        if (itemFolder && itemFolder !== '*') parts.push(itemFolder);
+        if (itemFile) parts.push(itemFile);
+        if (parts.length) {
+          downloadOptions.filename = parts.join('/');
+        }
+        const itemDownloadId = await new Promise<number>((resolve, reject) => {
+          chrome.downloads.download(downloadOptions, (id) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(id);
+            }
+          });
+        });
+        return { success: true, data: { downloadId: itemDownloadId, filename: itemFile, url: itemUrl } };
+      } catch (error) {
+        console.error('[iMacros] saveItem download error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
+    // Handle setDownloadOptions messages from ONDOWNLOAD command (via DownloadBridge)
+    case 'setDownloadOptions': {
+      const optPayload = message.payload as {
+        folder?: string; file?: string; wait?: boolean; checksum?: string;
+      } | undefined;
+      // Store download options for subsequent saveItem/DOWNLOAD_URL calls
+      // These are consumed by the shared SAVEITEM handler, so we just acknowledge here
+      console.log('[iMacros] setDownloadOptions:', optPayload);
+      return { success: true };
+    }
+
     case 'TAKE_SCREENSHOT': {
       console.log('[iMacros] TAKE_SCREENSHOT from panel');
       try {

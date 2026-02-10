@@ -61,7 +61,7 @@ Each command and JS API function is documented with:
 | 31 | [SAVEITEM](commands/SAVEITEM.md) | Complete | commands/SAVEITEM.md |
 | 32 | [SCREENSHOT](commands/SCREENSHOT.md) | Complete | commands/SCREENSHOT.md |
 | 33 | [SEARCH](commands/SEARCH.md) | Complete | commands/SEARCH.md |
-| 34 | [SET](commands/SET.md) | Pending | |
+| 34 | [SET](commands/SET.md) | Complete | commands/SET.md |
 | 35 | [SIZE](commands/SIZE.md) | Pending | |
 | 36 | [STOPWATCH](commands/STOPWATCH.md) | Pending | |
 | 37 | [TAB](commands/TAB.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 19/42 complete
+- Commands: 20/42 complete
 - JS API: 4/16 complete
-- **Total: 23/58 complete**
+- **Total: 24/58 complete**

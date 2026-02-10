@@ -32,6 +32,8 @@ import {
   type KeyboardEventOptions,
 } from './event-dispatcher';
 
+import { highlightPlaybackElement } from './element-highlighter';
+
 import type {
   TagCommandMessage,
   ClickCommandMessage,
@@ -1140,7 +1142,7 @@ export async function executeClickCommand(message: ClickCommandMessage): Promise
  * Execute EVENT command
  */
 export async function executeEventCommand(message: EventCommandMessage): Promise<DOMExecutorResult> {
-  const { eventType, selector, button, key, char, point, keys, chars, points, modifiers, bubbles, cancelable } = message.payload;
+  const { eventType, selector, button, key, char, point, keys, chars, points, modifiers, bubbles, cancelable, timeout: msgTimeout } = message.payload;
 
   try {
     // Get the document from the currently selected frame
@@ -1150,17 +1152,43 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
     let element: Element | Document;
 
     if (selector) {
-      const result = await resolveSelector(selector, 5000, false);
-      if (!result.element) {
-        // Use -921 (ELEMENT_NOT_VISIBLE) for element location failures
-        // matching original iMacros 8.9.7 EVENT behavior
-        return {
-          success: false,
-          errorCode: DOM_ERROR_CODES.ELEMENT_NOT_VISIBLE,
-          errorMessage: `Element not found for EVENT: ${JSON.stringify(selector)}`,
-        };
+      // Retry loop for element lookup with visibility check (iMacros 8.9.7 behavior)
+      // Original checks getBoundingClientRect() for zero width/height and retries
+      const retryTimeout = msgTimeout ?? 5000;
+      const startTime = Date.now();
+      let lastElement: Element | null = null;
+
+      while (true) {
+        const result = await resolveSelector(selector, 0, false);
+        if (result.element) {
+          lastElement = result.element;
+          // Check visibility via getBoundingClientRect (matches original iMacros 8.9.7)
+          const rect = result.element.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            break; // Element found and visible
+          }
+        }
+
+        // Check timeout
+        if (Date.now() - startTime >= retryTimeout) {
+          if (!lastElement) {
+            return {
+              success: false,
+              errorCode: DOM_ERROR_CODES.ELEMENT_NOT_VISIBLE,
+              errorMessage: `Can not locate element specified by ${JSON.stringify(selector)}`,
+            };
+          } else {
+            return {
+              success: false,
+              errorCode: DOM_ERROR_CODES.ELEMENT_NOT_VISIBLE,
+              errorMessage: `Element ${lastElement.tagName} is not visible`,
+            };
+          }
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
-      element = result.element;
+
+      element = lastElement!;
     } else {
       // Use documentElement as default target (matches original iMacros 8.9.7)
       element = doc.documentElement;
@@ -1399,6 +1427,11 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
           cancelable: cancelable ?? true,
           detail: { key, char, point, modifiers },
         }));
+    }
+
+    // Highlight element after event dispatch (iMacros 8.9.7 behavior: highlight if pref enabled)
+    if (element instanceof Element) {
+      highlightPlaybackElement(element, { label: `EVENT ${eventType}` });
     }
 
     return {

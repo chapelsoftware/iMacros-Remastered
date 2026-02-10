@@ -198,6 +198,8 @@ export interface EventCommandMessage extends ContentScriptMessage {
     bubbles?: boolean;
     /** Whether event is cancelable */
     cancelable?: boolean;
+    /** Timeout in milliseconds for element lookup retry (default: !TIMEOUT value or 5000ms) */
+    timeout?: number;
   };
 }
 
@@ -918,6 +920,18 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
     }
   }
 
+  // Get timeout from !TIMEOUT_TAG (same as TAG command uses for element wait)
+  const timeoutTag = ctx.state.getVariable('!TIMEOUT_TAG');
+  let timeout = 6000; // Default: 6 seconds (matches iMacros default)
+  if (typeof timeoutTag === 'number') {
+    timeout = timeoutTag * 1000;
+  } else if (typeof timeoutTag === 'string') {
+    const parsed = parseFloat(timeoutTag);
+    if (!isNaN(parsed)) {
+      timeout = parsed * 1000;
+    }
+  }
+
   // Build message
   const message: EventCommandMessage = {
     id: generateMessageId(),
@@ -936,6 +950,7 @@ export const eventHandler: CommandHandler = async (ctx: CommandContext): Promise
       modifiers: Object.keys(modifiers).length > 0 ? modifiers : undefined,
       bubbles: true,
       cancelable: true,
+      timeout,
     },
   };
 

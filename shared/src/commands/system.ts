@@ -79,6 +79,19 @@ interface StopwatchData {
 }
 
 /**
+ * Stopwatch record: captured when a stopwatch is stopped or a label is recorded.
+ * Used for CSV output and iimGetLastPerformance().
+ */
+export interface StopwatchRecord {
+  /** Stopwatch ID (e.g. "Total", "Firstpage") or label name */
+  id: string;
+  /** Elapsed time in seconds (3 decimal places) */
+  elapsedSec: string;
+  /** Timestamp when the record was captured */
+  timestamp: Date;
+}
+
+/**
  * Global stopwatch instances keyed by ID
  */
 const stopwatches: Map<string, StopwatchData> = new Map();
@@ -93,6 +106,12 @@ const DEFAULT_STOPWATCH_ID = 'default';
  * Set when the first stopwatch is started in a session.
  */
 let globalStartTime: number | null = null;
+
+/**
+ * Accumulated stopwatch records for the current macro run.
+ * Populated when stopwatches are stopped or labels are recorded.
+ */
+const stopwatchRecords: StopwatchRecord[] = [];
 
 /**
  * Get or create a stopwatch
@@ -124,6 +143,62 @@ export function clearStopwatch(id: string = DEFAULT_STOPWATCH_ID): void {
 export function clearAllStopwatches(): void {
   stopwatches.clear();
   globalStartTime = null;
+  stopwatchRecords.length = 0;
+}
+
+/**
+ * Get all stopwatch records collected during the current macro run.
+ */
+export function getStopwatchRecords(): StopwatchRecord[] {
+  return [...stopwatchRecords];
+}
+
+/**
+ * Clear stopwatch records (call at start of macro execution).
+ */
+export function clearStopwatchRecords(): void {
+  stopwatchRecords.length = 0;
+}
+
+/**
+ * Build CSV content for stopwatch records (matching original iMacros 8.9.7 format).
+ *
+ * Format:
+ * - Header line (if includeHeader=true): "Date: YYYY/MM/DD  Time: HH:MM, Macro: <name>, Status: <message> (<code>)"
+ * - Blank line
+ * - One data row per record: YYYY/MM/DD,HH:MM:SS,<ID>,<elapsed seconds>
+ *
+ * @param records - Stopwatch records to include
+ * @param macroName - Name of the macro
+ * @param errorCode - Final error code (0 = success)
+ * @param errorMessage - Error message (or "OK" for success)
+ * @param includeHeader - Whether to include the header line
+ */
+export function buildStopwatchCsv(
+  records: StopwatchRecord[],
+  macroName: string,
+  errorCode: number,
+  errorMessage: string,
+  includeHeader: boolean
+): string {
+  const lines: string[] = [];
+
+  if (includeHeader) {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    lines.push(`"Date: ${dateStr}  Time: ${timeStr}, Macro: ${macroName}, Status: ${errorMessage} (${errorCode})"`);
+    lines.push('');
+  }
+
+  for (const record of records) {
+    const ts = record.timestamp;
+    const dateStr = `${ts.getFullYear()}/${String(ts.getMonth() + 1).padStart(2, '0')}/${String(ts.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}:${String(ts.getSeconds()).padStart(2, '0')}`;
+    lines.push(`${dateStr},${timeStr},${record.id},${record.elapsedSec}`);
+  }
+
+  return lines.join('\n') + '\n';
 }
 
 /**
@@ -348,6 +423,9 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
     ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
     ctx.log('info', `Stopwatch label "${labelName}": ${elapsed}ms`);
 
+    // Record for CSV output and performance API
+    stopwatchRecords.push({ id: labelName, elapsedSec, timestamp: new Date() });
+
     return {
       success: true,
       errorCode: IMACROS_ERROR_CODES.OK,
@@ -387,6 +465,10 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
         ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
         ctx.log('info', `Stopwatch "${id}" stopped at ${elapsed}ms`);
 
+        // Record for CSV output and performance API
+        const recordId = id === DEFAULT_STOPWATCH_ID ? 'default' : id;
+        stopwatchRecords.push({ id: recordId, elapsedSec, timestamp: new Date() });
+
         return {
           success: true,
           errorCode: IMACROS_ERROR_CODES.OK,
@@ -415,7 +497,7 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
       if (sw.running) {
         return {
           success: false,
-          errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+          errorCode: IMACROS_ERROR_CODES.STOPWATCH_ALREADY_STARTED,
           errorMessage: `Stopwatch ID=${id} already started`,
         };
       }
@@ -440,7 +522,7 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
         // Original error 962: stop on non-existent/not-started stopwatch
         return {
           success: false,
-          errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+          errorCode: IMACROS_ERROR_CODES.STOPWATCH_NOT_STARTED,
           errorMessage: `Stopwatch ID=${id} wasn't started`,
         };
       }
@@ -453,6 +535,10 @@ export const stopwatchHandler: CommandHandler = async (ctx: CommandContext): Pro
       ctx.state.setVariable(varName, elapsed);
       ctx.state.setVariable('!STOPWATCHTIME', elapsedSec);
       ctx.log('info', `Stopwatch "${id}" stopped at ${elapsed}ms`);
+
+      // Record for CSV output and performance API
+      const recordId = id === DEFAULT_STOPWATCH_ID ? 'default' : id;
+      stopwatchRecords.push({ id: recordId, elapsedSec, timestamp: new Date() });
 
       return {
         success: true,

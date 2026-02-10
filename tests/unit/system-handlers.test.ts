@@ -384,7 +384,7 @@ describe('STOPWATCH handler', () => {
     const result = await run('STOPWATCH ACTION=STOP');
 
     expect(result.success).toBe(false);
-    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_ERROR);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.STOPWATCH_NOT_STARTED);
     expect(result.errorMessage).toContain("wasn't started");
   });
 

@@ -32,6 +32,12 @@ import {
   ExecutionStatus,
   createStateManager,
 } from './state-manager';
+import {
+  type StopwatchRecord,
+  getStopwatchRecords,
+  clearStopwatchRecords,
+  buildStopwatchCsv,
+} from './commands/system';
 
 // ===== Error Codes =====
 
@@ -74,6 +80,9 @@ export const IMACROS_ERROR_CODES = {
   FILE_NOT_FOUND: -961,
   FILE_ACCESS_DENIED: -962,
   FILE_WRITE_ERROR: -963,
+  // Stopwatch errors (matching original iMacros 961/962)
+  STOPWATCH_ALREADY_STARTED: -1961,
+  STOPWATCH_NOT_STARTED: -1962,
   // Script errors (-97x)
   SCRIPT_ERROR: -970,
   SCRIPT_EXCEPTION: -971,
@@ -138,6 +147,8 @@ export interface MacroResult {
   extractData: string[];
   /** Final variable values */
   variables: Record<string, VariableValue>;
+  /** Stopwatch records collected during execution (for CSV output / performance API) */
+  stopwatchRecords?: StopwatchRecord[];
 }
 
 // ===== Progress Reporting =====
@@ -238,6 +249,8 @@ export interface ExecutorOptions {
   onDatasourceLoad?: (path: string) => Promise<string> | string;
   /** Callback for native JavaScript evaluation (used when expr-eval cannot handle the expression) */
   onNativeEval?: NativeEvalCallback;
+  /** Callback to append text to a file (for stopwatch CSV output). Required for CSV functionality. */
+  onFileAppend?: (filePath: string, content: string) => Promise<void> | void;
 }
 
 // ===== Macro Executor Class =====
@@ -283,6 +296,8 @@ export class MacroExecutor {
   private onDatasourceLoad?: (path: string) => Promise<string> | string;
   /** Callback for native JavaScript evaluation */
   private onNativeEval?: NativeEvalCallback;
+  /** Callback for file append (stopwatch CSV output) */
+  private onFileAppend?: (filePath: string, content: string) => Promise<void> | void;
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -298,6 +313,7 @@ export class MacroExecutor {
     this.errorIgnore = options.errorIgnore ?? false;
     this.onDatasourceLoad = options.onDatasourceLoad;
     this.onNativeEval = options.onNativeEval;
+    this.onFileAppend = options.onFileAppend;
 
     // Register built-in command handlers
     this.registerBuiltinHandlers();
@@ -519,6 +535,7 @@ export class MacroExecutor {
     this.state.resetForExecution();
     this.abortFlag = false;
     this.pauseFlag = false;
+    clearStopwatchRecords();
 
     // Re-apply initial variables after reset (reset wipes all variables)
     if (this.initialVariables) {
@@ -584,14 +601,18 @@ export class MacroExecutor {
 
               // Fatal error - stop execution
               this.state.setError(result.errorCode as ErrorCode, result.errorMessage);
-              return this.buildResult(false, result.errorCode, result.errorMessage, commandIndex + 1);
+              const errorResult = this.buildResult(false, result.errorCode, result.errorMessage, commandIndex + 1);
+              await this.writeStopwatchCsv(errorResult);
+              return errorResult;
             }
           }
 
           // Handle special control flow
           if (result.stopExecution) {
             this.log('info', 'Execution stopped by command');
-            return this.buildResult(true, IMACROS_ERROR_CODES.OK);
+            const stopResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
+            await this.writeStopwatchCsv(stopResult);
+            return stopResult;
           }
 
           if (result.skipToNextLoop) {
@@ -621,12 +642,16 @@ export class MacroExecutor {
 
       // Execution completed successfully
       this.state.complete();
-      return this.buildResult(true, IMACROS_ERROR_CODES.OK);
+      const macroResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
+      await this.writeStopwatchCsv(macroResult);
+      return macroResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log('error', `Execution error: ${message}`);
       this.state.setError(ErrorCode.SCRIPT_ERROR, message);
-      return this.buildResult(false, IMACROS_ERROR_CODES.SCRIPT_ERROR, message);
+      const macroResult = this.buildResult(false, IMACROS_ERROR_CODES.SCRIPT_ERROR, message);
+      await this.writeStopwatchCsv(macroResult);
+      return macroResult;
     }
   }
 
@@ -861,6 +886,48 @@ export class MacroExecutor {
   }
 
   /**
+   * Write stopwatch CSV file if configured (!FILESTOPWATCH or !FOLDER_STOPWATCH).
+   * Follows original iMacros 8.9.7 behavior:
+   * - If !FILESTOPWATCH is set: append to that file
+   * - Else if !FOLDER_STOPWATCH is set: append to <folder>/performance_<macroName>.csv
+   * - !STOPWATCH_HEADER controls whether a header line is written
+   */
+  private async writeStopwatchCsv(result: MacroResult): Promise<void> {
+    if (!this.onFileAppend) return;
+
+    const records = result.stopwatchRecords;
+    if (!records || records.length === 0) return;
+
+    const vars = this.state.getVariables();
+    const fileStopwatch = String(vars.get('!FILESTOPWATCH') || '');
+    const folderStopwatch = String(vars.get('!FOLDER_STOPWATCH') || '');
+
+    // Determine output file path
+    let csvPath = '';
+    if (fileStopwatch) {
+      csvPath = fileStopwatch;
+    } else if (folderStopwatch && folderStopwatch.toUpperCase() !== 'NO') {
+      const macroName = this.state.getMacroName() || 'Macro';
+      const safeName = macroName.replace(/\.[^.]+$/, ''); // Strip extension
+      csvPath = folderStopwatch.replace(/[/\\]$/, '') + '/performance_' + safeName + '.csv';
+    }
+
+    if (!csvPath) return;
+
+    const includeHeader = String(vars.get('!STOPWATCH_HEADER') || 'YES').toUpperCase() !== 'NO';
+    const macroName = this.state.getMacroName() || 'Macro';
+    const errorMessage = result.success ? 'OK' : (result.errorMessage || 'Error');
+    const csvContent = buildStopwatchCsv(records, macroName, result.errorCode, errorMessage, includeHeader);
+
+    try {
+      await this.onFileAppend(csvPath, csvContent);
+      this.log('info', `Stopwatch CSV written to ${csvPath}`);
+    } catch (e) {
+      this.log('warn', `Failed to write stopwatch CSV: ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * Build the final macro result
    */
   private buildResult(
@@ -869,6 +936,7 @@ export class MacroExecutor {
     errorMessage?: string,
     errorLine?: number
   ): MacroResult {
+    const records = getStopwatchRecords();
     return {
       success,
       errorCode,
@@ -878,6 +946,7 @@ export class MacroExecutor {
       executionTimeMs: this.state.getExecutionTimeMs(),
       extractData: this.state.getExtractData(),
       variables: this.state.getAllVariables(),
+      stopwatchRecords: records.length > 0 ? records : undefined,
     };
   }
 }
@@ -938,6 +1007,8 @@ export function getErrorMessage(code: IMacrosErrorCode): string {
     [IMACROS_ERROR_CODES.FILE_NOT_FOUND]: 'File not found',
     [IMACROS_ERROR_CODES.FILE_ACCESS_DENIED]: 'File access denied',
     [IMACROS_ERROR_CODES.FILE_WRITE_ERROR]: 'File write error',
+    [IMACROS_ERROR_CODES.STOPWATCH_ALREADY_STARTED]: 'Stopwatch already started',
+    [IMACROS_ERROR_CODES.STOPWATCH_NOT_STARTED]: 'Stopwatch not started',
     [IMACROS_ERROR_CODES.SCRIPT_ERROR]: 'Script error',
     [IMACROS_ERROR_CODES.SCRIPT_EXCEPTION]: 'Script exception',
     [IMACROS_ERROR_CODES.DATASOURCE_ERROR]: 'Datasource error',
@@ -978,3 +1049,4 @@ export function isRecoverableError(code: IMacrosErrorCode): boolean {
 // Re-export types from dependencies
 export { ExecutionStatus, ErrorCode } from './state-manager';
 export type { ParsedCommand, CommandType } from './parser';
+export type { StopwatchRecord } from './commands/system';

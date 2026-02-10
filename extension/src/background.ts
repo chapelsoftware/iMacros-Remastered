@@ -18,7 +18,6 @@ import {
   setAuthCredentials,
   clearAuthCredentials,
   getAuthCredentials,
-  setFilter,
   disableAllFilters,
   getFilterState,
 } from './background/web-request-handlers';
@@ -1179,11 +1178,6 @@ async function handleMessage(
 
     case 'GET_AUTH_STATUS':
       return { success: true, credentials: getAuthCredentials() };
-
-    case 'SET_FILTER':
-      const filterPayload = message.payload as { filterType: 'IMAGES' | 'FLASH' | 'POPUPS'; status: 'ON' | 'OFF' };
-      await setFilter(filterPayload.filterType, filterPayload.status);
-      return { success: true };
 
     case 'DISABLE_ALL_FILTERS':
       await disableAllFilters();

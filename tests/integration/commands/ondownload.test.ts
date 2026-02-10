@@ -154,6 +154,46 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       expect(msg.type).toBe('setDownloadOptions');
       expect(msg.wait).toBe(false);
     });
+
+    it('should send wait=false when WAIT=FALSE (iMacros 8.9.7 parity)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=FALSE');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.wait).toBe(false);
+    });
+
+    it('should send wait=true when WAIT=TRUE', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=TRUE');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.wait).toBe(true);
+    });
+
+    it('should be case-insensitive for WAIT parameter', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=false');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.wait).toBe(false);
+    });
+
+    it('should treat unrecognized WAIT values as false', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=MAYBE');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.wait).toBe(false);
+    });
   });
 
   // ===== CHECKSUM Parameter =====
@@ -243,6 +283,45 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       const msg = sentMessages[0] as SetDownloadOptionsMessage;
       expect(msg.checksum).toBeUndefined();
     });
+
+    it('should reject CHECKSUM when WAIT=NO (iMacros 8.9.7 parity)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=NO CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('CHECKSUM requires WAIT=YES');
+      expect(sentMessages).toHaveLength(0);
+    });
+
+    it('should reject CHECKSUM when WAIT=FALSE (iMacros 8.9.7 parity)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=FALSE CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+      expect(result.errorMessage).toContain('CHECKSUM requires WAIT=YES');
+    });
+
+    it('should accept CHECKSUM when WAIT=YES (explicit)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf WAIT=YES CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBe('MD5:d41d8cd98f00b204e9800998ecf8427e');
+      expect(msg.wait).toBe(true);
+    });
+
+    it('should accept CHECKSUM when WAIT is not specified (defaults to YES)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=report.pdf CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.checksum).toBe('MD5:d41d8cd98f00b204e9800998ecf8427e');
+      expect(msg.wait).toBe(true);
+    });
   });
 
   // ===== Filename Validation =====
@@ -281,7 +360,7 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_INVALID_FILENAME);
     });
 
-    it('should reject filename with * character', async () => {
+    it('should reject filename with * character in the middle', async () => {
       executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=file*name.pdf');
       const result = await executor.execute();
 
@@ -301,6 +380,17 @@ describe('ONDOWNLOAD Command Integration Tests', () => {
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
+    });
+
+    it('should send file as undefined when FILE=* (server-suggested filename, iMacros 8.9.7 parity)', async () => {
+      executor.loadMacro('ONDOWNLOAD FOLDER=/downloads FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(1);
+
+      const msg = sentMessages[0] as SetDownloadOptionsMessage;
+      expect(msg.file).toBeUndefined();
     });
   });
 

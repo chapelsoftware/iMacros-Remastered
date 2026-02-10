@@ -63,7 +63,7 @@ Each command and JS API function is documented with:
 | 33 | [SEARCH](commands/SEARCH.md) | Complete | commands/SEARCH.md |
 | 34 | [SET](commands/SET.md) | Complete | commands/SET.md |
 | 35 | [SIZE](commands/SIZE.md) | Complete | commands/SIZE.md |
-| 36 | [STOPWATCH](commands/STOPWATCH.md) | Pending | |
+| 36 | [STOPWATCH](commands/STOPWATCH.md) | Complete | commands/STOPWATCH.md |
 | 37 | [TAB](commands/TAB.md) | Pending | |
 | 38 | [TAG](commands/TAG.md) | Pending | |
 | 39 | [URL](commands/URL.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 24/42 complete
+- Commands: 25/42 complete
 - JS API: 6/16 complete
-- **Total: 30/58 complete**
+- **Total: 31/58 complete**

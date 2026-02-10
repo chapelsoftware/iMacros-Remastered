@@ -159,6 +159,43 @@ export async function handleMessage(message: Message): Promise<ResponseMessage> 
         };
       }
     }
+    case 'save_screenshot_file': {
+      try {
+        const payload = (message as any).payload as {
+          dataUrl: string; folder?: string; file: string; format?: string;
+        };
+        if (!payload?.dataUrl) {
+          return {
+            type: 'error',
+            id: createMessageId(),
+            timestamp: createTimestamp(),
+            error: 'No screenshot data provided',
+          };
+        }
+        const base64Data = payload.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+        const buffer = Buffer.from(base64Data, 'base64');
+        const registry = new RegistryService();
+        const screenshotDir = payload.folder || registry.getScreenshotPath() || path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Documents', 'iMacros', 'Screenshots');
+        if (!fs.existsSync(screenshotDir)) {
+          fs.mkdirSync(screenshotDir, { recursive: true });
+        }
+        const filePath = path.join(screenshotDir, payload.file);
+        fs.writeFileSync(filePath, buffer);
+        return {
+          type: 'result',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { success: true, path: filePath },
+        };
+      } catch (err: any) {
+        return {
+          type: 'error',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          error: err.message || String(err),
+        };
+      }
+    }
     case 'save_screenshot': {
       try {
         const payload = (message as any).payload as { dataUrl: string };

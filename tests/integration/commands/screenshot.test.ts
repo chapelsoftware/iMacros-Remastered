@@ -349,6 +349,36 @@ describe('SCREENSHOT Command Integration Tests', () => {
       expect(msg.file).toBe('unknown.png');
     });
 
+    it('FILE=* with root URL (no www.) and document title uses title as fallback', async () => {
+      const script = [
+        'SET !DOCUMENT_TITLE MyPageTitle',
+        'URL GOTO=https://example.com/',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      // No path segment, hostname has no www. prefix -> document title fallback
+      expect(msg.file).toBe('MyPageTitle.png');
+    });
+
+    it('FILE=* with www. URL ignores document title (hostname has priority)', async () => {
+      const script = [
+        'SET !DOCUMENT_TITLE MyPageTitle',
+        'URL GOTO=https://www.example.com/',
+        'SCREENSHOT TYPE=BROWSER FILE=*',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = getScreenshotMessage();
+      // hostname fallback (example.com) takes priority over document title
+      expect(msg.file).toBe('example.png');
+    });
+
     it('FILE=+suffix appends suffix to derived name', async () => {
       const script = [
         'URL GOTO=https://www.example.com/products/widget',

@@ -133,6 +133,7 @@ export interface BrowserOperationResponse {
   error?: string;
   data?: {
     url?: string;
+    title?: string;
     tabIndex?: number;
     frameIndex?: number;
   };
@@ -261,6 +262,11 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
     // Store in !URLCURRENT variable (use setUrl to bypass read-only check)
     const url = response.data?.url || '';
     ctx.variables.setUrl('current', url);
+    // Store document title for deriveDocumentName fallback (iMacros 8.9.7 parity)
+    const title = response.data?.title || '';
+    if (title) {
+      ctx.state.setVariable('!DOCUMENT_TITLE', title);
+    }
     ctx.log('info', `Current URL: ${url}`);
 
     return {
@@ -306,6 +312,11 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
 
     // Update !URLCURRENT after navigation (use setUrl to bypass read-only check)
     ctx.variables.setUrl('current', url);
+    // Store document title for deriveDocumentName fallback (iMacros 8.9.7 parity)
+    const navTitle = response.data?.title || '';
+    if (navTitle) {
+      ctx.state.setVariable('!DOCUMENT_TITLE', navTitle);
+    }
 
     return {
       success: true,

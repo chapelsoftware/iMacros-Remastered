@@ -114,6 +114,8 @@ export const DEFAULT_VALUES: Record<string, VariableValue> = {
   // URL tracking
   '!URLSTART': '',
   '!URLCURRENT': '',
+  // Document title (populated by navigation, used by deriveDocumentName fallback)
+  '!DOCUMENT_TITLE': '',
   // Stopwatch
   // !FILESTOPWATCH: native-host-only - file creation requires native messaging
   '!FILESTOPWATCH': '',

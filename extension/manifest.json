@@ -12,7 +12,8 @@
     "nativeMessaging",
     "declarativeNetRequest",
     "downloads",
-    "webNavigation"
+    "webNavigation",
+    "browsingData"
   ],
   "host_permissions": [
     "<all_urls>"

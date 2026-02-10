@@ -44,7 +44,7 @@ Each command and JS API function is documented with:
 | 14 | [IMAGECLICK](commands/IMAGECLICK.md) | Pending | |
 | 15 | [IMAGESEARCH](commands/IMAGESEARCH.md) | Complete | commands/IMAGESEARCH.md |
 | 16 | [ONCERTIFICATEDIALOG](commands/ONCERTIFICATEDIALOG.md) | Complete | commands/ONCERTIFICATEDIALOG.md |
-| 17 | [ONDIALOG](commands/ONDIALOG.md) | Pending | |
+| 17 | [ONDIALOG](commands/ONDIALOG.md) | Complete | commands/ONDIALOG.md |
 | 18 | [ONDOWNLOAD](commands/ONDOWNLOAD.md) | Pending | |
 | 19 | [ONERRORDIALOG](commands/ONERRORDIALOG.md) | Pending | |
 | 20 | [ONLOGIN](commands/ONLOGIN.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 7/42 complete
+- Commands: 8/42 complete
 - JS API: 0/16 complete
-- **Total: 7/58 complete**
+- **Total: 8/58 complete**

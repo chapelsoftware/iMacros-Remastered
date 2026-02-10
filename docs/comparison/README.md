@@ -59,7 +59,7 @@ Each command and JS API function is documented with:
 | 29 | [REFRESH](commands/REFRESH.md) | Complete | commands/REFRESH.md |
 | 30 | [SAVEAS](commands/SAVEAS.md) | Complete | commands/SAVEAS.md |
 | 31 | [SAVEITEM](commands/SAVEITEM.md) | Complete | commands/SAVEITEM.md |
-| 32 | [SCREENSHOT](commands/SCREENSHOT.md) | Pending | |
+| 32 | [SCREENSHOT](commands/SCREENSHOT.md) | Complete | commands/SCREENSHOT.md |
 | 33 | [SEARCH](commands/SEARCH.md) | Pending | |
 | 34 | [SET](commands/SET.md) | Pending | |
 | 35 | [SIZE](commands/SIZE.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 14/42 complete
+- Commands: 15/42 complete
 - JS API: 2/16 complete
-- **Total: 16/58 complete**
+- **Total: 17/58 complete**

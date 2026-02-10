@@ -110,19 +110,18 @@ describe('Executor built-in WAIT handler', () => {
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
   });
 
-  it('should handle WAIT SECONDS=0 as invalid (negative-or-zero check)', async () => {
-    // The built-in handler checks `seconds < 0`, so 0 is actually allowed.
-    // Let us verify the actual behavior: 0 is not negative so it should succeed.
+  it('should handle WAIT SECONDS=0 by clamping to 10ms (yield behavior)', async () => {
+    // SECONDS=0 is clamped to 10ms matching original iMacros 8.9.7 yield behavior
     const executor = createExecutor();
     executor.loadMacro('WAIT SECONDS=0');
 
     const resultPromise = executor.execute();
-    // 0ms delay completes synchronously on next tick
-    await vi.advanceTimersByTimeAsync(0);
+    // 0 is clamped to 10ms, advance past it
+    await vi.advanceTimersByTimeAsync(100);
 
     const result = await resultPromise;
-    // 0 seconds is not < 0, so built-in handler allows it
     expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
   });
 });
 

@@ -493,7 +493,11 @@ describe('STOPWATCH command integration tests', () => {
     const executor = createStopwatchExecutor();
     executor.loadMacro('WAIT SECONDS=0');
 
-    const result = await executor.execute();
+    const resultPromise = executor.execute();
+    // SECONDS=0 is clamped to 10ms, advance past it
+    await vi.advanceTimersByTimeAsync(100);
+
+    const result = await resultPromise;
 
     expect(result.success).toBe(true);
     expect(result.stopwatchRecords).toBeUndefined();

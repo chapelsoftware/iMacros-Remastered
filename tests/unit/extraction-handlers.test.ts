@@ -456,9 +456,9 @@ describe('Extraction Command Handlers', () => {
   // ----- 6. extractFromElement -----
 
   describe('extractFromElement', () => {
-    it('should extract textContent for TXT type', () => {
+    it('should extract textContent for TXT type without trimming', () => {
       const el = { textContent: '  Hello World  ', innerHTML: '<b>Hello</b>' };
-      expect(extractFromElement(el, 'TXT')).toBe('Hello World');
+      expect(extractFromElement(el, 'TXT')).toBe('  Hello World  ');
     });
 
     it('should extract textContent for TEXT type', () => {

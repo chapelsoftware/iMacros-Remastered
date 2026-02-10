@@ -362,53 +362,83 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
   const ignoreCaseParam = ctx.getParam('IGNORE_CASE');
   const ignoreCase = ignoreCaseParam?.toUpperCase() === 'YES';
 
+  // Get timeout for retry loop (matches original iMacros retry behavior)
+  const timeoutVar = ctx.state.getVariable('!TIMEOUT');
+  let timeoutMs = 60000; // Default: 60 seconds
+  if (typeof timeoutVar === 'number') {
+    timeoutMs = timeoutVar * 1000;
+  } else if (typeof timeoutVar === 'string') {
+    const parsedTimeout = parseFloat(timeoutVar);
+    if (!isNaN(parsedTimeout)) {
+      timeoutMs = parsedTimeout * 1000;
+    }
+  }
+
+  const retryIntervalMs = 500;
+  const startTime = Date.now();
+
   // Try to use content script sender (for browser context)
   // Dynamically import to avoid circular dependencies
+  let useContentScript = false;
+  let sender: any = null;
   try {
     const interactionModule = await import('./interaction');
-    const sender = interactionModule.getContentScriptSender();
-
-    // Check if we have a real sender (not the noop)
-    // The noop sender is used when no content script is available
-    const message = {
-      id: `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      type: 'SEARCH_COMMAND' as const,
-      timestamp: Date.now(),
-      payload: {
-        sourceType: parsed.type,
-        pattern: parsed.pattern,
-        ignoreCase,
-        extractPattern: extractPattern || undefined,
-      },
-    };
-
-    ctx.log('debug', `SEARCH: type=${parsed.type}, pattern=${parsed.pattern}, ignoreCase=${ignoreCase}`);
-
-    const response = await sender.sendMessage(message as any);
-
-    if (response.success && response.extractedData !== undefined) {
-      appendExtract(ctx, response.extractedData);
-      return {
-        success: true,
-        errorCode: IMACROS_ERROR_CODES.OK,
-        output: response.extractedData,
-      };
-    }
-
-    if (!response.success) {
-      ctx.log('warn', `SEARCH pattern not found: ${parsed.pattern}`);
-      return {
-        success: false,
-        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
-        errorMessage: response.error || `Pattern not found: ${parsed.pattern}`,
-      };
-    }
+    const { noopSender } = interactionModule;
+    sender = interactionModule.getContentScriptSender();
+    // Only use content script path if a real sender is configured (not noop)
+    useContentScript = sender !== noopSender;
   } catch (e) {
     // Content script sender not available, fall back to local search
     ctx.log('debug', 'SEARCH: Content script sender not available, using local fallback');
   }
 
-  // Fallback: search in !URLCURRENT (for non-browser contexts or testing)
+  if (useContentScript && sender) {
+    // Browser context: retry until !TIMEOUT expires (matches original iMacros retry behavior)
+    while (true) {
+      const message = {
+        id: `search_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        type: 'SEARCH_COMMAND' as const,
+        timestamp: Date.now(),
+        payload: {
+          sourceType: parsed.type,
+          pattern: parsed.pattern,
+          ignoreCase,
+          extractPattern: extractPattern || undefined,
+        },
+      };
+
+      ctx.log('debug', `SEARCH: type=${parsed.type}, pattern=${parsed.pattern}, ignoreCase=${ignoreCase}`);
+
+      const response = await sender.sendMessage(message as any);
+
+      if (response.success && response.extractedData !== undefined) {
+        appendExtract(ctx, response.extractedData);
+        return {
+          success: true,
+          errorCode: IMACROS_ERROR_CODES.OK,
+          output: response.extractedData,
+        };
+      }
+
+      // Check if timeout has elapsed
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= timeoutMs) {
+        ctx.log('warn', `SEARCH pattern not found after ${Math.round(elapsed / 1000)}s: ${parsed.pattern}`);
+        return {
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+          errorMessage: response.error || `Pattern not found: ${parsed.pattern}`,
+        };
+      }
+
+      // Wait before retrying
+      ctx.log('debug', `SEARCH: pattern not found, retrying in ${retryIntervalMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, retryIntervalMs));
+    }
+  }
+
+  // Local fallback: search in !URLCURRENT (for non-browser contexts or testing)
+  // No retry — content is static in local context
   const content = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
 
   let result: { found: boolean; match: string | null };
@@ -459,7 +489,7 @@ export function extractFromElement(
   switch (type) {
     case 'TXT':
     case 'TEXT':
-      return element.textContent?.trim() || '';
+      return element.textContent || '';
 
     case 'HTM':
     case 'HTML':

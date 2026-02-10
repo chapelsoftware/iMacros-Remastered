@@ -256,7 +256,16 @@ function createBrowserHandlers(bridge) {
       }
 
       // Parse position (may be relative)
-      const posResult = parsePos(ctx.getParam('POS'));
+      let posResult;
+      try {
+        posResult = parsePos(ctx.getParam('POS'));
+      } catch (error) {
+        return {
+          success: false,
+          errorCode: ERROR_CODES.INVALID_PARAMETER,
+          errorMessage: error.message,
+        };
+      }
 
       // Build selector params
       const params = {
@@ -368,10 +377,20 @@ function createBrowserHandlers(bridge) {
         }
       }
 
+      // COORDMODE param: 'page' (default, matches original) or 'viewport'
+      const coordModeParam = ctx.getParam('COORDMODE');
+      let coordinateMode = 'page';
+      if (coordModeParam) {
+        const mode = ctx.expand(coordModeParam).toLowerCase();
+        if (mode === 'viewport') {
+          coordinateMode = 'viewport';
+        }
+      }
+
       ctx.log('debug', `CLICK: X=${x}, Y=${y}, button=${button}`);
 
       try {
-        const result = await bridge.executeClick({ x, y, button });
+        const result = await bridge.executeClick({ x, y, button, coordinateMode });
 
         if (!result.success) {
           return {
@@ -759,13 +778,16 @@ function parsePos(posStr) {
     if (!isNaN(num) && num !== 0) {
       return { pos: num, relative: true };
     }
-    // Invalid relative position (R0 or non-numeric), treat as absolute position 1
-    return { pos: 1, relative: false };
+    // R0 or non-numeric after R — matches old iMacros BadParameter behavior
+    throw new Error('Bad parameter: POS=<number> or POS=R<number>');
   }
 
   // Absolute position
   const num = parseInt(trimmed, 10);
-  return { pos: isNaN(num) ? 1 : num, relative: false };
+  if (isNaN(num)) {
+    throw new Error('Bad parameter: POS=<number> or POS=R<number>');
+  }
+  return { pos: num, relative: false };
 }
 
 /**

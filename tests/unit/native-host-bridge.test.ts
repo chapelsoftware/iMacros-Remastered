@@ -506,6 +506,7 @@ describe('CommandHandlers', () => {
         x: 100,
         y: 200,
         button: 'left',
+        coordinateMode: 'page',
       });
       expect(result.success).toBe(true);
     });
@@ -518,6 +519,7 @@ describe('CommandHandlers', () => {
         x: 100,
         y: 200,
         button: 'right',
+        coordinateMode: 'page',
       });
       expect(result.success).toBe(true);
     });

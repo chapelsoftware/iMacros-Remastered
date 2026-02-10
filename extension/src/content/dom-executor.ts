@@ -443,8 +443,8 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
         }
         return rows.join('\n');
       }
-      // Default - use textContent
-      return (element.textContent || '').trim();
+      // Default - use textContent (no trim, matches original iMacros 8.9.7)
+      return element.textContent || '';
 
     case 'TXTALL':
       // For select elements, return all options joined with [OPTION]
@@ -457,7 +457,7 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
         return optionTexts.join('[OPTION]');
       }
       // For other elements, same as TXT
-      return (element.textContent || '').trim();
+      return element.textContent || '';
 
     case 'HTM':
     case 'HTML':
@@ -1055,19 +1055,36 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
  * Execute CLICK command
  */
 export async function executeClickCommand(message: ClickCommandMessage): Promise<DOMExecutorResult> {
-  const { x, y, content, button, clickCount, modifiers } = message.payload;
+  const { x, y, content, button, clickCount, modifiers, coordinateMode } = message.payload;
 
   try {
     // Get the document from the currently selected frame
     const doc = getCurrentFrameDocument() || document;
+    const win = doc.defaultView || window;
 
-    // Find element at coordinates, fall back to documentElement (matches original iMacros 8.9.7)
+    // Determine clientX/clientY based on coordinate mode
+    // Default ('page'): X/Y are page coordinates — subtract scroll to get client coords
+    // This matches the original iMacros 8.9.7 behavior (MacroPlayer.js:333-340)
+    let clientX: number;
+    let clientY: number;
+    if (coordinateMode === 'viewport') {
+      clientX = x;
+      clientY = y;
+    } else {
+      // page mode (default): X/Y are page coords
+      clientX = x - win.scrollX;
+      clientY = y - win.scrollY;
+    }
+
+    // elementFromPoint() takes client coords, but original iMacros 8.9.7 passes page
+    // coords directly (a quirk that only matters on scrolled pages). We pass X/Y
+    // as-is in both modes to match the original behavior in page mode.
     const element = doc.elementFromPoint(x, y) || doc.documentElement;
 
     // Build mouse event options
     const mouseOptions: MouseEventOptions = {
-      clientX: x,
-      clientY: y,
+      clientX,
+      clientY,
       ctrlKey: modifiers?.ctrl,
       shiftKey: modifiers?.shift,
       altKey: modifiers?.alt,

@@ -1113,13 +1113,13 @@ export type NativeEvalCallback = (expression: string) => Promise<{
 }>;
 
 /**
- * Async version of evaluateExpression that falls back to native JS evaluation
- * when expr-eval cannot handle the expression.
+ * Async version of evaluateExpression that uses native JS evaluation
+ * when available, falling back to expr-eval for environments without
+ * a native host.
  *
  * Logic:
- * 1. Try expr-eval first (fast path for simple math)
- * 2. If it returns 0 (failure fallback), try nativeEval callback
- * 3. Return result from whichever succeeds
+ * 1. If nativeEval is available, use it (matches original iMacros behavior)
+ * 2. Otherwise fall back to expr-eval + sanitized arithmetic
  */
 export async function evaluateExpressionAsync(
   expr: string,
@@ -1143,38 +1143,8 @@ export async function evaluateExpressionAsync(
     return { value: 0 };
   }
 
-  // Preprocess Math.* and Date.now() etc.
-  const preprocessed = preprocessMathExpressions(cleaned);
-
-  // Try expr-eval first
-  const evaluator = new ExpressionEvaluator();
-  const result = evaluator.evaluate(preprocessed);
-
-  if (result.success && result.value !== undefined) {
-    // Check if result looks like a real value (not fallback 0)
-    // If expr-eval succeeded with a non-zero value, use it
-    if (result.value !== 0 || preprocessed.trim() === '0') {
-      return { value: result.value as number | string };
-    }
-  }
-
-  // If expr-eval returned 0 (likely failure) or failed, try fallback arithmetic
-  const sanitized = preprocessed.replace(/[^0-9+\-*/().%\s]/g, '');
-  if (sanitized.trim() !== '') {
-    try {
-      // eslint-disable-next-line no-new-func
-      const numResult = new Function(`return (${sanitized})`)();
-      if (typeof numResult === 'number' && !isNaN(numResult)) {
-        if (numResult !== 0) {
-          return { value: numResult };
-        }
-      }
-    } catch {
-      // fall through to native eval
-    }
-  }
-
-  // If nativeEval callback is provided, try JavaScript evaluation
+  // If nativeEval is available, always use it (matches original iMacros
+  // evalInSandbox behavior — full JavaScript evaluation)
   if (nativeEval) {
     try {
       const nativeResult = await nativeEval(cleaned);
@@ -1189,7 +1159,31 @@ export async function evaluateExpressionAsync(
         };
       }
     } catch (e) {
-      // Native eval failed, fall through to return 0
+      // Native eval failed, fall through to expr-eval fallback
+    }
+  }
+
+  // Fallback: expr-eval for environments without native host
+  const preprocessed = preprocessMathExpressions(cleaned);
+
+  const evaluator = new ExpressionEvaluator();
+  const result = evaluator.evaluate(preprocessed);
+
+  if (result.success && result.value !== undefined) {
+    return { value: result.value as number | string };
+  }
+
+  // Last resort: sanitized arithmetic
+  const sanitized = preprocessed.replace(/[^0-9+\-*/().%\s]/g, '');
+  if (sanitized.trim() !== '') {
+    try {
+      // eslint-disable-next-line no-new-func
+      const numResult = new Function(`return (${sanitized})`)();
+      if (typeof numResult === 'number' && !isNaN(numResult)) {
+        return { value: numResult };
+      }
+    } catch {
+      // fall through
     }
   }
 

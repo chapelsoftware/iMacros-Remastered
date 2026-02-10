@@ -738,12 +738,12 @@ describe('command-handlers', () => {
       expect(params.relative).toBe(true);
     });
 
-    it('POS with non-numeric value defaults to 1', async () => {
+    it('POS with non-numeric value returns INVALID_PARAMETER', async () => {
       const ctx = createMockCtx([{ key: 'POS', value: 'invalid' }]);
-      await handlers.TAG(ctx);
+      const result = await handlers.TAG(ctx);
 
-      const params = bridge.executeTag.mock.calls[0][0];
-      expect(params.pos).toBe(1);
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(ERROR_CODES.INVALID_PARAMETER);
     });
 
     // ----- Failure modes -----
@@ -815,7 +815,7 @@ describe('command-handlers', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(ERROR_CODES.OK);
-      expect(bridge.executeClick).toHaveBeenCalledWith({ x: 100, y: 200, button: 'left' });
+      expect(bridge.executeClick).toHaveBeenCalledWith({ x: 100, y: 200, button: 'left', coordinateMode: 'page' });
     });
 
     it('defaults to left button when CONTENT not specified', async () => {

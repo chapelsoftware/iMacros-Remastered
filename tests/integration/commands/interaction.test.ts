@@ -993,22 +993,22 @@ describe('TAG Command Helper Functions', () => {
       expect(parsePosParam('R-2')).toBe(-2);
     });
 
-    it('should parse R (invalid relative) and return 1', () => {
-      // "R" without a number is invalid, defaults to 1
-      expect(parsePosParam('R')).toBe(1);
+    it('should throw for R (invalid relative)', () => {
+      // "R" without a number is invalid — matches old iMacros BadParameter
+      expect(() => parsePosParam('R')).toThrow('Bad parameter');
     });
 
     it('should handle whitespace around position', () => {
       expect(parsePosParam('  3  ')).toBe(3);
     });
 
-    it('should default to 1 for invalid non-numeric input', () => {
-      expect(parsePosParam('abc')).toBe(1);
+    it('should throw for invalid non-numeric input', () => {
+      expect(() => parsePosParam('abc')).toThrow('Bad parameter');
     });
 
     it('should be case-insensitive for R prefix', () => {
-      // lowercase 'r' without number is invalid, defaults to 1
-      expect(parsePosParam('r')).toBe(1);
+      // lowercase 'r' without number is invalid — throws
+      expect(() => parsePosParam('r')).toThrow('Bad parameter');
       expect(parsePosParam('r5')).toBe(5);
     });
   });
@@ -1050,16 +1050,12 @@ describe('TAG Command Helper Functions', () => {
       expect(result.relative).toBe(true);
     });
 
-    it('should treat R0 as invalid and return absolute pos=1', () => {
-      const result = parsePosParamEx('R0');
-      expect(result.pos).toBe(1);
-      expect(result.relative).toBe(false);
+    it('should throw for R0 (invalid)', () => {
+      expect(() => parsePosParamEx('R0')).toThrow('Bad parameter');
     });
 
-    it('should treat R without number as invalid and return absolute pos=1', () => {
-      const result = parsePosParamEx('R');
-      expect(result.pos).toBe(1);
-      expect(result.relative).toBe(false);
+    it('should throw for R without number (invalid)', () => {
+      expect(() => parsePosParamEx('R')).toThrow('Bad parameter');
     });
 
     it('should handle whitespace in relative position', () => {

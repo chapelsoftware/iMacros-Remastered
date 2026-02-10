@@ -3,55 +3,82 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Frames - iMacros Demo</title>
+  <title>Frames Test</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; }
-    h1 { color: #333; }
-    h2 { color: #555; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
-    section { margin-bottom: 30px; }
-    iframe { border: 2px solid #007bff; border-radius: 6px; margin: 8px 0; }
-    a.back { display: inline-block; margin-bottom: 16px; color: #007bff; }
-    .frame-info { background: #f8f8f8; padding: 8px 12px; border-radius: 4px; font-size: 14px; color: #666; margin-bottom: 8px; }
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 30px auto; padding: 0 20px; }
+    h1 { margin-bottom: 4px; }
+    h2 { color: #444; margin-top: 28px; }
+    iframe { border: 2px solid #999; border-radius: 4px; margin: 6px 0 20px; }
+    .results-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    .results-table th { text-align: left; padding: 6px 10px; background: #f0f0f0; border: 1px solid #ccc; }
+    .results-table td { padding: 6px 10px; border: 1px solid #ccc; }
+    .results-table input { width: 100%; padding: 4px; box-sizing: border-box; font-size: 14px; }
+    .expected { font-family: monospace; color: #555; white-space: nowrap; }
   </style>
 </head>
 <body>
-  <a class="back" href="index.html">&larr; Back to Hub</a>
-  <h1>Frames Test Page</h1>
-  <p>This page contains multiple iframes for testing FRAME F=n and FRAME NAME=name commands.</p>
+  <h1>Frames Test</h1>
+  <p>Three frames with content to extract. Results go in the boxes below.</p>
 
-  <section>
-    <h2>Frame 1 (name="frame1", id="frame1")</h2>
-    <div class="frame-info">Access via: <code>FRAME NAME=frame1</code> or <code>FRAME F=1</code></div>
-    <iframe name="frame1" id="frame1" src="frame-inner.html?frame=1&color=blue" width="100%" height="200"></iframe>
-  </section>
+  <h2>Profile Card &mdash; <code>FRAME F=1</code></h2>
+  <iframe name="profile" id="profile" src="frame-profile.html" width="100%" height="160"></iframe>
 
-  <section>
-    <h2>Frame 2 (name="frame2", id="frame2")</h2>
-    <div class="frame-info">Access via: <code>FRAME NAME=frame2</code> or <code>FRAME F=2</code></div>
-    <iframe name="frame2" id="frame2" src="frame-inner.html?frame=2&color=green" width="100%" height="200"></iframe>
-  </section>
+  <h2>Product Listing &mdash; <code>FRAME NAME=product</code></h2>
+  <iframe name="product" id="product" src="frame-product.html" width="100%" height="140"></iframe>
 
-  <section>
-    <h2>Frame 3 - Nested Frames (name="frame-outer")</h2>
-    <div class="frame-info">Access via: <code>FRAME NAME=frame-outer</code> then <code>FRAME NAME=frame-nested</code></div>
-    <iframe name="frame-outer" id="frame-outer" srcdoc='
-      <!DOCTYPE html>
-      <html>
-      <head><style>body { font-family: Arial, sans-serif; margin: 10px; background: #fff8e1; }</style></head>
-      <body>
-        <h3>Outer Frame Content</h3>
-        <p id="outer-text">This is the outer frame. Below is a nested frame:</p>
-        <iframe name="frame-nested" id="frame-nested" src="frame-inner.html?frame=nested&color=orange" width="100%" height="120" style="border:2px solid #ff9800;border-radius:4px;"></iframe>
-      </body>
-      </html>
-    ' width="100%" height="350"></iframe>
-  </section>
+  <h2>Order Status (nested) &mdash; <code>FRAME NAME=dashboard</code> &rarr; <code>FRAME NAME=order</code></h2>
+  <iframe name="dashboard" id="dashboard" src="frame-dashboard.html" width="100%" height="200"></iframe>
 
-  <section>
-    <h2>Main Page Content (F=0)</h2>
-    <div class="frame-info">Access via: <code>FRAME F=0</code> (return to main page context)</div>
-    <p id="main-page-text">This text is in the main page context, outside all frames.</p>
-    <input type="text" id="main-input" name="mainInput" placeholder="Main page input" value="">
-  </section>
+  <h2>Results</h2>
+  <p>The macro should extract from the frames above and type each value into the matching box.</p>
+  <table class="results-table">
+    <thead>
+      <tr><th>#</th><th>Field</th><th>Macro Input</th><th>Expected</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>1</td>
+        <td>Profile Name</td>
+        <td><input type="text" id="r-name" placeholder="..."></td>
+        <td class="expected">John Smith</td>
+      </tr>
+      <tr>
+        <td>2</td>
+        <td>Profile Email</td>
+        <td><input type="text" id="r-email" placeholder="..."></td>
+        <td class="expected">john@example.com</td>
+      </tr>
+      <tr>
+        <td>3</td>
+        <td>Profile Role</td>
+        <td><input type="text" id="r-role" placeholder="..."></td>
+        <td class="expected">Senior Developer</td>
+      </tr>
+      <tr>
+        <td>4</td>
+        <td>Product Name</td>
+        <td><input type="text" id="r-product" placeholder="..."></td>
+        <td class="expected">Widget Pro 3000</td>
+      </tr>
+      <tr>
+        <td>5</td>
+        <td>Product Price</td>
+        <td><input type="text" id="r-price" placeholder="..."></td>
+        <td class="expected">$49.99</td>
+      </tr>
+      <tr>
+        <td>6</td>
+        <td>Order Number</td>
+        <td><input type="text" id="r-order" placeholder="..."></td>
+        <td class="expected">ORD-2024-7891</td>
+      </tr>
+      <tr>
+        <td>7</td>
+        <td>Order Status</td>
+        <td><input type="text" id="r-status" placeholder="..."></td>
+        <td class="expected">Shipped</td>
+      </tr>
+    </tbody>
+  </table>
 </body>
 </html>

@@ -444,24 +444,29 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
       // Navigation commands
       case 'navigate': {
         const { url } = params as { url: string };
-        await chrome.tabs.update(targetTabId, { url });
-        // Wait for the page to finish loading
-        await new Promise<void>((resolve) => {
+        // Set up the navigation listener BEFORE calling tabs.update to avoid race conditions.
+        // We must see 'loading' first to ensure we're tracking the NEW navigation,
+        // not a stale 'complete' from the previous page.
+        const navigationDone = new Promise<void>((resolve) => {
+          let sawLoading = false;
           const onUpdated = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
-            if (updatedTabId === targetTabId && changeInfo.status === 'complete') {
+            if (updatedTabId !== targetTabId) return;
+            if (changeInfo.status === 'loading') {
+              sawLoading = true;
+            }
+            if (sawLoading && changeInfo.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(onUpdated);
               resolve();
             }
           };
           chrome.tabs.onUpdated.addListener(onUpdated);
-          // Safety timeout so we don't hang forever
           setTimeout(() => {
             chrome.tabs.onUpdated.removeListener(onUpdated);
             resolve();
           }, 30000);
         });
-        // Wait for content script to be ready (it injects at document_idle
-        // but its listeners may not be registered by the time status is 'complete')
+        await chrome.tabs.update(targetTabId, { url });
+        await navigationDone;
         await waitForContentScript(targetTabId);
         result = { success: true };
         break;
@@ -533,40 +538,39 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
       // Frame commands
       case 'selectFrame': {
         const { frameIndex } = params as { frameIndex: number };
-        // Send to content script to handle frame selection
+        // Send to main frame's content script (frameId 0) which has the
+        // FrameHandler that enumerates all iframes and manages frame selection.
         result = await chrome.tabs.sendMessage(targetTabId, {
           type: 'SELECT_FRAME',
           frameIndex,
-        });
+        }, { frameId: 0 });
         break;
       }
 
       case 'selectFrameByName': {
         const { frameName } = params as { frameName: string };
-        // Send to content script to handle frame selection
+        // Send to main frame's content script (frameId 0) for frame selection.
         result = await chrome.tabs.sendMessage(targetTabId, {
           type: 'SELECT_FRAME_BY_NAME',
           frameName,
-        });
+        }, { frameId: 0 });
         break;
       }
 
-      // DOM interaction commands - route to content script
+      // DOM interaction commands - always route to main frame's content script (frameId 0).
+      // The main frame's FrameHandler tracks the selected frame and uses
+      // getCurrentDocument() to execute commands in the correct frame context.
       case 'TAG_COMMAND':
       case 'CLICK_COMMAND':
       case 'EVENT_COMMAND':
       case 'SEARCH_COMMAND': {
-        const options: chrome.tabs.MessageSendOptions = {};
-        if (frameId !== undefined && frameId > 0) {
-          options.frameId = frameId;
-        }
         console.log(`[iMacros] Sending ${commandType} to tab ${targetTabId}:`, JSON.stringify(params.selector || params));
         result = await chrome.tabs.sendMessage(targetTabId, {
           type: commandType,
           id: messageId,
           timestamp: Date.now(),
           payload: params,
-        }, options);
+        }, { frameId: 0 });
         console.log(`[iMacros] ${commandType} result:`, JSON.stringify(result));
         break;
       }
@@ -1489,6 +1493,13 @@ async function handleMessage(
         console.error('[iMacros] SAVE_RECORDING error:', error);
         return { success: false, error: String(error) };
       }
+    }
+
+    // Open settings/options page in a new tab
+    case 'OPEN_SETTINGS': {
+      const optionsUrl = chrome.runtime.getURL('options.html');
+      const optionsTab = await chrome.tabs.create({ url: optionsUrl });
+      return { success: true, tabId: optionsTab.id };
     }
 
     // Open editor in a new tab

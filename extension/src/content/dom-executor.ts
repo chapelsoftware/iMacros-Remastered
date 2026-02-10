@@ -137,11 +137,9 @@ function isElementVisible(element: Element): boolean {
  * Check if an element is enabled (not disabled)
  */
 function isElementEnabled(element: Element): boolean {
-  if (element instanceof HTMLButtonElement ||
-      element instanceof HTMLInputElement ||
-      element instanceof HTMLSelectElement ||
-      element instanceof HTMLTextAreaElement) {
-    return !element.disabled;
+  const tag = element.tagName.toUpperCase();
+  if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') {
+    return !(element as HTMLInputElement).disabled;
   }
   return true;
 }
@@ -412,25 +410,28 @@ const EANF = '#EANF#';
  */
 function extractFromElement(element: Element, extractType: ExtractType): string {
   const type = extractType.toUpperCase();
+  // Use tagName for type checks instead of instanceof to support cross-frame elements.
   const tagName = element.tagName.toLowerCase();
 
   switch (type) {
     case 'TXT':
     case 'TEXT':
       // Handle form elements - use value property
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-        return element.value;
+      if (tagName === 'input' || tagName === 'textarea') {
+        return (element as HTMLInputElement).value;
       }
       // Handle select - return selected option text
-      if (element instanceof HTMLSelectElement) {
-        const selectedOption = element.options[element.selectedIndex];
+      if (tagName === 'select') {
+        const sel = element as HTMLSelectElement;
+        const selectedOption = sel.options[sel.selectedIndex];
         return selectedOption ? selectedOption.text : '';
       }
       // Handle table - return CSV format
-      if (element instanceof HTMLTableElement) {
+      if (tagName === 'table') {
+        const tbl = element as HTMLTableElement;
         const rows: string[] = [];
-        for (let i = 0; i < element.rows.length; i++) {
-          const row = element.rows[i];
+        for (let i = 0; i < tbl.rows.length; i++) {
+          const row = tbl.rows[i];
           const cells: string[] = [];
           for (let j = 0; j < row.cells.length; j++) {
             let field = row.cells[j].textContent || '';
@@ -447,10 +448,11 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
 
     case 'TXTALL':
       // For select elements, return all options joined with [OPTION]
-      if (element instanceof HTMLSelectElement) {
+      if (tagName === 'select') {
+        const sel = element as HTMLSelectElement;
         const optionTexts: string[] = [];
-        for (let i = 0; i < element.options.length; i++) {
-          optionTexts.push(element.options[i].text);
+        for (let i = 0; i < sel.options.length; i++) {
+          optionTexts.push(sel.options[i].text);
         }
         return optionTexts.join('[OPTION]');
       }
@@ -508,10 +510,8 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
       return EANF;
 
     case 'VALUE':
-      if (element instanceof HTMLInputElement ||
-          element instanceof HTMLTextAreaElement ||
-          element instanceof HTMLSelectElement) {
-        return element.value;
+      if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') {
+        return (element as HTMLInputElement).value;
       }
       if (element.hasAttribute('value')) {
         return element.getAttribute('value') || '';
@@ -520,9 +520,11 @@ function extractFromElement(element: Element, extractType: ExtractType): string 
 
     case 'CHECKED':
       // Return YES or NO for checkbox/radio state
-      if (element instanceof HTMLInputElement &&
-          (element.type === 'checkbox' || element.type === 'radio')) {
-        return element.checked ? 'YES' : 'NO';
+      if (tagName === 'input') {
+        const inp = element as HTMLInputElement;
+        if (inp.type === 'checkbox' || inp.type === 'radio') {
+          return inp.checked ? 'YES' : 'NO';
+        }
       }
       // Original iMacros throws error on non-checkbox/radio elements
       throw new Error(`EXTRACT=CHECKED is only valid for checkbox and radio elements, not ${element.tagName}`);
@@ -754,8 +756,13 @@ function setElementContent(element: Element, content: string): SetContentResult 
   }
 
   // Handle input elements
-  if (element instanceof HTMLInputElement) {
-    const inputType = element.type.toLowerCase();
+  // Use tagName instead of instanceof to support elements from iframe documents,
+  // where the constructor is different from the main frame's HTMLInputElement.
+  const tagName = element.tagName.toUpperCase();
+
+  if (tagName === 'INPUT') {
+    const inputEl = element as HTMLInputElement;
+    const inputType = inputEl.type.toLowerCase();
 
     // Handle checkbox/radio
     if (inputType === 'checkbox' || inputType === 'radio') {
@@ -763,9 +770,9 @@ function setElementContent(element: Element, content: string): SetContentResult 
                           content.toUpperCase() === 'TRUE' ||
                           content === '1' ||
                           content.toUpperCase() === 'ON';
-      element.checked = shouldCheck;
-      dispatchInputEvent(element, 'input');
-      element.dispatchEvent(new Event('change', { bubbles: true }));
+      inputEl.checked = shouldCheck;
+      dispatchInputEvent(inputEl, 'input');
+      inputEl.dispatchEvent(new Event('change', { bubbles: true }));
       return { success: true };
     }
 
@@ -775,36 +782,38 @@ function setElementContent(element: Element, content: string): SetContentResult 
     }
 
     // Handle other input types (text, password, email, etc.)
-    focusElement(element);
-    element.value = content;
-    dispatchInputEvent(element, 'input');
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+    focusElement(inputEl);
+    inputEl.value = content;
+    dispatchInputEvent(inputEl, 'input');
+    inputEl.dispatchEvent(new Event('change', { bubbles: true }));
     return { success: true };
   }
 
   // Handle textarea
-  if (element instanceof HTMLTextAreaElement) {
-    focusElement(element);
-    element.value = content;
-    dispatchInputEvent(element, 'input');
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+  if (tagName === 'TEXTAREA') {
+    const textareaEl = element as HTMLTextAreaElement;
+    focusElement(textareaEl);
+    textareaEl.value = content;
+    dispatchInputEvent(textareaEl, 'input');
+    textareaEl.dispatchEvent(new Event('change', { bubbles: true }));
     return { success: true };
   }
 
   // Handle select
-  if (element instanceof HTMLSelectElement) {
+  if (tagName === 'SELECT') {
+    const selectEl = element as HTMLSelectElement;
     // Check for special prefixes
-    if (content.includes(':%') && element.multiple) {
+    if (content.includes(':%') && selectEl.multiple) {
       // Multi-select: %"val1":%"val2":%"val3"
       const values = parseMultiSelectValues(content);
       // Deselect all first (like original iMacros)
-      for (let i = 0; i < element.options.length; i++) {
-        element.options[i].selected = false;
+      for (let i = 0; i < selectEl.options.length; i++) {
+        selectEl.options[i].selected = false;
       }
       // Select matching options
-      for (let i = 0; i < element.options.length; i++) {
-        if (values.includes(element.options[i].value)) {
-          element.options[i].selected = true;
+      for (let i = 0; i < selectEl.options.length; i++) {
+        if (values.includes(selectEl.options[i].value)) {
+          selectEl.options[i].selected = true;
         }
       }
     } else if (content.startsWith('%')) {
@@ -812,9 +821,9 @@ function setElementContent(element: Element, content: string): SetContentResult 
       const value = content.substring(1);
       // Check if value exists (like original iMacros error code 924)
       let found = false;
-      for (let i = 0; i < element.options.length; i++) {
-        if (element.options[i].value === value) {
-          element.selectedIndex = i;
+      for (let i = 0; i < selectEl.options.length; i++) {
+        if (selectEl.options[i].value === value) {
+          selectEl.selectedIndex = i;
           found = true;
           break;
         }
@@ -822,27 +831,27 @@ function setElementContent(element: Element, content: string): SetContentResult 
       if (!found) {
         return {
           success: false,
-          errorMessage: `Selected entry not available: '%${value}' [Box has ${element.options.length} entries]`
+          errorMessage: `Selected entry not available: '%${value}' [Box has ${selectEl.options.length} entries]`
         };
       }
     } else if (content.startsWith('#')) {
       // Select by index (1-based)
       const index = parseInt(content.substring(1), 10) - 1;
-      if (index < 0 || index >= element.options.length) {
+      if (index < 0 || index >= selectEl.options.length) {
         return {
           success: false,
-          errorMessage: `Selected entry not available: ${index + 1} [Box has ${element.options.length} entries]`
+          errorMessage: `Selected entry not available: ${index + 1} [Box has ${selectEl.options.length} entries]`
         };
       }
-      element.selectedIndex = index;
+      selectEl.selectedIndex = index;
     } else if (content.startsWith('$')) {
       // Select by visible text with optional wildcard
       const textPattern = content.substring(1);
       let found = false;
-      for (let i = 0; i < element.options.length; i++) {
-        const optionText = element.options[i].text;
+      for (let i = 0; i < selectEl.options.length; i++) {
+        const optionText = selectEl.options[i].text;
         if (matchesSelectTextPattern(optionText, textPattern)) {
-          element.selectedIndex = i;
+          selectEl.selectedIndex = i;
           found = true;
           break;
         }
@@ -851,15 +860,15 @@ function setElementContent(element: Element, content: string): SetContentResult 
         // Match original iMacros error behavior (error code 924)
         return {
           success: false,
-          errorMessage: `Selected entry not available: '$${textPattern}' [Box has ${element.options.length} entries]`
+          errorMessage: `Selected entry not available: '$${textPattern}' [Box has ${selectEl.options.length} entries]`
         };
       }
     } else {
       // Select by visible text (plain)
       let found = false;
-      for (let i = 0; i < element.options.length; i++) {
-        if (element.options[i].text === content || element.options[i].value === content) {
-          element.selectedIndex = i;
+      for (let i = 0; i < selectEl.options.length; i++) {
+        if (selectEl.options[i].text === content || selectEl.options[i].value === content) {
+          selectEl.selectedIndex = i;
           found = true;
           break;
         }
@@ -867,24 +876,24 @@ function setElementContent(element: Element, content: string): SetContentResult 
       if (!found) {
         return {
           success: false,
-          errorMessage: `Selected entry not available: '${content}' [Box has ${element.options.length} entries]`
+          errorMessage: `Selected entry not available: '${content}' [Box has ${selectEl.options.length} entries]`
         };
       }
     }
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+    selectEl.dispatchEvent(new Event('change', { bubbles: true }));
     return { success: true };
   }
 
   // Handle contenteditable
-  if (element instanceof HTMLElement && element.isContentEditable) {
-    focusElement(element);
+  if ('isContentEditable' in element && (element as HTMLElement).isContentEditable) {
+    focusElement(element as HTMLElement);
     element.textContent = content;
-    dispatchInputEvent(element, 'input');
+    dispatchInputEvent(element as HTMLElement, 'input');
     return { success: true };
   }
 
   // For other elements, try clicking (links, buttons, etc.)
-  if (element instanceof HTMLAnchorElement || element instanceof HTMLButtonElement) {
+  if (tagName === 'A' || tagName === 'BUTTON') {
     dispatchClick(element);
     return { success: true };
   }
@@ -956,6 +965,8 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
     let extractedData: string | undefined;
     if (action.extract) {
       extractedData = extractFromElement(element, action.extract);
+      // Mark the element so page scripts can detect the extraction occurred
+      element.setAttribute('data-extracted', action.extract);
     }
 
     // Handle form submission
@@ -963,8 +974,8 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
       const form = element.closest('form');
       if (form) {
         form.submit();
-      } else if (element instanceof HTMLFormElement) {
-        element.submit();
+      } else if (element.tagName.toUpperCase() === 'FORM') {
+        (element as HTMLFormElement).submit();
       } else {
         return {
           success: false,
@@ -977,8 +988,8 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
       const form = element.closest('form');
       if (form) {
         form.reset();
-      } else if (element instanceof HTMLFormElement) {
-        element.reset();
+      } else if (element.tagName.toUpperCase() === 'FORM') {
+        (element as HTMLFormElement).reset();
       }
     }
 

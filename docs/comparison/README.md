@@ -91,7 +91,7 @@ Each command and JS API function is documented with:
 | 12 | [window (global)](js-api/global-window.md) | Complete | js-api/global-window.md |
 | 13 | [content (global)](js-api/global-content.md) | Complete | js-api/global-content.md |
 | 14 | [prompt (global)](js-api/global-prompt.md) | Complete | js-api/global-prompt.md |
-| 15 | [alert (global)](js-api/global-alert.md) | Pending | |
+| 15 | [alert (global)](js-api/global-alert.md) | Complete | js-api/global-alert.md |
 | 16 | [confirm (global)](js-api/global-confirm.md) | Pending | |
 
 ---
@@ -99,5 +99,5 @@ Each command and JS API function is documented with:
 ## Completion Progress
 
 - Commands: 41/42 complete
-- JS API: 14/16 complete
-- **Total: 55/58 complete**
+- JS API: 15/16 complete
+- **Total: 56/58 complete**

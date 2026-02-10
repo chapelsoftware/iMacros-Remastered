@@ -46,7 +46,7 @@ Each command and JS API function is documented with:
 | 16 | [ONCERTIFICATEDIALOG](commands/ONCERTIFICATEDIALOG.md) | Complete | commands/ONCERTIFICATEDIALOG.md |
 | 17 | [ONDIALOG](commands/ONDIALOG.md) | Complete | commands/ONDIALOG.md |
 | 18 | [ONDOWNLOAD](commands/ONDOWNLOAD.md) | Complete | commands/ONDOWNLOAD.md |
-| 19 | [ONERRORDIALOG](commands/ONERRORDIALOG.md) | Pending | |
+| 19 | [ONERRORDIALOG](commands/ONERRORDIALOG.md) | Complete | commands/ONERRORDIALOG.md |
 | 20 | [ONLOGIN](commands/ONLOGIN.md) | Pending | |
 | 21 | [ONPRINT](commands/ONPRINT.md) | Pending | |
 | 22 | [ONSECURITYDIALOG](commands/ONSECURITYDIALOG.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 13/42 complete
+- Commands: 14/42 complete
 - JS API: 2/16 complete
-- **Total: 15/58 complete**
+- **Total: 16/58 complete**

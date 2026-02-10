@@ -14,6 +14,7 @@ import {
   findByTagSelector,
   parseTagSelector,
   getAttributeValue,
+  XPathAmbiguousError,
   type ElementFinderResult,
 } from './element-finder';
 
@@ -89,6 +90,7 @@ export const DOM_ERROR_CODES = {
   OK: 0,
   ELEMENT_NOT_FOUND: -920,
   ELEMENT_NOT_VISIBLE: -921,
+  XPATH_AMBIGUOUS: -923,
   ELEMENT_NOT_ENABLED: -924,
   TIMEOUT: -930,
   INVALID_SELECTOR: -912,
@@ -1042,6 +1044,13 @@ export async function executeTagCommand(message: TagCommandMessage): Promise<DOM
       elementInfo: getElementInfo(element),
     };
   } catch (error) {
+    if (error instanceof XPathAmbiguousError) {
+      return {
+        success: false,
+        errorCode: DOM_ERROR_CODES.XPATH_AMBIGUOUS,
+        errorMessage: error.message,
+      };
+    }
     const message = error instanceof Error ? error.message : String(error);
     return {
       success: false,
@@ -1440,6 +1449,13 @@ export async function executeEventCommand(message: EventCommandMessage): Promise
       elementInfo: element instanceof Element ? getElementInfo(element) : undefined,
     };
   } catch (error) {
+    if (error instanceof XPathAmbiguousError) {
+      return {
+        success: false,
+        errorCode: DOM_ERROR_CODES.XPATH_AMBIGUOUS,
+        errorMessage: error.message,
+      };
+    }
     const errorMessage = error instanceof Error ? error.message : String(error);
     return {
       success: false,

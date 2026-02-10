@@ -456,13 +456,20 @@ function updateUI(): void {
   const hasSelection = state.selectedMacro !== null;
   const isIdle = statusSync.isIdle();
   const isPlaying = status === 'playing';
+  const isPaused = status === 'paused';
   const isRecording = status === 'recording';
 
   if (btnPlay) {
     btnPlay.disabled = !hasSelection || !isIdle;
   }
   if (btnPause) {
-    btnPause.disabled = !isPlaying;
+    btnPause.disabled = !(isPlaying || isPaused);
+    // Toggle button between Pause and Resume
+    if (isPaused) {
+      btnPause.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2l10 6-10 6V2z"/></svg> Resume`;
+    } else {
+      btnPause.innerHTML = `<svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="4" height="12"/><rect x="9" y="2" width="4" height="12"/></svg> Pause`;
+    }
   }
   if (btnStop) {
     btnStop.disabled = isIdle;
@@ -582,6 +589,29 @@ async function pausePlayback(): Promise<void> {
     setStatus('paused', 'Paused');
   } catch (error) {
     setStatus('error', `Error: ${String(error)}`);
+  }
+}
+
+/**
+ * Resume playback
+ */
+async function resumePlayback(): Promise<void> {
+  try {
+    await sendToBackground('RESUME_MACRO');
+    setStatus('playing', 'Resumed');
+  } catch (error) {
+    setStatus('error', `Error: ${String(error)}`);
+  }
+}
+
+/**
+ * Toggle pause/resume
+ */
+function togglePauseResume(): void {
+  if (statusSync.getStatus() === 'paused') {
+    resumePlayback();
+  } else {
+    pausePlayback();
   }
 }
 
@@ -787,7 +817,7 @@ function setupTabs(): void {
 function setupEventListeners(): void {
   // Play tab buttons
   document.getElementById('btn-play')?.addEventListener('click', playMacro);
-  document.getElementById('btn-pause')?.addEventListener('click', pausePlayback);
+  document.getElementById('btn-pause')?.addEventListener('click', togglePauseResume);
   document.getElementById('btn-stop')?.addEventListener('click', stopExecution);
   document.getElementById('btn-play-loop')?.addEventListener('click', playMacroLoop);
 

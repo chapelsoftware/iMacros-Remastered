@@ -57,7 +57,7 @@ Each command and JS API function is documented with:
 | 27 | [PROXY](commands/PROXY.md) | Pending | |
 | 28 | [REDIAL](commands/REDIAL.md) | Pending | |
 | 29 | [REFRESH](commands/REFRESH.md) | Complete | commands/REFRESH.md |
-| 30 | [SAVEAS](commands/SAVEAS.md) | Pending | |
+| 30 | [SAVEAS](commands/SAVEAS.md) | Complete | commands/SAVEAS.md |
 | 31 | [SAVEITEM](commands/SAVEITEM.md) | Pending | |
 | 32 | [SCREENSHOT](commands/SCREENSHOT.md) | Pending | |
 | 33 | [SEARCH](commands/SEARCH.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 8/42 complete
+- Commands: 9/42 complete
 - JS API: 0/16 complete
-- **Total: 8/58 complete**
+- **Total: 9/58 complete**

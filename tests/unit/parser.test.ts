@@ -1518,11 +1518,18 @@ WAIT SECONDS={{!VAR1}}`;
       expect(error).toBeNull();
     });
 
-    it('should return error for invalid URL command', () => {
+    it('should return null for valid URL CURRENT command', () => {
+      const result = parseMacro('URL CURRENT', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).toBeNull();
+    });
+
+    it('should return error for URL without GOTO or CURRENT', () => {
       const result = parseMacro('URL', false);
       const error = validateCommand(result.commands[0]);
       expect(error).not.toBeNull();
       expect(error?.message).toContain('GOTO');
+      expect(error?.message).toContain('CURRENT');
     });
 
     it('should return null for valid TAG with XPATH', () => {

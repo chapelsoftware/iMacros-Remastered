@@ -192,12 +192,17 @@ export class VariableContext {
   private extractAccumulator: string[];
   /** Raw datasource rows for dynamic !COL resolution (original iMacros behavior) */
   private datasourceRows: string[][] | null;
+  /** Optional resolver for !URLCURRENT — returns the live browser URL.
+   *  iMacros 8.9.7 reads document.location on every access; this callback
+   *  lets the extension keep !URLCURRENT in sync with the actual tab URL. */
+  private urlCurrentResolver: (() => string) | null;
 
   constructor() {
     this.systemVars = new Map();
     this.customVars = new Map();
     this.extractAccumulator = [];
     this.datasourceRows = null;
+    this.urlCurrentResolver = null;
     this.reset();
   }
 
@@ -350,6 +355,11 @@ export class VariableContext {
     // Handle !NOW special variable
     if (upperName === '!NOW' || upperName.startsWith('!NOW:')) {
       return this.resolveNow(upperName);
+    }
+
+    // Handle !URLCURRENT dynamically (iMacros 8.9.7 reads document.location on every access)
+    if (upperName === '!URLCURRENT' && this.urlCurrentResolver) {
+      return this.urlCurrentResolver();
     }
 
     // Handle !COL1-10 dynamically from datasource (original iMacros behavior)
@@ -791,6 +801,15 @@ export class VariableContext {
         this.systemVars.set('!URLCURRENT', url);
         break;
     }
+  }
+
+  /**
+   * Register a resolver for !URLCURRENT that returns the live browser URL.
+   * When set, get('!URLCURRENT') calls this instead of returning the stored value.
+   * This matches iMacros 8.9.7 behavior where document.location is read on every access.
+   */
+  setUrlCurrentResolver(resolver: (() => string) | null): void {
+    this.urlCurrentResolver = resolver;
   }
 
   /**

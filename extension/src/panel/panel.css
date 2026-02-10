@@ -491,11 +491,33 @@ body {
 /* Status bar */
 .status-bar {
   display: flex;
+  flex-direction: column;
+  background: #F8F9FA;
+  border-top: 1px solid var(--color-platinum);
+  font-size: 11px;
+}
+
+.progress-bar-track {
+  height: 2px;
+  background: transparent;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-lavender-shade2);
+  transition: width 0.3s ease;
+}
+
+.status-bar-content {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 8px 12px;
-  background: #F8F9FA;
-  border-top: 1px solid var(--color-platinum);
+}
+
+.error-display {
+  padding: 4px 12px 6px;
+  color: #EF4444;
   font-size: 11px;
 }
 
@@ -1201,6 +1223,10 @@ body {
 
   .counter-value {
     color: #E8E8E8;
+  }
+
+  .error-display {
+    color: #F87171;
   }
 
   ::-webkit-scrollbar-thumb {

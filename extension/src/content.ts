@@ -10,13 +10,12 @@ function createTimestamp(): number {
 }
 import {
   initializeDialogInterceptor,
-  setupDialogMessageListener,
   handleDialogConfigMessage,
+  handleErrorDialogConfigMessage,
   getDialogInterceptor,
 } from './content/dialog-interceptor';
 import {
   initializeMacroRecorder,
-  setupRecordingMessageListener,
   getMacroRecorder,
   handleRecordStartMessage,
   handleRecordStopMessage,
@@ -75,8 +74,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'DIALOG_RESET') {
     const interceptor = getDialogInterceptor();
     interceptor.resetCounter();
+    interceptor.resetErrorDialogConfig();
     interceptor.setConfig({ enabled: false });
     sendResponse({ success: true });
+    return true;
+  }
+
+  // Handle error dialog configuration (ONERRORDIALOG)
+  if (message.type === 'ERROR_DIALOG_CONFIG') {
+    try {
+      handleErrorDialogConfigMessage(message.payload?.config);
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
     return true;
   }
 
@@ -216,6 +227,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Handle download events from background script
+  if (message.type === 'RECORD_DOWNLOAD') {
+    try {
+      const recorder = getMacroRecorder();
+      if (!recorder.isRecording()) {
+        sendResponse({ success: false, error: 'Not recording' });
+        return true;
+      }
+      const payload = message.payload as { folder: string; filename: string; url?: string };
+      const command = `ONDOWNLOAD FOLDER=${payload.folder} FILE=${payload.filename} WAIT=YES`;
+      recorder.recordTabEvent(command);
+      sendResponse({ success: true });
+    } catch (error) {
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
   // Let other listeners (DOM executor) handle unrecognized messages
   return false;
 });
@@ -247,11 +276,9 @@ setupPageCommunication();
 
 // Initialize dialog interceptor
 initializeDialogInterceptor();
-setupDialogMessageListener();
 
 // Initialize macro recorder
 initializeMacroRecorder();
-setupRecordingMessageListener();
 
 // Initialize DOM executor for TAG, CLICK, EVENT commands
 initializeDOMExecutor();

@@ -1662,6 +1662,20 @@ async function handleMessage(
       }
     }
 
+    case 'CLEAR_CACHE': {
+      console.log('[iMacros] CLEAR_CACHE from panel');
+      try {
+        await chrome.browsingData.remove({}, {
+          cache: true,
+          cookies: true,
+        });
+        return { success: true };
+      } catch (error) {
+        console.error('[iMacros] CLEAR_CACHE error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
     default:
       console.warn('[iMacros] Unknown message type:', message.type);
       return { success: false, error: `Unknown message type: ${message.type}` };

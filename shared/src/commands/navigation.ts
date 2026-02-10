@@ -397,30 +397,38 @@ export const refreshHandler: CommandHandler = async (ctx: CommandContext): Promi
  * - TAB CLOSEALLOTHERS - Close all tabs except the current one
  */
 /**
- * Get the timeout in seconds for tab switch retry from !TIMEOUT_STEP variable.
- * Returns 0 if the variable is not set or invalid (no retry).
+ * Get the timeout in seconds for tab switch retry.
+ * Uses !TIMEOUT_TAG (matching old iMacros tagTimeout), falling back to !TIMEOUT / 10.
  */
 function getTabRetryTimeout(ctx: CommandContext): number {
-  const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
-  if (typeof timeoutStep === 'number') return timeoutStep;
-  if (typeof timeoutStep === 'string') {
-    const parsed = parseFloat(timeoutStep);
-    return isNaN(parsed) ? 0 : parsed;
+  const timeoutTag = ctx.state.getVariable('!TIMEOUT_TAG');
+  if (typeof timeoutTag === 'number' && timeoutTag >= 0) return timeoutTag;
+  if (typeof timeoutTag === 'string') {
+    const parsed = parseFloat(timeoutTag);
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
   }
-  return 0;
+  // Fallback: general timeout / 10 (matches old iMacros behavior)
+  const timeout = ctx.state.getVariable('!TIMEOUT');
+  if (typeof timeout === 'number') return timeout / 10;
+  if (typeof timeout === 'string') {
+    const parsed = parseFloat(timeout);
+    if (!isNaN(parsed)) return parsed / 10;
+  }
+  return 6; // Default !TIMEOUT_TAG value
 }
 
 /**
  * Attempt to switch to a tab with retry logic.
- * Retries every 500ms up to !TIMEOUT_STEP seconds.
+ * Retries every 100ms (matching old iMacros) up to !TIMEOUT_TAG seconds.
  * On failure, returns error code -971 (SCRIPT_EXCEPTION) per iMacros 8.9.7.
+ * When !ERRORIGNORE=YES, suppresses the tab-not-found error after retry exhaustion.
  */
 async function switchTabWithRetry(
   tabIndex: number,
   ctx: CommandContext
 ): Promise<CommandResult> {
   const timeoutSeconds = getTabRetryTimeout(ctx);
-  const retryIntervalMs = 500;
+  const retryIntervalMs = 100;
   const deadline = Date.now() + timeoutSeconds * 1000;
 
   // First attempt
@@ -443,6 +451,13 @@ async function switchTabWithRetry(
     if (response.success) {
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     }
+  }
+
+  // On retry exhaustion, suppress error if !ERRORIGNORE=YES (matches old iMacros behavior)
+  const errorIgnore = ctx.state.getVariable('!ERRORIGNORE');
+  if (errorIgnore === 'YES') {
+    ctx.log('warn', `Tab ${tabIndex + 1} does not exist (error suppressed by !ERRORIGNORE)`);
+    return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
   }
 
   return {

@@ -93,7 +93,27 @@ export function dispatchMouseEvent(
   };
 
   const event = new MouseEvent(eventType, eventInit);
-  return element.dispatchEvent(event);
+  const dispatched = element.dispatchEvent(event);
+
+  // Option element handling for mousedown (iMacros 8.9.7 behavior)
+  // When mousedown targets an <option> inside a <select>, the browser won't
+  // update select state from synthetic events, so we do it explicitly.
+  if (eventType === 'mousedown') {
+    const tagName = element.tagName?.toUpperCase();
+    const parentTagName = element.parentElement?.tagName?.toUpperCase();
+    if (tagName === 'OPTION' && parentTagName === 'SELECT') {
+      const option = element as HTMLOptionElement;
+      const select = element.parentElement as HTMLSelectElement;
+      if (select.multiple) {
+        option.selected = true;
+      } else {
+        select.selectedIndex = option.index;
+      }
+      select.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+    }
+  }
+
+  return dispatched;
 }
 
 /**

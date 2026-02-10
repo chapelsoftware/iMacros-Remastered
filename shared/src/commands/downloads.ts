@@ -93,6 +93,10 @@ export interface SaveItemMessage extends DownloadMessage {
   folder?: string;
   /** Filename to save as (optional, uses original name if not specified) */
   file?: string;
+  /** If true, wait for download to complete before continuing */
+  wait?: boolean;
+  /** Checksum verification in format "MD5:hash" or "SHA1:hash" */
+  checksum?: string;
 }
 
 /**
@@ -208,6 +212,8 @@ type SaveItemPayload = {
   selector?: string;
   folder?: string;
   file?: string;
+  wait?: boolean;
+  checksum?: string;
 };
 
 type GetDownloadStatusPayload = {
@@ -479,9 +485,13 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
 
   ctx.log('info', `Setting download options: folder=${folder === '*' ? '(default)' : folder}, file=${file === '+' || file === '*' ? '(auto)' : file}${checksum ? `, checksum=${checksum}` : ''}`);
 
-  // Store download settings in state for later use
+  // Store download settings in state for later use by SAVEITEM
   ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, folder);
   ctx.state.setVariable(DOWNLOAD_FILE_KEY, file);
+  ctx.state.setVariable('!DOWNLOAD_WAIT', wait ? 1 : 0);
+  if (checksum) {
+    ctx.state.setVariable('!DOWNLOAD_CHECKSUM', checksum);
+  }
 
   // Send message to browser extension to configure download behavior
   const response = await sendDownloadMessage(
@@ -688,6 +698,35 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
 // ===== SAVEITEM Command Handler =====
 
 /**
+ * Derive a leaf name from a URL for SAVEITEM wildcard resolution.
+ * Extracts the last path segment (before query string), preserving extension.
+ * Falls back to hostname (stripping www.), then to 'unknown'.
+ * Matches iMacros 8.9.7 handleOnDownloadFile() behavior.
+ */
+function deriveItemLeafName(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    // Extract last path segment (before query string), matching /([^\/?]+)(?=\?.+|$)/
+    const pathMatch = parsed.pathname.match(/\/([^/]+)$/);
+    if (pathMatch && pathMatch[1]) {
+      return pathMatch[1];
+    }
+
+    // Fall back to hostname (strip www.)
+    const hostMatch = parsed.hostname.match(/^(?:www\.)(.+)/);
+    if (hostMatch) {
+      return hostMatch[1];
+    }
+
+    if (parsed.hostname) return parsed.hostname;
+    return 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * Handler for SAVEITEM command
  *
  * Syntax:
@@ -697,6 +736,8 @@ export const saveasHandler: CommandHandler = async (ctx: CommandContext): Promis
  *
  * Saves a specific item (image, link target, download) to disk.
  * Uses ONDOWNLOAD settings for destination if not specified.
+ * Processes FILE=* and FILE=+suffix wildcards (iMacros 8.9.7 parity).
+ * Consumes ONDOWNLOAD state after use (iMacros 8.9.7 parity).
  */
 export const saveitemHandler: CommandHandler = async (ctx: CommandContext): Promise<CommandResult> => {
   const urlParam = ctx.getParam('URL');
@@ -707,10 +748,45 @@ export const saveitemHandler: CommandHandler = async (ctx: CommandContext): Prom
   const url = urlParam ? ctx.expand(urlParam) : undefined;
   const folder = folderParam
     ? ctx.expand(folderParam)
-    : ctx.state.getVariable(DOWNLOAD_FOLDER_KEY)?.toString();
-  const file = fileParam ? ctx.expand(fileParam) : undefined;
+    : ctx.state.getVariable(DOWNLOAD_FOLDER_KEY)?.toString() || undefined;
 
-  ctx.log('info', `Saving item: ${url || '(current target)'}`);
+  // Read ONDOWNLOAD file setting as fallback
+  let file = fileParam
+    ? ctx.expand(fileParam)
+    : ctx.state.getVariable(DOWNLOAD_FILE_KEY)?.toString() || undefined;
+
+  // Resolve FILE wildcards (iMacros 8.9.7 parity)
+  // Uses the item URL (not page URL) to derive the leaf name
+  const itemUrl = url || ctx.state.getVariable('!URLCURRENT')?.toString() || '';
+  const leafName = deriveItemLeafName(itemUrl);
+
+  if (file === '*' || !file) {
+    // FILE=* or no file: use leaf name from URL
+    file = leafName;
+  } else {
+    const suffixMatch = file.match(/^\+(.*)$/);
+    if (suffixMatch) {
+      // FILE=+suffix: insert suffix before extension, or append if no extension
+      if (/\..+$/.test(leafName)) {
+        file = leafName.replace(/(.+)(\..+)$/, '$1' + suffixMatch[1] + '$2');
+      } else {
+        file = leafName + suffixMatch[1];
+      }
+    }
+  }
+
+  // Sanitize filename (iMacros 8.9.7 parity)
+  file = sanitizeFilename(file);
+
+  // Read ONDOWNLOAD checksum/wait settings stored by ONDOWNLOAD handler
+  const ondownloadWait = ctx.state.getVariable('!DOWNLOAD_WAIT');
+  const ondownloadChecksum = ctx.state.getVariable('!DOWNLOAD_CHECKSUM');
+  const wait = ondownloadWait !== null && ondownloadWait !== undefined && ondownloadWait !== ''
+    ? Number(ondownloadWait) === 1
+    : undefined;
+  const checksum = ondownloadChecksum?.toString() || undefined;
+
+  ctx.log('info', `Saving item: ${url || '(current target)'}, file=${file}`);
 
   // Send save item request to browser extension
   const response = await sendDownloadMessage(
@@ -719,9 +795,18 @@ export const saveitemHandler: CommandHandler = async (ctx: CommandContext): Prom
       url,
       folder,
       file,
+      wait,
+      checksum,
     },
     ctx
   );
+
+  // Consume ONDOWNLOAD state after use (iMacros 8.9.7 parity)
+  // Set to empty string to clear, since there is no deleteVariable
+  ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, '');
+  ctx.state.setVariable(DOWNLOAD_FILE_KEY, '');
+  ctx.state.setVariable('!DOWNLOAD_WAIT', '');
+  ctx.state.setVariable('!DOWNLOAD_CHECKSUM', '');
 
   if (!response.success) {
     return {
@@ -736,12 +821,12 @@ export const saveitemHandler: CommandHandler = async (ctx: CommandContext): Prom
     ctx.state.setVariable(LAST_DOWNLOAD_ID_KEY, response.data.downloadId);
   }
 
-  ctx.log('info', `Download started: ${response.data?.filename || response.data?.url || 'item'}`);
+  ctx.log('info', `Download started: ${response.data?.filename || file || 'item'}`);
 
   return {
     success: true,
     errorCode: IMACROS_ERROR_CODES.OK,
-    output: response.data?.filename,
+    output: response.data?.filename || file,
   };
 };
 

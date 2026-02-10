@@ -109,6 +109,8 @@ export const SYSTEM_VARIABLES = [
   '!CLIPBOARD',
   // Download/PDF
   '!DOWNLOADPDF',
+  // Internal download state (set by ONDOWNLOAD, consumed by SAVEITEM)
+  '!DOWNLOAD_FILE', '!DOWNLOAD_WAIT', '!DOWNLOAD_CHECKSUM', '!LAST_DOWNLOAD_ID',
   // Browser/Page control
   '!USERAGENT', '!POPUP_ALLOWED', '!WAITPAGECOMPLETE',
   // Profiler

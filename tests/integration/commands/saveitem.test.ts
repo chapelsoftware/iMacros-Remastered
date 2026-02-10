@@ -216,7 +216,7 @@ describe('SAVEITEM Command Integration Tests', () => {
   // ===== ONDOWNLOAD then SAVEITEM Sequence =====
 
   describe('ONDOWNLOAD then SAVEITEM sequence', () => {
-    it('should use ONDOWNLOAD folder setting as fallback for SAVEITEM', async () => {
+    it('should use ONDOWNLOAD folder and file settings as fallback for SAVEITEM', async () => {
       const script = [
         'ONDOWNLOAD FOLDER=/output FILE=data.pdf',
         'SAVEITEM URL=https://example.com/file.pdf',
@@ -233,11 +233,181 @@ describe('SAVEITEM Command Integration Tests', () => {
       expect(ondownloadMsg.type).toBe('setDownloadOptions');
 
       // Second message: saveItem from SAVEITEM
-      // The SAVEITEM handler falls back to DOWNLOAD_FOLDER_KEY state when no FOLDER param
+      // The SAVEITEM handler falls back to DOWNLOAD_FOLDER_KEY and DOWNLOAD_FILE_KEY state
       const saveitemMsg = sentMessages[1] as SaveItemMessage;
       expect(saveitemMsg.type).toBe('saveItem');
       expect(saveitemMsg.url).toBe('https://example.com/file.pdf');
       expect(saveitemMsg.folder).toBe('/output');
+      expect(saveitemMsg.file).toBe('data.pdf');
+    });
+  });
+
+  // ===== FILE Wildcard Processing =====
+
+  describe('FILE wildcard processing', () => {
+    it('FILE=* should derive filename from URL', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/path/image.png FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('image.png');
+    });
+
+    it('FILE=* should derive filename from URL without extension', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/path/document FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('document');
+    });
+
+    it('FILE=* should fall back to hostname when URL has no path segment', async () => {
+      executor.loadMacro('SAVEITEM URL=https://www.example.com/ FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('example.com');
+    });
+
+    it('FILE=+suffix should insert suffix before extension', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/photo.jpg FILE=+_thumb');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('photo_thumb.jpg');
+    });
+
+    it('FILE=+suffix should append suffix when no extension', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/document FILE=+_copy');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('document_copy');
+    });
+
+    it('no FILE param should derive filename from URL (like FILE=*)', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/path/report.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('report.pdf');
+    });
+
+    it('ONDOWNLOAD FILE=* should derive from URL when used by SAVEITEM', async () => {
+      const script = [
+        'ONDOWNLOAD FOLDER=/output FILE=*',
+        'SAVEITEM URL=https://example.com/data.csv',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const saveitemMsg = sentMessages[1] as SaveItemMessage;
+      expect(saveitemMsg.file).toBe('data.csv');
+    });
+
+    it('ONDOWNLOAD FILE=+suffix should apply suffix from URL when used by SAVEITEM', async () => {
+      const script = [
+        'ONDOWNLOAD FOLDER=/output FILE=+_backup',
+        'SAVEITEM URL=https://example.com/photo.jpg',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const saveitemMsg = sentMessages[1] as SaveItemMessage;
+      expect(saveitemMsg.file).toBe('photo_backup.jpg');
+    });
+  });
+
+  // ===== Filename Sanitization =====
+
+  describe('Filename sanitization', () => {
+    it('should sanitize illegal characters in derived filenames', async () => {
+      // URL with query params that would produce illegal chars
+      executor.loadMacro('SAVEITEM URL=https://example.com/file:name.pdf FILE=test<file>.pdf');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      // Illegal chars [:*?|<>"/] should be replaced with _
+      expect(msg.file).toBe('test_file_.pdf');
+    });
+
+    it('should sanitize wildcard-derived filenames', async () => {
+      executor.loadMacro('SAVEITEM URL=https://example.com/my:file*name.pdf FILE=*');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = sentMessages[0] as SaveItemMessage;
+      expect(msg.file).toBe('my_file_name.pdf');
+    });
+  });
+
+  // ===== ONDOWNLOAD State Consumption =====
+
+  describe('ONDOWNLOAD state consumption', () => {
+    it('should consume ONDOWNLOAD state after SAVEITEM (second SAVEITEM uses default)', async () => {
+      const script = [
+        'ONDOWNLOAD FOLDER=/output FILE=first.pdf',
+        'SAVEITEM URL=https://example.com/file1.pdf',
+        'SAVEITEM URL=https://example.com/file2.pdf',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(3);
+
+      // First SAVEITEM uses ONDOWNLOAD settings
+      const first = sentMessages[1] as SaveItemMessage;
+      expect(first.folder).toBe('/output');
+      expect(first.file).toBe('first.pdf');
+
+      // Second SAVEITEM: ONDOWNLOAD state was consumed, so no folder fallback
+      const second = sentMessages[2] as SaveItemMessage;
+      expect(second.folder).toBeUndefined();
+      // File falls back to URL-derived name since ONDOWNLOAD file was consumed
+      expect(second.file).toBe('file2.pdf');
+    });
+  });
+
+  // ===== Checksum Pass-through =====
+
+  describe('Checksum pass-through', () => {
+    it('should pass ONDOWNLOAD checksum and wait settings through to saveItem message', async () => {
+      const script = [
+        'ONDOWNLOAD FOLDER=/output FILE=data.pdf WAIT=YES CHECKSUM=MD5:d41d8cd98f00b204e9800998ecf8427e',
+        'SAVEITEM URL=https://example.com/file.pdf',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(sentMessages).toHaveLength(2);
+
+      const saveitemMsg = sentMessages[1] as SaveItemMessage;
+      expect(saveitemMsg.wait).toBe(true);
+      expect(saveitemMsg.checksum).toBe('MD5:d41d8cd98f00b204e9800998ecf8427e');
+    });
+
+    it('should not pass checksum when ONDOWNLOAD has no CHECKSUM', async () => {
+      const script = [
+        'ONDOWNLOAD FOLDER=/output FILE=data.pdf',
+        'SAVEITEM URL=https://example.com/file.pdf',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const saveitemMsg = sentMessages[1] as SaveItemMessage;
+      expect(saveitemMsg.checksum).toBeUndefined();
     });
   });
 });

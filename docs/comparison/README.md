@@ -37,7 +37,7 @@ Each command and JS API function is documented with:
 | 7 | [DS](commands/DS.md) | Complete | commands/DS.md |
 | 8 | [EVENT](commands/EVENT.md) | Complete | commands/EVENT.md |
 | 9 | [EVENTS](commands/EVENTS.md) | Complete | commands/EVENTS.md |
-| 10 | [EXTRACT](commands/EXTRACT.md) | Pending | |
+| 10 | [EXTRACT](commands/EXTRACT.md) | Complete | commands/EXTRACT.md |
 | 11 | [FILEDELETE](commands/FILEDELETE.md) | Pending | |
 | 12 | [FILTER](commands/FILTER.md) | Pending | |
 | 13 | [FRAME](commands/FRAME.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 25/42 complete
+- Commands: 26/42 complete
 - JS API: 6/16 complete
-- **Total: 31/58 complete**
+- **Total: 32/58 complete**

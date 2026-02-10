@@ -586,13 +586,26 @@ async function pausePlayback(): Promise<void> {
 }
 
 /**
- * Stop playback or recording
+ * Stop macro playback
  */
 async function stopExecution(): Promise<void> {
   try {
     await sendToBackground('STOP_MACRO');
     statusSync.reset();
     setStatus('idle', 'Stopped');
+  } catch (error) {
+    setStatus('error', `Error: ${String(error)}`);
+  }
+}
+
+/**
+ * Stop recording
+ */
+async function stopRecording(): Promise<void> {
+  try {
+    await sendToBackground('STOP_RECORDING');
+    statusSync.reset();
+    setStatus('idle', 'Recording stopped');
   } catch (error) {
     setStatus('error', `Error: ${String(error)}`);
   }
@@ -781,7 +794,7 @@ function setupEventListeners(): void {
   // Record tab buttons
   document.getElementById('btn-record')?.addEventListener('click', startRecording);
   document.getElementById('btn-save')?.addEventListener('click', saveRecording);
-  document.getElementById('btn-stop-record')?.addEventListener('click', stopExecution);
+  document.getElementById('btn-stop-record')?.addEventListener('click', stopRecording);
 
   // Record options buttons
   document.getElementById('btn-record-options')?.addEventListener('click', openRecordingOptionsDialog);

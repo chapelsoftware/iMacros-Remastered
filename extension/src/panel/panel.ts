@@ -668,8 +668,8 @@ async function saveRecording(): Promise<void> {
       filename += '.iim';
     }
 
-    // Send save request with filename
-    const response = await sendToBackground('SAVE_RECORDING', { filename }) as {
+    // Send save request with path (matches background's expected payload field)
+    const response = await sendToBackground('SAVE_RECORDING', { path: filename }) as {
       success: boolean;
       error?: string;
     };
@@ -815,10 +815,6 @@ function setupEventListeners(): void {
   document.getElementById('btn-settings')?.addEventListener('click', () => {
     sendToBackground('OPEN_SETTINGS');
   });
-  document.getElementById('btn-help')?.addEventListener('click', () => {
-    window.open('https://wiki.imacros.net/', '_blank');
-  });
-
   // Loop max input
   const loopMaxInput = document.getElementById('loop-max') as HTMLInputElement;
   loopMaxInput?.addEventListener('change', () => {

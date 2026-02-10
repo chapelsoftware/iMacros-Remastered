@@ -87,6 +87,10 @@ interface CurrentFrameContext {
 }
 let currentFrameContext: CurrentFrameContext | null = null;
 
+// Accumulated recorded commands (background keeps its own copy so save survives navigation)
+let recordedCommands: string[] = [];
+let recordingStartUrl: string | null = null;
+
 /**
  * Start keep-alive mechanism for service worker
  */
@@ -1013,6 +1017,7 @@ async function handleMessage(
       // If frame context changed, send a FRAME command event first
       if (frameCommand) {
         console.log('[iMacros] Frame context changed, generating:', frameCommand);
+        recordedCommands.push(frameCommand);
         await sendToNativeHostNoWait({
           type: 'record_event',
           id: createMessageId(),
@@ -1027,6 +1032,11 @@ async function handleMessage(
             isFrameSwitch: true,
           },
         });
+      }
+
+      // Accumulate the command in the background's list
+      if (payload.command) {
+        recordedCommands.push(payload.command);
       }
 
       // Send the actual recorded event
@@ -1336,8 +1346,11 @@ async function handleMessage(
 
         console.log('[iMacros] Recording with config:', recorderConfig);
 
-        // Set recording state with config
+        // Set recording state with config (clears recordedCommands)
         setRecordingState(true, activeTab.id, recorderConfig);
+
+        // Capture the starting URL for the macro header
+        recordingStartUrl = activeTab.url || '';
 
         // Send RECORD_START message to all frames in the tab
         try {
@@ -1416,53 +1429,30 @@ async function handleMessage(
 
     // Save recording to file from panel
     case 'SAVE_RECORDING': {
-      const saveRecordingPayload = message.payload as { path: string };
-      console.log('[iMacros] SAVE_RECORDING from panel:', saveRecordingPayload.path);
+      const saveRecordingPayload = message.payload as { path?: string; filename?: string };
+      const savePath = saveRecordingPayload.path || saveRecordingPayload.filename || '';
+      console.log('[iMacros] SAVE_RECORDING from panel:', savePath, `(${recordedCommands.length} commands accumulated)`);
       try {
         // Check if recording is active
         if (!recordingTabId) {
           return { success: false, error: 'Not currently recording' };
         }
 
-        // Get macro content from all frames - use RECORD_GET_MACRO which doesn't stop recording
-        let macroContent = '';
-        try {
-          const frameResults = await sendToAllFramesInTab(recordingTabId, {
-            type: 'RECORD_GET_MACRO',
-          });
-
-          // Use the main frame's macro (frameId 0) as the base
-          for (const result of frameResults) {
-            if (result.frameId === 0 && result.response) {
-              const response = result.response as { success?: boolean; macro?: string };
-              if (response.success && response.macro) {
-                macroContent = response.macro;
-                break;
-              }
-            }
-          }
-
-          if (!macroContent) {
-            // Try any frame that has content
-            for (const result of frameResults) {
-              if (result.response) {
-                const response = result.response as { success?: boolean; macro?: string };
-                if (response.success && response.macro) {
-                  macroContent = response.macro;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (!macroContent) {
-            console.warn('[iMacros] No macro content found from any frame');
-            return { success: false, error: 'Failed to get macro content from any frame' };
-          }
-        } catch (error) {
-          console.warn('[iMacros] Could not get macro content from frames:', error);
-          return { success: false, error: 'Could not get macro content from recording tab' };
+        if (!savePath) {
+          return { success: false, error: 'No file path specified' };
         }
+
+        // Build macro from background's accumulated commands (no content script dependency)
+        const macroLines = [
+          'VERSION BUILD=1 RECORDER=CR',
+        ];
+        if (recordingStartUrl) {
+          macroLines.push(`URL GOTO=${recordingStartUrl}`);
+        }
+        macroLines.push(...recordedCommands);
+        const macroContent = macroLines.join('\n');
+
+        console.log('[iMacros] Generated macro from accumulated commands:', macroLines.length, 'lines');
 
         // Send save_macro to native host with path and content
         try {
@@ -1470,7 +1460,7 @@ async function handleMessage(
             type: 'save_macro',
             id: message.id || createMessageId(),
             timestamp: createTimestamp(),
-            payload: { path: saveRecordingPayload.path, content: macroContent },
+            payload: { path: savePath, content: macroContent },
           });
         } catch (error) {
           console.error('[iMacros] Failed to save macro via native host:', error);
@@ -1479,7 +1469,9 @@ async function handleMessage(
 
         // Stop recording in all frames
         try {
-          await sendToAllFramesInTab(recordingTabId, { type: 'RECORD_STOP' });
+          if (recordingTabId) {
+            await sendToAllFramesInTab(recordingTabId, { type: 'RECORD_STOP' });
+          }
         } catch (error) {
           console.warn('[iMacros] Could not send RECORD_STOP to all frames:', error);
           // Continue anyway - the macro was already saved
@@ -1488,7 +1480,7 @@ async function handleMessage(
         // Set recording state to false
         setRecordingState(false);
 
-        return { success: true, path: saveRecordingPayload.path };
+        return { success: true, path: savePath };
       } catch (error) {
         console.error('[iMacros] SAVE_RECORDING error:', error);
         return { success: false, error: String(error) };
@@ -1661,6 +1653,7 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 
     // Record TAB OPEN event if recording
     if (isRecording) {
+      recordedCommands.push('TAB OPEN');
       await sendTabEventToContentScript('open', undefined, tab.id, tab.url);
     }
   }
@@ -1675,6 +1668,7 @@ chrome.tabs.onRemoved.addListener(async (tabId) => {
 
   // Record TAB CLOSE event if recording (unless the recording tab was closed)
   if (isRecording && tabId !== recordingTabId) {
+    recordedCommands.push('TAB CLOSE');
     await sendTabEventToContentScript('close', undefined, tabId);
   }
 
@@ -1715,6 +1709,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
     if (tabIndex >= 0) {
       // TAB T=n is 1-based
+      recordedCommands.push(`TAB T=${tabIndex + 1}`);
       await sendTabEventToContentScript('switch', tabIndex + 1, activeInfo.tabId);
 
       // Update recordingTabId to the new active tab so events are captured there
@@ -1782,6 +1777,7 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
 
   // Detect reload (REFRESH command)
   if (transitionType === 'reload') {
+    recordedCommands.push('REFRESH');
     await sendNavigationEventToContentScript('refresh', details.tabId);
     return;
   }
@@ -1793,8 +1789,43 @@ chrome.webNavigation.onCommitted.addListener(async (details) => {
     // We need to track history state to determine direction
     // For now, we'll record BACK as a default since it's more common
     // A more sophisticated implementation could track navigation history
+    recordedCommands.push('BACK');
     await sendNavigationEventToContentScript('back', details.tabId);
     return;
+  }
+
+  // Detect new navigation (typed URL, link click handled by browser, etc.)
+  if (transitionType === 'typed' || transitionType === 'auto_bookmark') {
+    recordedCommands.push(`URL GOTO=${details.url}`);
+  }
+});
+
+/**
+ * Re-send RECORD_START to the new page's content script after same-tab navigation.
+ * This ensures the content script on the new page records DOM events and sends them
+ * to the background, even though the previous page's content script was destroyed.
+ */
+chrome.webNavigation.onCompleted.addListener(async (details) => {
+  // Only handle main frame navigations in the recording tab
+  if (!isRecording || details.tabId !== recordingTabId || details.frameId !== 0) {
+    return;
+  }
+
+  if (!activeRecordingConfig) {
+    return;
+  }
+
+  console.log('[iMacros] Navigation completed in recording tab, re-sending RECORD_START');
+
+  try {
+    await waitForContentScript(details.tabId);
+    await sendToAllFramesInTab(details.tabId, {
+      type: 'RECORD_START',
+      payload: { config: activeRecordingConfig },
+    });
+    console.log('[iMacros] RECORD_START re-sent to recording tab after navigation');
+  } catch (error) {
+    console.warn('[iMacros] Could not re-send RECORD_START after navigation:', error);
   }
 });
 
@@ -1832,6 +1863,11 @@ function setRecordingState(recording: boolean, tabId?: number, config?: Record<s
   activeRecordingConfig = recording ? (config ?? activeRecordingConfig) : null;
   // Reset frame context when recording starts or stops
   currentFrameContext = null;
+  // Clear accumulated commands when starting a new recording
+  if (recording) {
+    recordedCommands = [];
+    recordingStartUrl = null;
+  }
   console.log('[iMacros] Recording state:', recording, 'Tab:', recordingTabId);
 }
 

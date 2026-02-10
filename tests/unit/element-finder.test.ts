@@ -32,6 +32,7 @@ if (typeof globalThis.XPathResult === 'undefined') {
 }
 
 import {
+  findByXPath,
   findByCssSelector,
   findByTagSelector,
   matchesWildcard,
@@ -41,6 +42,7 @@ import {
   matchesAllAttributes,
   parseTagSelector,
   findMatchingForm,
+  XPathAmbiguousError,
   type TagSelector,
   type ElementFinderResult,
 } from '@extension/content/element-finder';
@@ -272,6 +274,54 @@ describe('Element Finder', () => {
       const result = findByTagSelector(selector, context.document);
       expect(result.element).not.toBeNull();
       expect(result.element?.textContent).toBe('Submit');
+    });
+
+    // --- XPath ambiguity check (error 982 in original iMacros) ---
+    // findByXPath uses the global `document` for evaluate(), so these tests
+    // set up the global document body before each call.
+
+    it('should throw XPathAmbiguousError when XPath matches multiple elements', () => {
+      // Set up global document with multiple inputs
+      globalThis.document.body.innerHTML = '<input name="a" /><input name="b" /><input name="c" />';
+      expect(() => findByXPath('//input')).toThrow(XPathAmbiguousError);
+    });
+
+    it('should return single element when XPath matches exactly one', () => {
+      globalThis.document.body.innerHTML = '<input name="fname" />';
+      const result = findByXPath('//input');
+      expect(result.element).not.toBeNull();
+      expect(result.element?.getAttribute('name')).toBe('fname');
+      expect(result.count).toBe(1);
+    });
+
+    it('should return null element when XPath matches nothing', () => {
+      globalThis.document.body.innerHTML = '<div>no inputs here</div>';
+      const result = findByXPath('//input');
+      expect(result.element).toBeNull();
+      expect(result.count).toBe(0);
+    });
+
+    it('should include match count in XPathAmbiguousError', () => {
+      globalThis.document.body.innerHTML = '<input /><input /><input />';
+      try {
+        findByXPath('//input');
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(XPathAmbiguousError);
+        expect((error as XPathAmbiguousError).matchCount).toBe(3);
+      }
+    });
+
+    it('should include XPath expression in XPathAmbiguousError message', () => {
+      globalThis.document.body.innerHTML = '<input /><input />';
+      try {
+        findByXPath('//input');
+        expect.fail('Should have thrown');
+      } catch (error) {
+        expect(error).toBeInstanceOf(XPathAmbiguousError);
+        expect((error as XPathAmbiguousError).message).toContain('//input');
+        expect((error as XPathAmbiguousError).message).toContain('ambiguous');
+      }
     });
   });
 

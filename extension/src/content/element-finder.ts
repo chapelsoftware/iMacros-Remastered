@@ -11,6 +11,17 @@
 
 import { getFrameHandler } from './frame-handler';
 
+/**
+ * Error thrown when an XPath expression matches more than one element.
+ * Original iMacros throws RuntimeError("ambiguous XPath expression", 982).
+ */
+export class XPathAmbiguousError extends Error {
+  constructor(xpath: string, public readonly matchCount: number) {
+    super(`ambiguous XPath expression: ${xpath}`);
+    this.name = 'XPathAmbiguousError';
+  }
+}
+
 export interface ElementFinderResult {
   element: Element | null;
   elements: Element[];
@@ -49,6 +60,11 @@ export function findByXPath(xpath: string, contextNode: Node = document): Elemen
     }
   } catch (error) {
     console.error('XPath evaluation error:', error);
+  }
+
+  // Original iMacros throws error 982 if XPath returns more than one node
+  if (elements.length > 1) {
+    throw new XPathAmbiguousError(xpath, elements.length);
   }
 
   return {

@@ -33,7 +33,7 @@ Each command and JS API function is documented with:
 | 3 | [CLEAR](commands/CLEAR.md) | Complete | commands/CLEAR.md |
 | 4 | [CLICK](commands/CLICK.md) | Complete | commands/CLICK.md |
 | 5 | [CMDLINE](commands/CMDLINE.md) | Complete | commands/CMDLINE.md |
-| 6 | [DISCONNECT](commands/DISCONNECT.md) | Pending | |
+| 6 | [DISCONNECT](commands/DISCONNECT.md) | Complete | commands/DISCONNECT.md |
 | 7 | [DS](commands/DS.md) | Pending | |
 | 8 | [EVENT](commands/EVENT.md) | Pending | |
 | 9 | [EVENTS](commands/EVENTS.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 12/42 complete
+- Commands: 13/42 complete
 - JS API: 1/16 complete
-- **Total: 13/58 complete**
+- **Total: 14/58 complete**

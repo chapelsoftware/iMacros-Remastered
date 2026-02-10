@@ -23,6 +23,7 @@ import {
   searchRegexp,
   txtPatternToRegex,
   EXTRACT_DELIMITER,
+  searchHandler,
 } from '@shared/commands/extraction';
 import {
   registerNavigationHandlers,
@@ -31,6 +32,12 @@ import {
   BrowserOperationMessage,
   BrowserOperationResponse,
 } from '@shared/commands/navigation';
+import {
+  setContentScriptSender,
+  noopSender,
+  type ContentScriptSender,
+  type ContentScriptResponse,
+} from '@shared/commands/interaction';
 
 // ===== Helper to create an executor with SEARCH + URL handlers =====
 
@@ -713,5 +720,193 @@ describe('SEARCH EXTRACT parameter validation', () => {
 
     expect(result.success).toBe(true);
     expect(result.extractData).toContain('user');
+  });
+});
+
+// ===== SEARCH retry behavior with content script sender =====
+
+describe('SEARCH retry behavior (content script sender path)', () => {
+  afterEach(() => {
+    // Reset to noopSender so other tests aren't affected
+    setContentScriptSender(noopSender);
+  });
+
+  /**
+   * Build a minimal CommandContext with a real executor state.
+   */
+  function buildSearchContext(opts: {
+    sourceValue: string;
+    extractValue?: string;
+    ignoreCaseValue?: string;
+    timeoutSeconds?: number;
+  }) {
+    const executor = createExecutor();
+    const state = executor.getState();
+    const vars = state.getVariables();
+
+    // Set !TIMEOUT for retry loop control
+    if (opts.timeoutSeconds !== undefined) {
+      vars.set('!TIMEOUT', opts.timeoutSeconds);
+    }
+
+    const params: Array<{ key: string; value: string; rawValue: string; variables: never[] }> = [
+      { key: 'SOURCE', value: opts.sourceValue, rawValue: opts.sourceValue, variables: [] },
+    ];
+    if (opts.extractValue) {
+      params.push({ key: 'EXTRACT', value: opts.extractValue, rawValue: opts.extractValue, variables: [] });
+    }
+    if (opts.ignoreCaseValue) {
+      params.push({ key: 'IGNORE_CASE', value: opts.ignoreCaseValue, rawValue: opts.ignoreCaseValue, variables: [] });
+    }
+
+    const command = {
+      type: 'SEARCH',
+      parameters: params,
+      raw: `SEARCH ${params.map(p => `${p.key}=${p.value}`).join(' ')}`,
+      lineNumber: 1,
+      variables: [],
+    };
+
+    const ctx = {
+      command,
+      variables: vars,
+      state,
+      getParam: (key: string) => {
+        const found = params.find(p => p.key.toUpperCase() === key.toUpperCase());
+        return found?.value;
+      },
+      getRequiredParam: (key: string) => {
+        const found = params.find(p => p.key.toUpperCase() === key.toUpperCase());
+        if (!found) throw new Error(`Missing required parameter: ${key}`);
+        return found.value;
+      },
+      expand: (text: string) => {
+        const result = vars.expand(text);
+        return result.expanded;
+      },
+      log: vi.fn(),
+    };
+
+    return { ctx, state, vars };
+  }
+
+  it('retries and succeeds when content script initially returns not-found then found', async () => {
+    let callCount = 0;
+    const mockSender: ContentScriptSender = {
+      async sendMessage(): Promise<ContentScriptResponse> {
+        callCount++;
+        if (callCount < 3) {
+          // First two calls: pattern not found
+          return { success: false, error: 'Pattern not found: hello' };
+        }
+        // Third call: found
+        return { success: true, extractedData: 'hello' };
+      },
+    };
+
+    setContentScriptSender(mockSender);
+
+    const { ctx } = buildSearchContext({
+      sourceValue: 'TXT:hello',
+      extractValue: undefined,
+      timeoutSeconds: 10,
+    });
+
+    const result = await searchHandler(ctx as any);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('hello');
+    expect(callCount).toBe(3);
+  });
+
+  it('times out after !TIMEOUT when content script keeps returning not-found', async () => {
+    const mockSender: ContentScriptSender = {
+      async sendMessage(): Promise<ContentScriptResponse> {
+        return { success: false, error: 'Pattern not found: missing' };
+      },
+    };
+
+    setContentScriptSender(mockSender);
+
+    const { ctx } = buildSearchContext({
+      sourceValue: 'TXT:missing',
+      timeoutSeconds: 1, // 1 second timeout for fast test
+    });
+
+    const start = Date.now();
+    const result = await searchHandler(ctx as any);
+    const elapsed = Date.now() - start;
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND);
+    // Should have waited approximately 1 second
+    expect(elapsed).toBeGreaterThanOrEqual(900);
+    expect(elapsed).toBeLessThan(3000);
+  });
+
+  it('stores match in !EXTRACT when EXTRACT param is provided and content script returns data', async () => {
+    const mockSender: ContentScriptSender = {
+      async sendMessage(): Promise<ContentScriptResponse> {
+        return { success: true, extractedData: 'user' };
+      },
+    };
+
+    setContentScriptSender(mockSender);
+
+    const { ctx, vars } = buildSearchContext({
+      sourceValue: 'REGEXP:(\\w+)@(\\w+)',
+      extractValue: '$1',
+      timeoutSeconds: 5,
+    });
+
+    const result = await searchHandler(ctx as any);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('user');
+    expect(vars.get('!EXTRACT')).toBe('user');
+  });
+
+  it('does NOT store in !EXTRACT when EXTRACT param is absent (browser path)', async () => {
+    const mockSender: ContentScriptSender = {
+      async sendMessage(): Promise<ContentScriptResponse> {
+        return { success: true, extractedData: 'found-text' };
+      },
+    };
+
+    setContentScriptSender(mockSender);
+
+    const { ctx, vars } = buildSearchContext({
+      sourceValue: 'TXT:found',
+      timeoutSeconds: 5,
+    });
+
+    const result = await searchHandler(ctx as any);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('found-text');
+    // Without EXTRACT parameter, !EXTRACT should remain empty
+    expect(vars.get('!EXTRACT')).toBe('');
+  });
+
+  it('does NOT use retry path when noopSender is active (falls back to local search)', async () => {
+    // noopSender is default — should use local !URLCURRENT fallback
+    setContentScriptSender(noopSender);
+
+    const { ctx, state } = buildSearchContext({
+      sourceValue: 'TXT:hello',
+      timeoutSeconds: 5,
+    });
+
+    // Mock !URLCURRENT for local fallback path
+    const origGetVariable = state.getVariable.bind(state);
+    vi.spyOn(state, 'getVariable').mockImplementation((name: string) => {
+      if (name === '!URLCURRENT') return 'say hello world';
+      return origGetVariable(name);
+    });
+
+    const result = await searchHandler(ctx as any);
+
+    expect(result.success).toBe(true);
+    expect(result.output).toBe('hello');
   });
 });

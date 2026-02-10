@@ -52,7 +52,7 @@ Each command and JS API function is documented with:
 | 22 | [ONSECURITYDIALOG](commands/ONSECURITYDIALOG.md) | Complete | commands/ONSECURITYDIALOG.md |
 | 23 | [ONWEBPAGEDIALOG](commands/ONWEBPAGEDIALOG.md) | Complete | commands/ONWEBPAGEDIALOG.md |
 | 24 | [PAUSE](commands/PAUSE.md) | Complete | commands/PAUSE.md |
-| 25 | [PRINT](commands/PRINT.md) | Pending | |
+| 25 | [PRINT](commands/PRINT.md) | Complete | commands/PRINT.md |
 | 26 | [PROMPT](commands/PROMPT.md) | Pending | |
 | 27 | [PROXY](commands/PROXY.md) | Pending | |
 | 28 | [REDIAL](commands/REDIAL.md) | Pending | |
@@ -98,6 +98,6 @@ Each command and JS API function is documented with:
 
 ## Completion Progress
 
-- Commands: 29/42 complete
+- Commands: 30/42 complete
 - JS API: 8/16 complete
-- **Total: 37/58 complete**
+- **Total: 38/58 complete**

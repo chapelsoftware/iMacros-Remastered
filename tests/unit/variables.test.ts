@@ -1039,6 +1039,31 @@ describe('Variable System Unit Tests', () => {
     });
   });
 
+  describe('setUrlCurrentResolver()', () => {
+    it('should use resolver for !URLCURRENT when set', () => {
+      ctx.setUrlCurrentResolver(() => 'https://dynamic-url.example.com');
+      expect(ctx.get('!URLCURRENT')).toBe('https://dynamic-url.example.com');
+    });
+
+    it('should fall back to stored value when resolver is null', () => {
+      ctx.setUrl('current', 'https://stored.example.com');
+      ctx.setUrlCurrentResolver(null);
+      expect(ctx.get('!URLCURRENT')).toBe('https://stored.example.com');
+    });
+
+    it('resolver should override stored value', () => {
+      ctx.setUrl('current', 'https://stored.example.com');
+      ctx.setUrlCurrentResolver(() => 'https://resolved.example.com');
+      expect(ctx.get('!URLCURRENT')).toBe('https://resolved.example.com');
+    });
+
+    it('resolver should survive reset()', () => {
+      ctx.setUrlCurrentResolver(() => 'https://after-reset.example.com');
+      ctx.reset();
+      expect(ctx.get('!URLCURRENT')).toBe('https://after-reset.example.com');
+    });
+  });
+
   describe('Clipboard Methods', () => {
     it('should set and get clipboard content', () => {
       ctx.setClipboard('clipboard text');

@@ -275,8 +275,21 @@ export const urlHandler: CommandHandler = async (ctx: CommandContext): Promise<C
     let url = ctx.expand(gotoParam);
 
     // Auto-prefix http:// for URLs without a scheme (iMacros 8.9.7 compat)
-    if (url && !url.includes('://') && !url.startsWith('about:')) {
+    // Original uses /^([a-z]+):.*/i to detect schemes, so mailto:, javascript:, etc.
+    // are recognized as having a scheme without needing ://
+    if (url && !/^[a-z]+:/i.test(url)) {
       url = 'http://' + url;
+    }
+
+    // Validate URL syntax before navigation (iMacros 8.9.7 validates via nsIIOService)
+    try {
+      new URL(url);
+    } catch {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.INVALID_PARAMETER,
+        errorMessage: `Invalid URL: ${url}`,
+      };
     }
 
     ctx.log('info', `Navigating to: ${url}`);

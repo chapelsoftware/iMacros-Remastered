@@ -625,10 +625,11 @@ export function validateCommand(command: ParsedCommand): ParseError | null {
   switch (command.type) {
     case 'URL': {
       const gotoParam = command.parameters.find(p => p.key.toUpperCase() === 'GOTO');
-      if (!gotoParam) {
+      const currentParam = command.parameters.some(p => p.key.toUpperCase() === 'CURRENT');
+      if (!gotoParam && !currentParam) {
         return {
           lineNumber: command.lineNumber,
-          message: 'URL command requires GOTO parameter',
+          message: 'URL command requires GOTO or CURRENT parameter',
           raw: command.raw,
         };
       }

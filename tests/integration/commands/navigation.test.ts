@@ -699,6 +699,44 @@ describe('URL Handler via MacroExecutor (with mock BrowserBridge)', () => {
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.PAGE_TIMEOUT);
     expect(result.errorMessage).toContain('Bridge disconnected');
   });
+
+  it('URL GOTO recognizes mailto: as a scheme (no http:// prefix)', async () => {
+    executor.loadMacro('URL GOTO=mailto:user@example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    // mailto: should be preserved as-is (recognized as having a scheme)
+    expect((msg as { url: string }).url).toBe('mailto:user@example.com');
+  });
+
+  it('URL GOTO recognizes javascript: as a scheme (no http:// prefix)', async () => {
+    executor.loadMacro('URL GOTO=javascript:void(0)');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('javascript:void(0)');
+  });
+
+  it('URL GOTO returns INVALID_PARAMETER for malformed URL', async () => {
+    executor.loadMacro('URL GOTO=http://');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(false);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.INVALID_PARAMETER);
+    expect(result.errorMessage).toContain('Invalid URL');
+    expect(mockBridge.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('URL GOTO preserves ftp:// scheme (no http:// prefix)', async () => {
+    executor.loadMacro('URL GOTO=ftp://files.example.com');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    const msg = sentMessages[0];
+    expect((msg as { url: string }).url).toBe('ftp://files.example.com');
+  });
 });
 
 /**

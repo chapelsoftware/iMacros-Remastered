@@ -138,23 +138,30 @@ Set at macro start to the current tab's 0-based index, making `TAB T=1` always r
 
 ## New Implementation (navigation.ts:364-540)
 
-### Helper: getTabRetryTimeout (navigation.ts:379-387)
+### Helper: getTabRetryTimeout (navigation.ts)
 
 ```typescript
 function getTabRetryTimeout(ctx: CommandContext): number {
-    const timeoutStep = ctx.state.getVariable('!TIMEOUT_STEP');
-    if (typeof timeoutStep === 'number') return timeoutStep;
-    if (typeof timeoutStep === 'string') {
-        const parsed = parseFloat(timeoutStep);
-        return isNaN(parsed) ? 0 : parsed;
+    const timeoutTag = ctx.state.getVariable('!TIMEOUT_TAG');
+    if (typeof timeoutTag === 'number' && timeoutTag >= 0) return timeoutTag;
+    if (typeof timeoutTag === 'string') {
+        const parsed = parseFloat(timeoutTag);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
     }
-    return 0;
+    // Fallback: general timeout / 10 (matches old iMacros behavior)
+    const timeout = ctx.state.getVariable('!TIMEOUT');
+    if (typeof timeout === 'number') return timeout / 10;
+    if (typeof timeout === 'string') {
+        const parsed = parseFloat(timeout);
+        if (!isNaN(parsed)) return parsed / 10;
+    }
+    return 6; // Default !TIMEOUT_TAG value
 }
 ```
 
-Returns the `!TIMEOUT_STEP` variable as seconds. Defaults to 0 (no retry) if not set.
+Returns `!TIMEOUT_TAG` in seconds, falling back to `!TIMEOUT/10` (matching old iMacros `tagTimeout` / `timeout/10` pattern). Defaults to 6 seconds.
 
-### Helper: switchTabWithRetry (navigation.ts:394-429)
+### Helper: switchTabWithRetry (navigation.ts)
 
 ```typescript
 async function switchTabWithRetry(
@@ -162,7 +169,7 @@ async function switchTabWithRetry(
     ctx: CommandContext
 ): Promise<CommandResult> {
     const timeoutSeconds = getTabRetryTimeout(ctx);
-    const retryIntervalMs = 500;
+    const retryIntervalMs = 100;
     const deadline = Date.now() + timeoutSeconds * 1000;
 
     // First attempt
@@ -178,6 +185,12 @@ async function switchTabWithRetry(
         if (response.success) {
             return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
         }
+    }
+
+    // On retry exhaustion, suppress error if !ERRORIGNORE=YES
+    const errorIgnore = ctx.state.getVariable('!ERRORIGNORE');
+    if (errorIgnore === 'YES') {
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     }
 
     return {
@@ -220,7 +233,7 @@ export const tabHandler: CommandHandler = async (ctx: CommandContext): Promise<C
    a. Parses `T` value via `parseInt(ctx.expand(tParam), 10)`.
    b. If `NaN` or `< 1`, returns `INVALID_PARAMETER`.
    c. Computes absolute index: `startTabIndex + tabIndex - 1`.
-   d. Calls `switchTabWithRetry(absoluteIndex, ctx)` which retries at 500ms intervals up to `!TIMEOUT_STEP` seconds. Returns `SCRIPT_EXCEPTION` (-971) on failure.
+   d. Calls `switchTabWithRetry(absoluteIndex, ctx)` which retries at 100ms intervals up to `!TIMEOUT_TAG` seconds (falling back to `!TIMEOUT/10`). Returns `SCRIPT_EXCEPTION` (-971) on failure, or suppresses if `!ERRORIGNORE=YES`.
 5. **No recognized parameter**: Returns `MISSING_PARAMETER`.
 
 ### Parser validation (parser.ts:675-689)
@@ -268,12 +281,12 @@ setStartTabIndex(index: number): void {
 | Aspect | Old (8.9.7) | New (Remastered) | Impact |
 |--------|-------------|------------------|--------|
 | **Architecture** | Direct Firefox `getBrowser()` API calls | Message-passing to browser extension via `sendBrowserMessage()` | **Structural**: Chrome extension model vs. Firefox XUL overlay |
-| **Retry interval** | 100ms (`ShouldWaitSignal(100)`) | 500ms (`retryIntervalMs = 500`) | **Behavioral**: New retries less frequently; tab must exist within same timeout window |
-| **Retry timeout source** | `tagTimeout` or `timeout/10` (general retry mechanism) | `!TIMEOUT_STEP` variable specifically (0 = no retry) | **Behavioral**: New uses explicit timeout variable; old uses general retry framework |
+| **Retry interval** | 100ms (`ShouldWaitSignal(100)`) | 100ms (`retryIntervalMs = 100`) | **Compatible**: Same 100ms polling interval |
+| **Retry timeout source** | `tagTimeout` or `timeout/10` (general retry mechanism) | `!TIMEOUT_TAG` with `!TIMEOUT/10` fallback | **Compatible**: Both use tagTimeout (mapped to `!TIMEOUT_TAG`) with general timeout fallback |
 | **Retry mechanism** | Exception-based (`ShouldWaitSignal`) re-executes command | Async loop with `sleep()` polling | **Structural**: Same concept, different async pattern |
 | **Error on bad T value** | `BadParameter("T=<number>", 1)` — error code 1 | `INVALID_PARAMETER` error code | **Compatible**: Both reject non-numeric T values |
 | **Error on missing tab** | `RuntimeError("Tab number N does not exist", 971)` | `SCRIPT_EXCEPTION` (-971) with message | **Compatible**: Same error code 971 |
-| **ignoreErrors** | Suppresses tab-not-found error (`if (self.ignoreErrors) return`) | Not explicitly handled in `switchTabWithRetry` | **Gap**: Old suppresses error in `!ERRORIGNORE YES` mode; new may not |
+| **ignoreErrors** | Suppresses tab-not-found error (`if (self.ignoreErrors) return`) | Checks `!ERRORIGNORE` after retry exhaustion; returns success when `YES` | **Compatible**: Both suppress tab-not-found error when `!ERRORIGNORE=YES` |
 | **OPEN with URL** | Not supported — `browser.addTab()` with no URL | Supported — `TAB OPEN URL=<url>` sends URL to extension | **Enhancement**: New supports specifying URL for new tab |
 | **OPEN tab activation** | Does not switch to the new tab | Depends on browser extension implementation | **Implementation detail**: Behavior determined by bridge |
 | **currentWindow update** | Always sets `this.currentWindow = window.content` after any TAB action | No equivalent — frame context managed separately | **Structural**: Old updates document reference; new relies on message-passing |

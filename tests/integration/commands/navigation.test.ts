@@ -1458,7 +1458,7 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
 
     // Set short timeout so retry finishes quickly
     const script = [
-      'SET !TIMEOUT_STEP 1',
+      'SET !TIMEOUT_TAG 1',
       'TAB T=2',
     ].join('\n');
 
@@ -1601,7 +1601,7 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
 
   // --- Retry mechanism for non-existent tabs ---
 
-  it('TAB T=n retries until tab appears within !TIMEOUT_STEP', async () => {
+  it('TAB T=n retries until tab appears within !TIMEOUT_TAG', async () => {
     let callCount = 0;
     (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
       async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
@@ -1616,7 +1616,7 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
     );
 
     const script = [
-      'SET !TIMEOUT_STEP 5',
+      'SET !TIMEOUT_TAG 5',
       'TAB T=3',
     ].join('\n');
 
@@ -1640,7 +1640,7 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
     );
 
     const script = [
-      'SET !TIMEOUT_STEP 1',
+      'SET !TIMEOUT_TAG 1',
       'TAB T=99',
     ].join('\n');
 
@@ -1649,5 +1649,55 @@ describe('TAB Handler via MacroExecutor (with mock BrowserBridge)', () => {
 
     expect(result.success).toBe(false);
     expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SCRIPT_EXCEPTION);
+  });
+
+  it('TAB T=n with !ERRORIGNORE=YES suppresses tab-not-found error', async () => {
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        if (message.type === 'switchTab') {
+          return { success: false, error: 'Tab does not exist' };
+        }
+        return { success: true };
+      }
+    );
+
+    const script = [
+      'SET !ERRORIGNORE YES',
+      'SET !TIMEOUT_TAG 1',
+      'TAB T=99',
+    ].join('\n');
+
+    executor.loadMacro(script);
+    const result = await executor.execute();
+
+    // With !ERRORIGNORE=YES, the tab-not-found error is suppressed
+    // and the command returns success (matching old iMacros behavior)
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+  });
+
+  it('TAB T=n uses !TIMEOUT_TAG for retry timeout (default 6s)', async () => {
+    let callCount = 0;
+    (mockBridge.sendMessage as ReturnType<typeof vi.fn>).mockImplementation(
+      async (message: BrowserOperationMessage): Promise<BrowserOperationResponse> => {
+        sentMessages.push(message);
+        callCount++;
+        // Fail first 2 attempts, succeed on 3rd
+        if (message.type === 'switchTab' && callCount <= 2) {
+          return { success: false, error: 'Tab does not exist' };
+        }
+        return { success: true };
+      }
+    );
+
+    // Don't explicitly set !TIMEOUT_TAG — it defaults to 6 seconds
+    // This verifies the default !TIMEOUT_TAG is used for retry
+    executor.loadMacro('TAB T=3');
+    const result = await executor.execute();
+
+    expect(result.success).toBe(true);
+    expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+    expect(callCount).toBeGreaterThanOrEqual(3);
   });
 });

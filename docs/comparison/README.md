@@ -90,7 +90,7 @@ Each command and JS API function is documented with:
 | 11 | [iimGetExtract](js-api/iimGetExtract.md) | Complete | js-api/iimGetExtract.md |
 | 12 | [window (global)](js-api/global-window.md) | Complete | js-api/global-window.md |
 | 13 | [content (global)](js-api/global-content.md) | Complete | js-api/global-content.md |
-| 14 | [prompt (global)](js-api/global-prompt.md) | Pending | |
+| 14 | [prompt (global)](js-api/global-prompt.md) | Complete | js-api/global-prompt.md |
 | 15 | [alert (global)](js-api/global-alert.md) | Pending | |
 | 16 | [confirm (global)](js-api/global-confirm.md) | Pending | |
 
@@ -99,5 +99,5 @@ Each command and JS API function is documented with:
 ## Completion Progress
 
 - Commands: 41/42 complete
-- JS API: 13/16 complete
-- **Total: 54/58 complete**
+- JS API: 14/16 complete
+- **Total: 55/58 complete**

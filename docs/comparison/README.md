@@ -86,7 +86,7 @@ Each command and JS API function is documented with:
 | 7 | [iimGetErrorText](js-api/iimGetErrorText.md) | Complete | js-api/iimGetErrorText.md |
 | 8 | [iimGetLastPerformance](js-api/iimGetLastPerformance.md) | Complete | js-api/iimGetLastPerformance.md |
 | 9 | [iimSet](js-api/iimSet.md) | Complete | js-api/iimSet.md |
-| 10 | [iimGetLastExtract](js-api/iimGetLastExtract.md) | Pending | |
+| 10 | [iimGetLastExtract](js-api/iimGetLastExtract.md) | Complete | js-api/iimGetLastExtract.md |
 | 11 | [iimGetExtract](js-api/iimGetExtract.md) | Pending | |
 | 12 | [window (global)](js-api/global-window.md) | Pending | |
 | 13 | [content (global)](js-api/global-content.md) | Pending | |
@@ -99,5 +99,5 @@ Each command and JS API function is documented with:
 ## Completion Progress
 
 - Commands: 35/42 complete
-- JS API: 9/16 complete
-- **Total: 44/58 complete**
+- JS API: 10/16 complete
+- **Total: 45/58 complete**

@@ -107,6 +107,58 @@ export async function handleMessage(message: Message): Promise<ResponseMessage> 
         };
       }
     }
+    case 'save_as': {
+      try {
+        const payload = (message as any).payload as {
+          saveType?: string; folder?: string; file?: string;
+          content?: string; quality?: number;
+        };
+        if (!payload?.file) {
+          return {
+            type: 'error',
+            id: createMessageId(),
+            timestamp: createTimestamp(),
+            error: 'No filename provided for save_as',
+          };
+        }
+        const registry = new RegistryService();
+        const saveType = (payload.saveType || '').toUpperCase();
+        const folder = payload.folder || registry.getDownloadPath() || path.join(process.env.HOME || process.env.USERPROFILE || '.', 'Documents', 'iMacros', 'Downloads');
+        const fullPath = path.isAbsolute(payload.file) ? payload.file : path.join(folder, payload.file);
+
+        // Ensure directory exists
+        const dir = path.dirname(fullPath);
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+        }
+
+        const content = payload.content || '';
+
+        // Write file (append if file exists for EXTRACT type)
+        // iMacros 8.9.7: EXTRACT always writes a line with trailing \r\n
+        if (saveType === 'EXTRACT' && fs.existsSync(fullPath)) {
+          fs.appendFileSync(fullPath, content + '\r\n', 'utf8');
+        } else if (saveType === 'EXTRACT') {
+          fs.writeFileSync(fullPath, content + '\r\n', 'utf8');
+        } else {
+          fs.writeFileSync(fullPath, content, 'utf8');
+        }
+
+        return {
+          type: 'result',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          payload: { success: true, filename: payload.file },
+        };
+      } catch (err: any) {
+        return {
+          type: 'error',
+          id: createMessageId(),
+          timestamp: createTimestamp(),
+          error: err.message || String(err),
+        };
+      }
+    }
     case 'save_screenshot': {
       try {
         const payload = (message as any).payload as { dataUrl: string };

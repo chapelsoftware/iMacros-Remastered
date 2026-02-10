@@ -1676,6 +1676,45 @@ async function handleMessage(
       }
     }
 
+    // Handle saveAs messages from SAVEAS command (via DownloadBridge)
+    case 'saveAs': {
+      const saveAsPayload = message.payload as {
+        saveType?: string; folder?: string; file?: string;
+        content?: string; quality?: number;
+      } | undefined;
+      const saveType = saveAsPayload?.saveType || (message as { saveType?: string }).saveType;
+      const saveFolder = saveAsPayload?.folder || (message as { folder?: string }).folder;
+      const saveFile = saveAsPayload?.file || (message as { file?: string }).file;
+      const saveContent = saveAsPayload?.content || (message as { content?: string }).content;
+      const saveQuality = saveAsPayload?.quality || (message as { quality?: number }).quality;
+
+      try {
+        const saveAsResponse = await sendToNativeHost({
+          type: 'save_as',
+          id: message.id || createMessageId(),
+          timestamp: createTimestamp(),
+          payload: {
+            saveType,
+            folder: saveFolder,
+            file: saveFile,
+            content: saveContent,
+            quality: saveQuality,
+          },
+        });
+        const saveAsResult = saveAsResponse.payload as { downloadId?: number; filename?: string } | undefined;
+        return {
+          success: true,
+          data: {
+            downloadId: saveAsResult?.downloadId,
+            filename: saveAsResult?.filename || saveFile,
+          },
+        };
+      } catch (error) {
+        console.error('[iMacros] saveAs error:', error);
+        return { success: false, error: String(error) };
+      }
+    }
+
     // Handle setDownloadOptions messages from ONDOWNLOAD command (via DownloadBridge)
     case 'setDownloadOptions': {
       const optPayload = message.payload as {

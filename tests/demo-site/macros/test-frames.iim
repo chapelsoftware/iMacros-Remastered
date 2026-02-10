@@ -1,58 +1,48 @@
-' test-frames.iim - Exercise FRAME F=n and FRAME NAME=name
+' test-frames.iim - Extract from frames and fill results table
 ' Requires: http://localhost:8080/frames.html
 
 URL GOTO=http://localhost:8080/frames.html
 WAIT SECONDS=1
 
-' === Main Page Context (F=0) ===
-FRAME F=0
-TAG POS=1 TYPE=P ATTR=ID:main-page-text EXTRACT=TXT
-SET !VAR0 {{!EXTRACT}}
-
-' Fill input on main page
-TAG POS=1 TYPE=INPUT ATTR=ID:main-input CONTENT=main-page-value
-
-' === Frame 1 by Index ===
+' --- Profile frame (F=1) ---
 FRAME F=1
-TAG POS=1 TYPE=H3 ATTR=ID:frame-title EXTRACT=TXT
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:profile-name EXTRACT=TXT
+SET !VAR0 {{!EXTRACT}}
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:profile-email EXTRACT=TXT
 SET !VAR1 {{!EXTRACT}}
-
-' Type in frame input
-TAG POS=1 TYPE=INPUT ATTR=ID:frame-input CONTENT=frame1-text
-
-' Click button inside frame
-TAG POS=1 TYPE=BUTTON ATTR=ID:frame-btn
-
-' Extract result
-TAG POS=1 TYPE=SPAN ATTR=ID:frame-result EXTRACT=TXT
-
-' === Return to Main, Then Frame 2 by Name ===
-FRAME F=0
-FRAME NAME=frame2
-TAG POS=1 TYPE=H3 ATTR=ID:frame-title EXTRACT=TXT
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:profile-role EXTRACT=TXT
 SET !VAR2 {{!EXTRACT}}
 
-' Type in frame 2 input
-TAG POS=1 TYPE=INPUT ATTR=ID:frame-input CONTENT=frame2-text
-
-' === Nested Frame Access ===
-' First navigate to the outer frame
+' --- Product frame (by name) ---
 FRAME F=0
-FRAME NAME=frame-outer
-
-' Extract outer frame text
-TAG POS=1 TYPE=P ATTR=ID:outer-text EXTRACT=TXT
+FRAME NAME=product
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:product-name EXTRACT=TXT
 SET !VAR3 {{!EXTRACT}}
-
-' Then navigate to nested frame within outer
-FRAME NAME=frame-nested
-TAG POS=1 TYPE=H3 ATTR=ID:frame-title EXTRACT=TXT
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:product-price EXTRACT=TXT
 SET !VAR4 {{!EXTRACT}}
 
-' Type in nested frame input
-TAG POS=1 TYPE=INPUT ATTR=ID:frame-input CONTENT=nested-frame-text
-
-' === Return to Main Page ===
+' --- Order frame (nested: dashboard -> order) ---
 FRAME F=0
-TAG POS=1 TYPE=INPUT ATTR=ID:main-input EXTRACT=TXT
+FRAME NAME=dashboard
+FRAME NAME=order
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:order-number EXTRACT=TXT
 SET !VAR5 {{!EXTRACT}}
+SET !EXTRACT NULL
+TAG POS=1 TYPE=DIV ATTR=ID:order-status EXTRACT=TXT
+SET !VAR6 {{!EXTRACT}}
+
+' --- Fill results table on main page ---
+FRAME F=0
+TAG POS=1 TYPE=INPUT ATTR=ID:r-name CONTENT={{!VAR0}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-email CONTENT={{!VAR1}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-role CONTENT={{!VAR2}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-product CONTENT={{!VAR3}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-price CONTENT={{!VAR4}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-order CONTENT={{!VAR5}}
+TAG POS=1 TYPE=INPUT ATTR=ID:r-status CONTENT={{!VAR6}}

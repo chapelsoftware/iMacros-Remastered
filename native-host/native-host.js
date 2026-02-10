@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const vm = require('vm');
+const { execFile } = require('child_process');
 
 // Import shared library and local modules
 let sharedLib;
@@ -868,6 +869,77 @@ async function playMacro(macroPath, tabId, loop = false) {
 }
 
 // ============================================================================
+// Folder Browsing
+// ============================================================================
+
+/**
+ * Open a native folder picker dialog. Cross-platform:
+ * - macOS: osascript (AppleScript)
+ * - Windows: PowerShell folder browser dialog
+ * - Linux: zenity (GTK) or kdialog (KDE), whichever is available
+ *
+ * Returns the selected path, or null if cancelled / unavailable.
+ */
+function browseForFolder(startPath) {
+  return new Promise((resolve) => {
+    const platform = process.platform;
+    let cmd, args;
+
+    if (platform === 'darwin') {
+      cmd = 'osascript';
+      args = ['-e', `set f to POSIX path of (choose folder${startPath ? ` default location POSIX file "${startPath}"` : ''})`, '-e', 'return f'];
+    } else if (platform === 'win32') {
+      const ps = `Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = 'Select folder'; $d.ShowNewFolderButton = $true; ${startPath ? `$d.SelectedPath = '${startPath.replace(/'/g, "''")}';` : ''} if ($d.ShowDialog() -eq 'OK') { $d.SelectedPath } else { '' }`;
+      cmd = 'powershell';
+      args = ['-NoProfile', '-NonInteractive', '-Command', ps];
+    } else {
+      // Linux: try zenity first, fall back to kdialog
+      tryLinuxBrowse(startPath).then(resolve);
+      return;
+    }
+
+    execFile(cmd, args, { timeout: 60000 }, (err, stdout) => {
+      if (err) {
+        log('Browse dialog error:', err.message);
+        resolve(null);
+        return;
+      }
+      const selected = stdout.trim();
+      resolve(selected || null);
+    });
+  });
+}
+
+/**
+ * Linux folder browsing: try zenity, then kdialog
+ */
+function tryLinuxBrowse(startPath) {
+  return new Promise((resolve) => {
+    const zenityArgs = ['--file-selection', '--directory', '--title=Select folder'];
+    if (startPath) zenityArgs.push(`--filename=${startPath}/`);
+
+    execFile('zenity', zenityArgs, { timeout: 60000 }, (err, stdout) => {
+      if (!err) {
+        const selected = stdout.trim();
+        resolve(selected || null);
+        return;
+      }
+      // zenity not available or cancelled — try kdialog
+      const kArgs = ['--getexistingdirectory', startPath || os.homedir(), '--title', 'Select folder'];
+      execFile('kdialog', kArgs, { timeout: 60000 }, (err2, stdout2) => {
+        if (!err2) {
+          const selected = stdout2.trim();
+          resolve(selected || null);
+          return;
+        }
+        log('No folder picker available (tried zenity, kdialog)');
+        resolve(null);
+      });
+    });
+  });
+}
+
+// ============================================================================
 // Message Handling
 // ============================================================================
 
@@ -1087,7 +1159,9 @@ function handleMessage(message) {
       break;
 
     case 'browse_folder':
-      sendResponse(message.id, 'folder_selected', { path: MACROS_DIR });
+      browseForFolder(message.payload?.currentPath || MACROS_DIR).then((selected) => {
+        sendResponse(message.id, 'folder_selected', { path: selected });
+      });
       break;
 
     case 'execute':

@@ -7,8 +7,28 @@
   <style>
 /**
  * iMacros Options Page Styles
- * Consistent with the iMacros blue/gray theme
+ * Matches the panel's Lavender / Charcoal / Yellow theme
  */
+
+/* CSS Variables (same as panel.css) */
+:root {
+  --color-yellow: #D0FF25;
+  --color-lavender: #A9A0EB;
+  --color-lavender-shade1: #8377D1;
+  --color-lavender-shade2: #6656D0;
+  --color-lavender-shade3: #5436CC;
+  --color-charcoal: #324155;
+  --color-slate: #58636E;
+  --color-platinum: #E7E7E7;
+  --color-white: #FFFFFF;
+
+  --shadow-sm: 0 1px 2px rgba(50, 65, 85, 0.08);
+  --shadow-md: 0 4px 12px rgba(50, 65, 85, 0.12);
+  --shadow-lg: 0 8px 24px rgba(50, 65, 85, 0.16);
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
 
 /* Reset */
 * {
@@ -22,8 +42,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   font-size: 14px;
   line-height: 1.5;
-  color: #333;
-  background: #f5f5f5;
+  color: var(--color-charcoal);
+  background: var(--color-platinum);
   min-height: 100vh;
 }
 
@@ -31,37 +51,38 @@ body {
 .options-container {
   max-width: 800px;
   margin: 0 auto;
-  background: #fff;
+  background: var(--color-white);
   min-height: 100vh;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-lg);
 }
 
 /* Header */
 .options-header {
   display: flex;
   align-items: center;
-  padding: 20px 24px;
-  background: linear-gradient(to bottom, #4a7dc4 0%, #2d5aa0 100%);
-  border-bottom: 2px solid #1a4080;
-  color: white;
+  padding: 16px 24px;
+  background: var(--color-charcoal);
+  border-bottom: 3px solid var(--color-yellow);
+  color: var(--color-white);
 }
 
 .header-logo {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
 }
 
 .header-text h1 {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  margin-bottom: 2px;
+  letter-spacing: -0.01em;
+  margin-bottom: 1px;
 }
 
 .header-version {
-  font-size: 12px;
-  opacity: 0.8;
+  font-size: 11px;
+  color: var(--color-lavender);
+  font-weight: 500;
 }
 
 /* Main content */
@@ -71,9 +92,9 @@ body {
 
 /* Sections */
 .options-section {
-  margin-bottom: 32px;
-  padding-bottom: 32px;
-  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 28px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--color-platinum);
 }
 
 .options-section:last-of-type {
@@ -81,15 +102,15 @@ body {
 }
 
 .section-title {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
-  color: #1a5fb4;
-  margin-bottom: 8px;
+  color: var(--color-lavender-shade2);
+  margin-bottom: 6px;
 }
 
 .section-description {
   font-size: 13px;
-  color: #666;
+  color: var(--color-slate);
   margin-bottom: 20px;
 }
 
@@ -100,8 +121,9 @@ body {
 
 .form-group > label {
   display: block;
-  font-weight: 500;
-  color: #444;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-charcoal);
   margin-bottom: 6px;
 }
 
@@ -123,26 +145,27 @@ input[type="number"],
 input[type="password"] {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
+  border: 1px solid #D0D0D0;
+  border-radius: var(--radius-sm);
   font-size: 14px;
-  background: #fff;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: var(--color-platinum);
+  color: var(--color-charcoal);
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input[type="text"]:focus,
 input[type="number"]:focus,
 input[type="password"]:focus {
   outline: none;
-  border-color: #4a90d9;
-  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.2);
+  border-color: var(--color-lavender-shade1);
+  box-shadow: 0 0 0 3px rgba(169, 160, 235, 0.2);
 }
 
 input[type="text"]:disabled,
 input[type="number"]:disabled,
 input[type="password"]:disabled {
-  background: #f0f0f0;
-  color: #888;
+  background: #F0F0F0;
+  color: var(--color-slate);
   cursor: not-allowed;
 }
 
@@ -173,14 +196,14 @@ input[type="password"]:disabled {
 
 .unit {
   font-size: 13px;
-  color: #666;
+  color: var(--color-slate);
 }
 
 /* Help text */
 .help-text {
   display: block;
   font-size: 12px;
-  color: #888;
+  color: var(--color-slate);
   margin-top: 4px;
 }
 
@@ -196,12 +219,12 @@ input[type="password"]:disabled {
   width: 18px;
   height: 18px;
   cursor: pointer;
-  accent-color: #1a5fb4;
+  accent-color: var(--color-lavender-shade2);
 }
 
 .checkbox-text {
   font-weight: 500;
-  color: #444;
+  color: var(--color-charcoal);
 }
 
 /* Slider styling */
@@ -214,7 +237,7 @@ input[type="range"] {
   height: 6px;
   -webkit-appearance: none;
   appearance: none;
-  background: #ddd;
+  background: #D0D0D0;
   border-radius: 3px;
   outline: none;
 }
@@ -224,20 +247,20 @@ input[type="range"]::-webkit-slider-thumb {
   appearance: none;
   width: 20px;
   height: 20px;
-  background: #1a5fb4;
+  background: var(--color-lavender-shade2);
   border-radius: 50%;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.15s;
 }
 
 input[type="range"]::-webkit-slider-thumb:hover {
-  background: #2d6bc4;
+  background: var(--color-lavender-shade1);
 }
 
 input[type="range"]::-moz-range-thumb {
   width: 20px;
   height: 20px;
-  background: #1a5fb4;
+  background: var(--color-lavender-shade2);
   border-radius: 50%;
   cursor: pointer;
   border: none;
@@ -247,7 +270,7 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #888;
+  color: var(--color-slate);
   margin-top: 4px;
 }
 
@@ -258,45 +281,50 @@ input[type="range"]::-moz-range-thumb {
   justify-content: center;
   gap: 8px;
   padding: 10px 20px;
-  border: 1px solid transparent;
-  border-radius: 4px;
+  border: none;
+  border-radius: var(--radius-md);
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.15s ease;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
 .btn-primary {
-  background: linear-gradient(to bottom, #4a90d9 0%, #2a6ab9 100%);
-  border-color: #1a5aa9;
-  color: white;
+  background: var(--color-lavender-shade2);
+  color: var(--color-white);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(to bottom, #5aa0e9 0%, #3a7ac9 100%);
+  background: var(--color-lavender-shade1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
 }
 
 .btn-primary:active:not(:disabled) {
-  background: linear-gradient(to bottom, #2a6ab9 0%, #1a5aa9 100%);
+  background: var(--color-lavender-shade3);
+  transform: translateY(0);
 }
 
 .btn-secondary {
-  background: linear-gradient(to bottom, #f8f8f8 0%, #e8e8e8 100%);
-  border-color: #ccc;
-  color: #444;
+  background: var(--color-white);
+  border: 1px solid var(--color-platinum);
+  color: var(--color-slate);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+  background: #F8F9FA;
+  border-color: var(--color-lavender);
+  color: var(--color-charcoal);
 }
 
 .btn-secondary:active:not(:disabled) {
-  background: linear-gradient(to bottom, #e0e0e0 0%, #d0d0d0 100%);
+  background: var(--color-platinum);
 }
 
 /* Action buttons */
@@ -305,16 +333,17 @@ input[type="range"]::-moz-range-thumb {
   justify-content: flex-end;
   gap: 12px;
   padding-top: 24px;
-  border-top: 1px solid #e0e0e0;
+  border-top: 1px solid var(--color-platinum);
   margin-top: 24px;
 }
 
 /* Status message */
 .status-message {
   padding: 12px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   margin-top: 16px;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .status-message.hidden {
@@ -322,31 +351,31 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .status-message.success {
-  background: #d4edda;
-  border: 1px solid #c3e6cb;
-  color: #155724;
+  background: rgba(208, 255, 37, 0.15);
+  border: 1px solid rgba(208, 255, 37, 0.3);
+  color: #4A6600;
 }
 
 .status-message.error {
-  background: #f8d7da;
-  border: 1px solid #f5c6cb;
-  color: #721c24;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #B91C1C;
 }
 
 .status-message.info {
-  background: #cce5ff;
-  border: 1px solid #b8daff;
-  color: #004085;
+  background: rgba(169, 160, 235, 0.15);
+  border: 1px solid rgba(169, 160, 235, 0.3);
+  color: var(--color-lavender-shade3);
 }
 
 /* Footer */
 .options-footer {
   padding: 16px 24px;
-  background: #f8f8f8;
-  border-top: 1px solid #e0e0e0;
+  background: #F8F9FA;
+  border-top: 1px solid var(--color-platinum);
   text-align: center;
   font-size: 12px;
-  color: #888;
+  color: var(--color-slate);
 }
 
 /* Conditional field visibility */
@@ -354,7 +383,7 @@ input[type="range"]::-moz-range-thumb {
 .si-field {
   margin-left: 28px;
   padding-left: 16px;
-  border-left: 2px solid #e0e0e0;
+  border-left: 2px solid var(--color-platinum);
 }
 
 .encryption-field.hidden,
@@ -364,37 +393,36 @@ input[type="range"]::-moz-range-thumb {
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 4px;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #c0c0c0;
-  border-radius: 4px;
+  background: var(--color-platinum);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #a0a0a0;
+  background: #D0D0D0;
 }
 
 /* Password validation */
 #password-match-status.match {
-  color: #155724;
+  color: #4A6600;
 }
 
 #password-match-status.no-match {
-  color: #721c24;
+  color: #B91C1C;
 }
 
 /* Responsive */
 @media (max-width: 480px) {
   .options-header {
-    padding: 16px;
+    padding: 12px 16px;
   }
 
   .options-content {
@@ -422,6 +450,155 @@ input[type="range"]::-moz-range-thumb {
     width: 100%;
   }
 }
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #1A1F28;
+    color: #E8E8E8;
+  }
+
+  .options-container {
+    background: #1E2530;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
+  }
+
+  .options-header {
+    background: #252D3A;
+  }
+
+  .section-title {
+    color: var(--color-lavender);
+  }
+
+  .section-description {
+    color: #8B95A5;
+  }
+
+  .form-group > label {
+    color: #E8E8E8;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="password"] {
+    background: #252D3A;
+    border-color: #3D4A5C;
+    color: #E8E8E8;
+  }
+
+  input[type="text"]:focus,
+  input[type="number"]:focus,
+  input[type="password"]:focus {
+    border-color: var(--color-lavender-shade1);
+    box-shadow: 0 0 0 3px rgba(169, 160, 235, 0.2);
+  }
+
+  input[type="text"]:disabled,
+  input[type="number"]:disabled,
+  input[type="password"]:disabled {
+    background: #1A1F28;
+    color: #6B7784;
+  }
+
+  input[type="range"] {
+    background: #3D4A5C;
+  }
+
+  .checkbox-text {
+    color: #E8E8E8;
+  }
+
+  .unit {
+    color: #8B95A5;
+  }
+
+  .help-text {
+    color: #6B7784;
+  }
+
+  .slider-labels {
+    color: #6B7784;
+  }
+
+  .options-section {
+    border-bottom-color: #3D4A5C;
+  }
+
+  .options-actions {
+    border-top-color: #3D4A5C;
+  }
+
+  .btn-primary {
+    background: var(--color-lavender-shade2);
+    color: var(--color-white);
+  }
+
+  .btn-primary:hover:not(:disabled) {
+    background: var(--color-lavender-shade1);
+  }
+
+  .btn-secondary {
+    background: #252D3A;
+    border-color: #3D4A5C;
+    color: #8B95A5;
+  }
+
+  .btn-secondary:hover:not(:disabled) {
+    background: #2D3644;
+    border-color: var(--color-lavender);
+    color: #E8E8E8;
+  }
+
+  .btn-secondary:active:not(:disabled) {
+    background: #3D4A5C;
+  }
+
+  .encryption-field,
+  .si-field {
+    border-left-color: #3D4A5C;
+  }
+
+  .options-footer {
+    background: #252D3A;
+    border-top-color: #3D4A5C;
+    color: #6B7784;
+  }
+
+  .status-message.success {
+    background: rgba(208, 255, 37, 0.1);
+    border-color: rgba(208, 255, 37, 0.2);
+    color: #D0FF25;
+  }
+
+  .status-message.error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #F87171;
+  }
+
+  .status-message.info {
+    background: rgba(169, 160, 235, 0.1);
+    border-color: rgba(169, 160, 235, 0.2);
+    color: var(--color-lavender);
+  }
+
+  #password-match-status.match {
+    color: #D0FF25;
+  }
+
+  #password-match-status.no-match {
+    color: #F87171;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #3D4A5C;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #4D5A6C;
+  }
+}
   </style>
 </head>
 <body>
@@ -429,9 +606,9 @@ input[type="range"]::-moz-range-thumb {
     <!-- Header -->
     <header class="options-header">
       <div class="header-logo">
-        <svg width="32" height="32" viewBox="0 0 32 32">
-          <circle cx="16" cy="16" r="14" fill="#1a5fb4" stroke="#0d3b82" stroke-width="2"/>
-          <text x="16" y="22" text-anchor="middle" font-size="14" fill="white" font-weight="bold">iM</text>
+        <svg width="28" height="28" viewBox="0 0 20 20">
+          <circle cx="10" cy="10" r="9" fill="#6656D0" stroke="#5436CC" stroke-width="1"/>
+          <text x="10" y="14" text-anchor="middle" font-size="10" fill="white" font-weight="bold">iM</text>
         </svg>
         <div class="header-text">
           <h1>iMacros Settings</h1>
@@ -605,7 +782,7 @@ input[type="range"]::-moz-range-thumb {
 
           <div class="form-group">
             <label class="checkbox-label">
-              <input type="checkbox" id="si-enabled" name="siEnabled" checked>
+              <input type="checkbox" id="si-enabled" name="siEnabled">
               <span class="checkbox-text">Enable Scripting Interface</span>
             </label>
             <span class="help-text">Allow external applications to control iMacros</span>
@@ -626,6 +803,55 @@ input[type="range"]::-moz-range-thumb {
               <span class="checkbox-text">Accept connections from localhost only</span>
             </label>
             <span class="help-text">For security, only allow local connections</span>
+          </div>
+        </section>
+
+        <!-- Playback Section -->
+        <section class="options-section">
+          <h2 class="section-title">Playback</h2>
+          <p class="section-description">Visual effects during macro playback.</p>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="visual-scroll" name="visualEffectScrollToElement" checked>
+              <span class="checkbox-text">Scroll to element</span>
+            </label>
+            <span class="help-text">Automatically scroll to bring target elements into view during playback</span>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="visual-highlight" name="visualEffectHighlightElement" checked>
+              <span class="checkbox-text">Highlight element</span>
+            </label>
+            <span class="help-text">Highlight elements with an outline during playback</span>
+          </div>
+        </section>
+
+        <!-- Keyboard Shortcuts Section -->
+        <section class="options-section">
+          <h2 class="section-title">Keyboard Shortcuts</h2>
+          <p class="section-description">Configure keyboard shortcuts.</p>
+
+          <div class="form-group">
+            <label for="toggle-sidebar-hotkey">Toggle Sidebar Hotkey</label>
+            <input type="text" id="toggle-sidebar-hotkey" name="toggleSidebarHotkey" value="Ctrl+Shift+M">
+            <span class="help-text">Keyboard shortcut to open/close the iMacros sidebar</span>
+          </div>
+        </section>
+
+        <!-- External Editor Section -->
+        <section class="options-section">
+          <h2 class="section-title">External Editor</h2>
+          <p class="section-description">Configure an external editor for macro files.</p>
+
+          <div class="form-group">
+            <label for="external-editor-path">Editor Path</label>
+            <div class="input-with-button">
+              <input type="text" id="external-editor-path" name="externalEditorPath" placeholder="e.g., /usr/bin/code or C:\Program Files\Notepad++\notepad++.exe">
+              <button type="button" class="btn btn-secondary" data-browse="externalEditorPath">Browse</button>
+            </div>
+            <span class="help-text">Path to external editor executable. Leave empty to use the built-in editor.</span>
           </div>
         </section>
 

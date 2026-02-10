@@ -48,7 +48,7 @@ Each command and JS API function is documented with:
 | 18 | [ONDOWNLOAD](commands/ONDOWNLOAD.md) | Complete | commands/ONDOWNLOAD.md |
 | 19 | [ONERRORDIALOG](commands/ONERRORDIALOG.md) | Complete | commands/ONERRORDIALOG.md |
 | 20 | [ONLOGIN](commands/ONLOGIN.md) | Complete | commands/ONLOGIN.md |
-| 21 | [ONPRINT](commands/ONPRINT.md) | Pending | |
+| 21 | [ONPRINT](commands/ONPRINT.md) | Complete | commands/ONPRINT.md |
 | 22 | [ONSECURITYDIALOG](commands/ONSECURITYDIALOG.md) | Pending | |
 | 23 | [ONWEBPAGEDIALOG](commands/ONWEBPAGEDIALOG.md) | Pending | |
 | 24 | [PAUSE](commands/PAUSE.md) | Pending | |

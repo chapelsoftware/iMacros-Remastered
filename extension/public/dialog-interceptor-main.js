@@ -4,6 +4,12 @@
  * This script runs in the page's main world (not the content script's isolated world)
  * to intercept window.alert, window.confirm, and window.prompt calls.
  *
+ * Uses a queue-based consumption pattern matching iMacros v8.9.7:
+ * - ONDIALOG POS=N stores config at index N in the queue
+ * - When a dialog appears, the first entry is shifted from the queue
+ * - Only OK/YES = accept; NO/CANCEL/anything else = cancel
+ * - Unhandled dialogs (empty queue) report error -1450
+ *
  * Communication with the content script happens via CustomEvents.
  */
 (function() {
@@ -18,13 +24,11 @@
   var originalConfirm = window.confirm.bind(window);
   var originalPrompt = window.prompt.bind(window);
 
-  // Current configuration
-  var config = {
-    enabled: false,
-    button: 'OK',
-    content: undefined,
-    pos: 1
-  };
+  // Dialog config queue - array indexed by POS (1-based, stored at index POS-1)
+  var dialogQueue = [];
+
+  // Whether dialog interception is enabled
+  var enabled = false;
 
   // Error dialog configuration
   var errorConfig = {
@@ -34,13 +38,20 @@
   // Store original window.onerror
   var originalOnError = window.onerror;
 
-  // Dialog counter
-  var dialogCounter = 0;
+  // Consume the next config from the queue (shift from front)
+  function consumeNextConfig() {
+    if (dialogQueue.length === 0) return null;
+    return dialogQueue.shift();
+  }
 
-  // Check if we should auto-respond
+  // Check if interception is active and queue has entries
   function shouldAutoRespond() {
-    if (!config.enabled) return false;
-    return dialogCounter <= config.pos;
+    return enabled && dialogQueue.length > 0;
+  }
+
+  // Check if button means "accept" (only OK/YES)
+  function isAcceptButton(button) {
+    return button === 'OK' || button === 'YES';
   }
 
   // Report dialog event to content script
@@ -57,14 +68,34 @@
     }));
   }
 
+  // Report unhandled dialog (error -1450)
+  function reportUnhandledDialog(type, message) {
+    window.dispatchEvent(new CustomEvent('__imacros_dialog_event', {
+      detail: {
+        type: type,
+        message: message,
+        defaultValue: undefined,
+        timestamp: Date.now(),
+        url: window.location.href,
+        unhandled: true,
+        response: { button: 'CANCEL', value: undefined }
+      }
+    }));
+  }
+
   // Override alert
   window.alert = function(message) {
-    dialogCounter++;
     var msg = String(message !== undefined ? message : '');
 
-    if (shouldAutoRespond()) {
-      reportDialogEvent('alert', msg, undefined, config.button, undefined);
-      return; // Suppress the dialog
+    if (enabled) {
+      var cfg = consumeNextConfig();
+      if (cfg) {
+        reportDialogEvent('alert', msg, undefined, cfg.button, undefined);
+        return; // Suppress the dialog
+      }
+      // No config in queue - unhandled dialog
+      reportUnhandledDialog('alert', msg);
+      return;
     }
 
     // Show original dialog
@@ -74,13 +105,18 @@
 
   // Override confirm
   window.confirm = function(message) {
-    dialogCounter++;
     var msg = String(message !== undefined ? message : '');
 
-    if (shouldAutoRespond()) {
-      var result = config.button === 'OK' || config.button === 'YES';
-      reportDialogEvent('confirm', msg, undefined, config.button, undefined);
-      return result;
+    if (enabled) {
+      var cfg = consumeNextConfig();
+      if (cfg) {
+        var result = isAcceptButton(cfg.button);
+        reportDialogEvent('confirm', msg, undefined, cfg.button, undefined);
+        return result;
+      }
+      // No config in queue - unhandled dialog
+      reportUnhandledDialog('confirm', msg);
+      return false;
     }
 
     // Show original dialog
@@ -91,21 +127,26 @@
 
   // Override prompt
   window.prompt = function(message, defaultValue) {
-    dialogCounter++;
     var msg = String(message !== undefined ? message : '');
     var defVal = defaultValue !== undefined ? String(defaultValue) : '';
 
-    if (shouldAutoRespond()) {
-      if (config.button === 'OK' || config.button === 'YES') {
-        // Return configured content, or default value, or empty string
-        var result = config.content !== undefined ? config.content : (defVal || '');
-        reportDialogEvent('prompt', msg, defVal, config.button, result);
-        return result;
-      } else {
-        // CANCEL or NO returns null
-        reportDialogEvent('prompt', msg, defVal, config.button, undefined);
-        return null;
+    if (enabled) {
+      var cfg = consumeNextConfig();
+      if (cfg) {
+        if (isAcceptButton(cfg.button)) {
+          // Return configured content, or default value, or empty string
+          var result = cfg.content !== undefined ? cfg.content : (defVal || '');
+          reportDialogEvent('prompt', msg, defVal, cfg.button, result);
+          return result;
+        } else {
+          // CANCEL or NO returns null
+          reportDialogEvent('prompt', msg, defVal, cfg.button, undefined);
+          return null;
+        }
       }
+      // No config in queue - unhandled dialog
+      reportUnhandledDialog('prompt', msg);
+      return null;
     }
 
     // Show original dialog
@@ -118,20 +159,35 @@
   window.addEventListener('__imacros_dialog_config', function(event) {
     var detail = event.detail;
     if (detail && detail.config) {
-      config = {
-        enabled: detail.config.active === true,
-        button: detail.config.button || 'OK',
+      var cfg = {
+        button: detail.config.button || 'CANCEL',
         content: detail.config.content,
-        pos: detail.config.pos || 1
+        pos: detail.config.pos || 1,
+        timeout: detail.config.timeout
       };
-      dialogCounter = 0;
+
+      if (detail.append) {
+        // Queue mode: insert at POS index (1-based, so POS-1 for array)
+        var idx = cfg.pos - 1;
+        // Ensure array is large enough
+        while (dialogQueue.length < idx) {
+          dialogQueue.push(null);
+        }
+        // Insert or replace at the POS index
+        dialogQueue[idx] = cfg;
+      } else {
+        // Replace mode: clear queue and set single config
+        dialogQueue = [cfg];
+      }
+
+      enabled = detail.config.active === true;
     }
   });
 
   // Listen for reset command
   window.addEventListener('__imacros_dialog_reset', function() {
-    config.enabled = false;
-    dialogCounter = 0;
+    enabled = false;
+    dialogQueue = [];
   });
 
   // Listen for status query
@@ -139,8 +195,9 @@
     window.dispatchEvent(new CustomEvent('__imacros_dialog_status_response', {
       detail: {
         installed: true,
-        enabled: config.enabled,
-        config: config
+        enabled: enabled,
+        queueLength: dialogQueue.length,
+        config: dialogQueue.length > 0 ? dialogQueue[0] : null
       }
     }));
   });

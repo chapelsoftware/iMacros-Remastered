@@ -370,12 +370,13 @@ describe('Extraction Command Handlers', () => {
       expect(result.match).toBe('123-');
     });
 
-    it('should return found:false for invalid regex (does not throw)', () => {
+    it('should return regexError for invalid regex (does not throw)', () => {
       const result = searchRegexp('test', '[invalid');
       expect(result.found).toBe(false);
       expect(result.match).toBeNull();
       expect(result.groups).toEqual([]);
       expect(result.index).toBe(-1);
+      expect(result.regexError).toContain('Can not compile regular expression');
     });
 
     it('should support case insensitive search', () => {
@@ -833,7 +834,7 @@ describe('Extraction Command Handlers', () => {
       expect(result.output).toBe('Doe-John');
     });
 
-    it('should store found match in !EXTRACT via appendExtract', async () => {
+    it('should NOT store match in !EXTRACT when EXTRACT param is absent (validation-only)', async () => {
       const { ctx, vars } = buildContext({
         commandType: 'SEARCH',
         parameters: [{ key: 'SOURCE', value: 'TXT:world' }],
@@ -844,9 +845,49 @@ describe('Extraction Command Handlers', () => {
         return '';
       });
 
+      const result = await searchHandler(ctx as any);
+
+      expect(result.success).toBe(true);
+      // Without EXTRACT parameter, SEARCH is purely validation — !EXTRACT unchanged
+      // (state manager initializes !EXTRACT to empty string)
+      expect(vars.get('!EXTRACT')).toBe('');
+    });
+
+    it('should store match in !EXTRACT when EXTRACT param is provided', async () => {
+      const { ctx, vars } = buildContext({
+        commandType: 'SEARCH',
+        parameters: [
+          { key: 'SOURCE', value: 'REGEXP:(\\w+) (\\w+)' },
+          { key: 'EXTRACT', value: '$1' },
+        ],
+      });
+
+      vi.spyOn(ctx.state, 'getVariable').mockImplementation((name: string) => {
+        if (name === '!URLCURRENT') return 'hello world';
+        return '';
+      });
+
       await searchHandler(ctx as any);
 
-      expect(vars.get('!EXTRACT')).toBe('world');
+      expect(vars.get('!EXTRACT')).toBe('hello');
+    });
+
+    it('should return SYNTAX_ERROR for invalid regex pattern', async () => {
+      const { ctx } = buildContext({
+        commandType: 'SEARCH',
+        parameters: [{ key: 'SOURCE', value: 'REGEXP:[invalid(' }],
+      });
+
+      vi.spyOn(ctx.state, 'getVariable').mockImplementation((name: string) => {
+        if (name === '!URLCURRENT') return 'some content';
+        return '';
+      });
+
+      const result = await searchHandler(ctx as any);
+
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SYNTAX_ERROR);
+      expect(result.errorMessage).toContain('Can not compile regular expression');
     });
 
     it('should search empty content when !URLCURRENT is not set', async () => {
@@ -895,7 +936,7 @@ describe('Extraction Command Handlers', () => {
       executor.registerHandler('SEARCH', searchHandler);
     });
 
-    it('should execute SEARCH with SOURCE=TXT:pattern', async () => {
+    it('should execute SEARCH with SOURCE=TXT:pattern (validation only)', async () => {
       executor.loadMacro('SEARCH SOURCE=TXT:hello');
 
       // !URLCURRENT is read-only and cannot be set via initialVariables.
@@ -911,7 +952,8 @@ describe('Extraction Command Handlers', () => {
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
-      expect(result.extractData).toContain('hello');
+      // Without EXTRACT parameter, SEARCH is purely validation — nothing stored
+      expect(result.extractData).toEqual([]);
     });
 
     it('should fail with MISSING_PARAMETER when SOURCE is missing', async () => {

@@ -91,7 +91,7 @@ describe('SEARCH Command Integration Tests', () => {
   // ------------------------------------------------------------------
 
   describe('SOURCE=TXT (text search)', () => {
-    it('finds "hello" in content and stores in !EXTRACT', async () => {
+    it('finds "hello" in content (validation only, no !EXTRACT storage without EXTRACT param)', async () => {
       const script = buildSearchScript(
         'https://example.com/hello-world',
         'SEARCH SOURCE=TXT:hello'
@@ -102,7 +102,8 @@ describe('SEARCH Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(result.extractData).toContain('hello');
+      // Without EXTRACT parameter, SEARCH is purely validation — nothing stored
+      expect(result.extractData).toEqual([]);
     });
 
     it('returns ELEMENT_NOT_FOUND when pattern is not in content', async () => {
@@ -130,8 +131,8 @@ describe('SEARCH Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      // The match should be the text as it appears in content (lowercase)
-      expect(result.extractData.length).toBeGreaterThanOrEqual(1);
+      // Without EXTRACT parameter, no data stored
+      expect(result.extractData).toEqual([]);
     });
 
     it('does NOT find "Hello" without IGNORE_CASE when content has lowercase only', async () => {
@@ -155,7 +156,7 @@ describe('SEARCH Command Integration Tests', () => {
   // ------------------------------------------------------------------
 
   describe('SOURCE=REGEXP (regex search)', () => {
-    it('finds digits in content with \\d+ pattern', async () => {
+    it('finds digits in content with \\d+ pattern (no storage without EXTRACT)', async () => {
       const script = buildSearchScript(
         'https://example.com/page123',
         'SEARCH SOURCE=REGEXP:\\d+'
@@ -166,11 +167,11 @@ describe('SEARCH Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      // Should find "123" in the URL
-      expect(result.extractData).toContain('123');
+      // Without EXTRACT parameter, SEARCH is purely validation — nothing stored
+      expect(result.extractData).toEqual([]);
     });
 
-    it('extracts first capture group when no EXTRACT param given', async () => {
+    it('validates capture group pattern without storing when no EXTRACT param', async () => {
       // Pattern with capture groups: (\\w+)\\.(\\w+) to match "example.com"
       const script = buildSearchScript(
         'https://example.com/path',
@@ -182,8 +183,8 @@ describe('SEARCH Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      // Without EXTRACT param, should use first capture group: "example"
-      expect(result.extractData).toContain('example');
+      // Without EXTRACT param, no data stored (validation only)
+      expect(result.extractData).toEqual([]);
     });
 
     it('uses EXTRACT pattern for capture group substitution', async () => {
@@ -277,8 +278,8 @@ describe('SEARCH Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      // Should find "test" in the URL
-      expect(result.extractData).toContain('test');
+      // Without EXTRACT parameter, no data stored
+      expect(result.extractData).toEqual([]);
     });
   });
 
@@ -287,7 +288,7 @@ describe('SEARCH Command Integration Tests', () => {
   // ------------------------------------------------------------------
 
   describe('Multiple SEARCH calls', () => {
-    it('accumulates results in extractData', async () => {
+    it('without EXTRACT param, validation-only — no extractData accumulated', async () => {
       const script = [
         'URL GOTO=https://example.com/hello-world-123',
         'SEARCH SOURCE=TXT:hello',
@@ -295,7 +296,23 @@ describe('SEARCH Command Integration Tests', () => {
       ].join('\n');
 
       executor.loadMacro(script);
-      // Need errorIgnore off -- but both searches should succeed
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
+
+      // Without EXTRACT parameter, SEARCH is validation-only
+      expect(result.extractData).toEqual([]);
+    });
+
+    it('with EXTRACT param, accumulates results in extractData', async () => {
+      const script = [
+        'URL GOTO=https://example.com/hello-world-123',
+        'SEARCH SOURCE=REGEXP:(hello) EXTRACT=$1',
+        'SEARCH SOURCE=REGEXP:(world) EXTRACT=$1',
+      ].join('\n');
+
+      executor.loadMacro(script);
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
@@ -310,8 +327,8 @@ describe('SEARCH Command Integration Tests', () => {
     it('concatenates extracts with [EXTRACT] delimiter in !EXTRACTADD', async () => {
       const script = [
         'URL GOTO=https://example.com/alpha-beta',
-        'SEARCH SOURCE=TXT:alpha',
-        'SEARCH SOURCE=TXT:beta',
+        'SEARCH SOURCE=REGEXP:(alpha) EXTRACT=$1',
+        'SEARCH SOURCE=REGEXP:(beta) EXTRACT=$1',
       ].join('\n');
 
       executor.loadMacro(script);
@@ -320,7 +337,6 @@ describe('SEARCH Command Integration Tests', () => {
       expect(result.success).toBe(true);
 
       // !EXTRACTADD should contain both values with [EXTRACT] delimiter
-      // (VariableContext.set for !EXTRACT pushes to extractAccumulator)
       const extractAdd = result.variables['!EXTRACTADD'];
       expect(extractAdd).toBeDefined();
       expect(String(extractAdd)).toContain('alpha');
@@ -343,7 +359,7 @@ describe('SEARCH Command Integration Tests', () => {
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND);
     });
 
-    it('handles regex with invalid pattern gracefully', async () => {
+    it('returns SYNTAX_ERROR for invalid regex pattern', async () => {
       const script = buildSearchScript(
         'https://example.com/content',
         'SEARCH SOURCE=REGEXP:[invalid('
@@ -352,9 +368,10 @@ describe('SEARCH Command Integration Tests', () => {
       executor.loadMacro(script);
       const result = await executor.execute();
 
-      // searchRegexp catches invalid regex and returns found=false
+      // Invalid regex returns a specific compilation error (matches original error 983)
       expect(result.success).toBe(false);
-      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.SYNTAX_ERROR);
+      expect(result.errorMessage).toContain('Can not compile regular expression');
     });
   });
 });
@@ -582,11 +599,12 @@ describe('searchRegexp', () => {
     expect(result.match).toBe('Contact:');
   });
 
-  it('handles invalid regex gracefully (returns not found)', () => {
+  it('returns regexError for invalid regex pattern', () => {
     const result = searchRegexp(content, '[invalid(');
     expect(result.found).toBe(false);
     expect(result.match).toBeNull();
     expect(result.groups).toEqual([]);
+    expect(result.regexError).toContain('Can not compile regular expression');
   });
 
   it('returns full match when there are no capture groups', () => {

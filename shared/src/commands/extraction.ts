@@ -223,45 +223,57 @@ export function searchText(
 
 /**
  * Search for regex pattern in content
+ *
+ * Returns `regexError` with the compilation error message when the pattern
+ * is not a valid regular expression, so callers can distinguish "bad regex"
+ * from "pattern not found".
  */
 export function searchRegexp(
   content: string,
   pattern: string,
   ignoreCase: boolean = false,
   extractPattern?: string
-): { found: boolean; match: string | null; groups: string[]; index: number } {
+): { found: boolean; match: string | null; groups: string[]; index: number; regexError?: string } {
+  let regex: RegExp;
   try {
     const flags = ignoreCase ? 'gi' : 'g';
-    const regex = new RegExp(pattern, flags);
-    const match = regex.exec(content);
+    regex = new RegExp(pattern, flags);
+  } catch (e) {
+    return {
+      found: false,
+      match: null,
+      groups: [],
+      index: -1,
+      regexError: `Can not compile regular expression: ${pattern}`,
+    };
+  }
 
-    if (match) {
-      let extractedValue = match[0];
+  const match = regex.exec(content);
 
-      // If there's an extract pattern with groups, use it
-      if (extractPattern && match.length > 1) {
-        // Replace $1, $2, etc. with captured groups
-        extractedValue = extractPattern.replace(/\$(\d+)/g, (_, n) => {
-          const groupIndex = parseInt(n, 10);
-          return groupIndex < match.length ? match[groupIndex] : '';
-        });
-      } else if (match.length > 1) {
-        // Use first capture group if available
-        extractedValue = match[1];
-      }
+  if (match) {
+    let extractedValue = match[0];
 
-      return {
-        found: true,
-        match: extractedValue,
-        groups: match.slice(1),
-        index: match.index ?? -1,
-      };
+    // If there's an extract pattern with groups, use it
+    if (extractPattern && match.length > 1) {
+      // Replace $1, $2, etc. with captured groups
+      extractedValue = extractPattern.replace(/\$(\d+)/g, (_, n) => {
+        const groupIndex = parseInt(n, 10);
+        return groupIndex < match.length ? match[groupIndex] : '';
+      });
+    } else if (match.length > 1) {
+      // Use first capture group if available
+      extractedValue = match[1];
     }
 
-    return { found: false, match: null, groups: [], index: -1 };
-  } catch (e) {
-    return { found: false, match: null, groups: [], index: -1 };
+    return {
+      found: true,
+      match: extractedValue,
+      groups: match.slice(1),
+      index: match.index ?? -1,
+    };
   }
+
+  return { found: false, match: null, groups: [], index: -1 };
 }
 
 /**
@@ -392,6 +404,19 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
     ctx.log('debug', 'SEARCH: Content script sender not available, using local fallback');
   }
 
+  // Validate regex upfront for REGEXP type (matches original iMacros error 983)
+  if (parsed.type === 'REGEXP') {
+    try {
+      new RegExp(parsed.pattern);
+    } catch (e) {
+      return {
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.SYNTAX_ERROR,
+        errorMessage: `Can not compile regular expression: ${parsed.pattern}`,
+      };
+    }
+  }
+
   if (useContentScript && sender) {
     // Browser context: retry until !TIMEOUT expires (matches original iMacros retry behavior)
     while (true) {
@@ -412,7 +437,10 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
       const response = await sender.sendMessage(message as any);
 
       if (response.success && response.extractedData !== undefined) {
-        appendExtract(ctx, response.extractedData);
+        // Only store in !EXTRACT when EXTRACT parameter is provided (original iMacros behavior)
+        if (extractPattern) {
+          appendExtract(ctx, response.extractedData);
+        }
         return {
           success: true,
           errorCode: IMACROS_ERROR_CODES.OK,
@@ -438,7 +466,7 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
   }
 
   // Local fallback: search in !URLCURRENT (for non-browser contexts or testing)
-  // No retry — content is static in local context
+  // No retry — content is static in local context (retry only applies to browser DOM)
   const content = ctx.state.getVariable('!URLCURRENT')?.toString() || '';
 
   let result: { found: boolean; match: string | null };
@@ -451,7 +479,10 @@ export const searchHandler: CommandHandler = async (ctx): Promise<CommandResult>
   }
 
   if (result.found && result.match !== null) {
-    appendExtract(ctx, result.match);
+    // Only store in !EXTRACT when EXTRACT parameter is provided (original iMacros behavior)
+    if (extractPattern) {
+      appendExtract(ctx, result.match);
+    }
     return {
       success: true,
       errorCode: IMACROS_ERROR_CODES.OK,

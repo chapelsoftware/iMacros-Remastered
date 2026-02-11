@@ -1861,6 +1861,27 @@ describe('TAG Command Handler Integration (with mock ContentScriptSender)', () =
       expect(msg.payload.waitVisible).toBe(true);
     });
 
+    it('should pass EVENT:MOUSEOVER as content in TAG command', async () => {
+      executor.loadMacro('TAG POS=1 TYPE=DIV ATTR=ID:hover-target CONTENT=EVENT:MOUSEOVER');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      expect(capturedMessages).toHaveLength(1);
+
+      const msg = capturedMessages[0] as TagCommandMessage;
+      expect(msg.type).toBe('TAG_COMMAND');
+      expect(msg.payload.action.content).toBe('EVENT:MOUSEOVER');
+    });
+
+    it('should pass EVENT:MOUSEDOWN as content in TAG command', async () => {
+      executor.loadMacro('TAG POS=1 TYPE=BUTTON ATTR=ID:btn CONTENT=EVENT:MOUSEDOWN');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const msg = capturedMessages[0] as TagCommandMessage;
+      expect(msg.payload.action.content).toBe('EVENT:MOUSEDOWN');
+    });
+
     it('should generate unique message IDs for each TAG command', async () => {
       const macro = [
         'TAG POS=1 TYPE=INPUT ATTR=NAME:a CONTENT=1',

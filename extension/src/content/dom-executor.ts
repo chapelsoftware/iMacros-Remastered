@@ -755,6 +755,22 @@ function setElementContent(element: Element, content: string): SetContentResult 
       return { success: true };
     }
 
+    // Mouse events: dispatch via dispatchMouseEvent (matches standalone EVENT command behavior)
+    const mouseEvents: Record<string, 'mouseover' | 'mouseout' | 'mousemove' | 'mousedown' | 'mouseup' | 'mouseenter' | 'mouseleave'> = {
+      'MOUSEOVER': 'mouseover',
+      'MOUSEOUT': 'mouseout',
+      'MOUSEMOVE': 'mousemove',
+      'MOUSEDOWN': 'mousedown',
+      'MOUSEUP': 'mouseup',
+      'MOUSEENTER': 'mouseenter',
+      'MOUSELEAVE': 'mouseleave',
+    };
+    const mouseEventType = mouseEvents[eventCommand];
+    if (mouseEventType) {
+      dispatchMouseEvent(element, mouseEventType);
+      return { success: true };
+    }
+
     // Unknown EVENT: command
     return { success: false, errorMessage: `Unknown EVENT command: ${eventCommand}` };
   }

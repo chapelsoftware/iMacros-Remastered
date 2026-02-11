@@ -14,7 +14,8 @@
     "downloads",
     "webNavigation",
     "browsingData",
-    "scripting"
+    "scripting",
+    "contentSettings"
   ],
   "host_permissions": [
     "<all_urls>"

@@ -28,6 +28,8 @@ export type BrowserCommandMessageType =
   | 'setFilter'
   | 'setProxy'
   | 'restoreProxy'
+  | 'setPopupAllowed'
+  | 'restorePopupSettings'
   | 'screenshot';
 
 /**
@@ -143,6 +145,25 @@ export interface RestoreProxyMessage extends BrowserCommandMessage {
   type: 'restoreProxy';
 }
 
+// ===== POPUP_ALLOWED Types =====
+
+/**
+ * Set popup allowed for a site.
+ * Uses chrome.contentSettings.popups API in the extension.
+ */
+export interface SetPopupAllowedMessage extends BrowserCommandMessage {
+  type: 'setPopupAllowed';
+  /** URL pattern for the site to allow popups on */
+  primaryPattern: string;
+}
+
+/**
+ * Restore popup settings to pre-macro state (sent at macro end)
+ */
+export interface RestorePopupSettingsMessage extends BrowserCommandMessage {
+  type: 'restorePopupSettings';
+}
+
 // ===== SCREENSHOT Command Types =====
 
 /**
@@ -186,6 +207,8 @@ export type BrowserCommandOperationMessage =
   | SetFilterMessage
   | SetProxyMessage
   | RestoreProxyMessage
+  | SetPopupAllowedMessage
+  | RestorePopupSettingsMessage
   | ScreenshotMessage;
 
 /**
@@ -282,6 +305,15 @@ type RestoreProxyPayload = {
   type: 'restoreProxy';
 };
 
+type SetPopupAllowedPayload = {
+  type: 'setPopupAllowed';
+  primaryPattern: string;
+};
+
+type RestorePopupSettingsPayload = {
+  type: 'restorePopupSettings';
+};
+
 type ScreenshotPayload = {
   type: 'screenshot';
   captureType: ScreenshotType;
@@ -297,6 +329,8 @@ type BrowserCommandPayload =
   | SetFilterPayload
   | SetProxyPayload
   | RestoreProxyPayload
+  | SetPopupAllowedPayload
+  | RestorePopupSettingsPayload
   | ScreenshotPayload;
 
 /**
@@ -636,6 +670,73 @@ function determineProxyType(ctx: CommandContext, address: string): ProxyType {
   }
 
   return 'http';
+}
+
+/** Track whether popup settings have been modified during this macro execution */
+let popupSettingsModified = false;
+
+/**
+ * Reset popup settings state (called when macro execution starts)
+ */
+export function resetPopupSettingsState(): void {
+  popupSettingsModified = false;
+}
+
+/**
+ * Check if popup settings have been modified
+ */
+export function hasPopupModifications(): boolean {
+  return popupSettingsModified;
+}
+
+/**
+ * Mark that popup settings were modified (called from executor SET handler)
+ */
+export function markPopupSettingsModified(): void {
+  popupSettingsModified = true;
+}
+
+/**
+ * Restore popup settings to pre-macro state.
+ * Should be called at macro end if popup settings were modified during execution.
+ */
+export async function restorePopupSettings(ctx: CommandContext): Promise<void> {
+  if (!popupSettingsModified) return;
+
+  ctx.log('info', 'Restoring original popup settings');
+  await sendBrowserCommandMessage({ type: 'restorePopupSettings' }, ctx);
+  popupSettingsModified = false;
+}
+
+/**
+ * Send a setPopupAllowed message to the extension.
+ * Called from the executor's SET handler when !POPUP_ALLOWED is set.
+ */
+export async function sendSetPopupAllowed(
+  siteUrl: string,
+  ctx: CommandContext
+): Promise<BrowserCommandResponse> {
+  // Prepend http:// if no scheme (matching original iMacros behavior)
+  let url = siteUrl.trim();
+  if (!/^[-\w]+:\/+/.test(url)) {
+    url = 'http://' + url;
+  }
+
+  // Convert URL to a content settings pattern: scheme + host(:port) + /*
+  let primaryPattern: string;
+  try {
+    const parsed = new URL(url);
+    primaryPattern = `${parsed.protocol}//${parsed.host}/*`;
+  } catch {
+    return { success: false, error: `Wrong URL: ${siteUrl}` };
+  }
+
+  markPopupSettingsModified();
+
+  return sendBrowserCommandMessage(
+    { type: 'setPopupAllowed', primaryPattern },
+    ctx
+  );
 }
 
 /** Track whether proxy settings have been backed up during this macro execution */

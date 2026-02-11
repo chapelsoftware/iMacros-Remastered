@@ -446,6 +446,129 @@ export async function handleSetFilter(payload: {
 }
 
 // ============================================================================
+// POPUP_ALLOWED: Popup Permission Management via chrome.contentSettings
+// ============================================================================
+
+/**
+ * Saved popup permission state for restoration at macro end.
+ * Maps primaryPattern → original setting (or null if no setting existed).
+ */
+const savedPopupSettings: Map<string, string | null> = new Map();
+
+/**
+ * Handle setPopupAllowed message from SET !POPUP_ALLOWED command.
+ * Saves the current popup setting for the pattern, then allows popups.
+ */
+export async function handleSetPopupAllowed(
+  primaryPattern: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!chrome.contentSettings?.popups) {
+      return { success: false, error: 'chrome.contentSettings.popups API not available' };
+    }
+
+    // Save the current setting before overriding (only on first set for this pattern)
+    if (!savedPopupSettings.has(primaryPattern)) {
+      const current = await new Promise<string | null>((resolve) => {
+        chrome.contentSettings.popups.get(
+          { primaryUrl: primaryPattern.replace('/*', '/') },
+          (details) => {
+            if (chrome.runtime.lastError) {
+              console.warn('[iMacros] Failed to get popup setting:', chrome.runtime.lastError.message);
+              resolve(null);
+            } else {
+              resolve(details?.setting || null);
+            }
+          }
+        );
+      });
+      savedPopupSettings.set(primaryPattern, current);
+      console.log(`[iMacros] Saved popup setting for ${primaryPattern}: ${current}`);
+    }
+
+    // Allow popups for this pattern
+    await new Promise<void>((resolve, reject) => {
+      chrome.contentSettings.popups.set(
+        { primaryPattern, setting: 'allow' },
+        () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        }
+      );
+    });
+
+    console.log(`[iMacros] Popups allowed for ${primaryPattern}`);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[iMacros] Failed to set popup allowed:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Handle restorePopupSettings message (sent at macro end).
+ * Restores all modified popup settings to their original state.
+ */
+export async function handleRestorePopupSettings(): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!chrome.contentSettings?.popups) {
+      savedPopupSettings.clear();
+      return { success: true };
+    }
+
+    for (const [pattern, originalSetting] of savedPopupSettings) {
+      try {
+        if (originalSetting === null) {
+          // No original setting — clear the override we added
+          await new Promise<void>((resolve, reject) => {
+            chrome.contentSettings.popups.clear({}, () => {
+              if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+              } else {
+                resolve();
+              }
+            });
+          });
+        } else {
+          // Restore the original setting
+          await new Promise<void>((resolve, reject) => {
+            chrome.contentSettings.popups.set(
+              {
+                primaryPattern: pattern,
+                setting: originalSetting as chrome.contentSettings.PopupsSetDetails['setting'],
+              },
+              () => {
+                if (chrome.runtime.lastError) {
+                  reject(new Error(chrome.runtime.lastError.message));
+                } else {
+                  resolve();
+                }
+              }
+            );
+          });
+        }
+        console.log(`[iMacros] Restored popup setting for ${pattern}: ${originalSetting}`);
+      } catch (err) {
+        console.warn(`[iMacros] Failed to restore popup setting for ${pattern}:`, err);
+      }
+    }
+
+    savedPopupSettings.clear();
+    console.log('[iMacros] All popup settings restored');
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[iMacros] Failed to restore popup settings:', errorMessage);
+    savedPopupSettings.clear();
+    return { success: false, error: errorMessage };
+  }
+}
+
+// ============================================================================
 // Initialization
 // ============================================================================
 

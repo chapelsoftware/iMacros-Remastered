@@ -419,6 +419,23 @@ export class MacroExecutor {
         }
       }
 
+      // If !POPUP_ALLOWED was set, send browser command to allow popups
+      if (varName.toUpperCase() === '!POPUP_ALLOWED' && result.newValue) {
+        const siteUrl = String(result.newValue).trim();
+        if (siteUrl) {
+          const { sendSetPopupAllowed } = await import('./commands/browser');
+          const popupResponse = await sendSetPopupAllowed(siteUrl, ctx);
+          if (!popupResponse.success) {
+            return {
+              success: false,
+              errorCode: IMACROS_ERROR_CODES.SCRIPT_ERROR,
+              errorMessage: popupResponse.error || `Failed to allow popups for: ${siteUrl}`,
+            };
+          }
+          ctx.log('info', `Popups allowed for: ${siteUrl}`);
+        }
+      }
+
       ctx.log('debug', `SET ${varName} = ${result.newValue}`);
       return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
     });

@@ -325,6 +325,296 @@ describe('Encryption Module', () => {
       expect(error.code).toBe(940);
     });
   });
+
+  // ============================================================
+  // SECTION: Encrypt/Decrypt Round-Trip Coverage
+  // ============================================================
+  describe('Encrypt/Decrypt Round-Trip', () => {
+    const password = 'roundTripTest!';
+
+    it('should round-trip single character', () => {
+      const original = 'X';
+      expect(decryptString(encryptString(original, password), password)).toBe(original);
+    });
+
+    it('should round-trip numeric strings', () => {
+      const original = '1234567890';
+      expect(decryptString(encryptString(original, password), password)).toBe(original);
+    });
+
+    it('should round-trip strings with newlines', () => {
+      const original = 'line1\nline2\nline3';
+      expect(decryptString(encryptString(original, password), password)).toBe(original);
+    });
+
+    it('should round-trip strings with tabs', () => {
+      const original = 'col1\tcol2\tcol3';
+      expect(decryptString(encryptString(original, password), password)).toBe(original);
+    });
+
+    it('should round-trip with simple password', () => {
+      const original = 'test data';
+      expect(decryptString(encryptString(original, 'a'), 'a')).toBe(original);
+    });
+
+    it('should round-trip with very long password', () => {
+      const original = 'secret';
+      const longPwd = 'x'.repeat(200);
+      expect(decryptString(encryptString(original, longPwd), longPwd)).toBe(original);
+    });
+
+    it('should round-trip legacy with short string', () => {
+      const original = 'hi';
+      const pwd = 'pw';
+      expect(decryptStringLegacy(encryptStringLegacy(original, pwd), pwd)).toBe(original);
+    });
+
+    it('should round-trip legacy with medium string (multi-block)', () => {
+      const original = 'A'.repeat(20); // > 32 bytes, spans 2 blocks
+      const pwd = 'password';
+      expect(decryptStringLegacy(encryptStringLegacy(original, pwd), pwd)).toBe(original);
+    });
+
+    it('should round-trip legacy with long string (3 blocks)', () => {
+      const original = 'B'.repeat(40); // > 64 bytes in hex, spans 3 blocks
+      const pwd = 'pass';
+      expect(decryptStringLegacy(encryptStringLegacy(original, pwd), pwd)).toBe(original);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Utility Edge Cases
+  // ============================================================
+  describe('Utility Edge Cases', () => {
+    it('should throw on odd-length hex string', () => {
+      expect(() => hexToByteArray('abc')).toThrow(EncryptionError);
+    });
+
+    it('should handle empty hex string', () => {
+      expect(hexToByteArray('')).toEqual([]);
+    });
+
+    it('should handle empty byte array to hex', () => {
+      expect(byteArrayToHex([])).toBe('');
+    });
+
+    it('should handle 0X prefix (uppercase)', () => {
+      const bytes = hexToByteArray('0Xff');
+      expect(bytes).toEqual([255]);
+    });
+
+    it('should handle empty base64 string', () => {
+      const bytes = base64ToByteArray('');
+      expect(bytes).toEqual([]);
+    });
+
+    it('should handle empty byte array to base64', () => {
+      expect(byteArrayToBase64([])).toBe('');
+    });
+
+    it('should handle base64 with whitespace (stripped)', () => {
+      // base64ToByteArray strips non-base64 chars
+      const bytes = base64ToByteArray('SG Vs bG8=');
+      expect(byteArrayToString(bytes)).toBe('Hello');
+    });
+
+    it('should round-trip all byte values through base64', () => {
+      const allBytes = Array.from({ length: 256 }, (_, i) => i);
+      const encoded = byteArrayToBase64(allBytes);
+      const decoded = base64ToByteArray(encoded);
+      expect(decoded).toEqual(allBytes);
+    });
+
+    it('should handle empty string for utf8Encode/Decode', () => {
+      expect(utf8Encode('')).toBe('');
+      expect(utf8Decode('')).toBe('');
+    });
+
+    it('should normalize CRLF to LF in utf8Encode', () => {
+      const encoded = utf8Encode('a\r\nb');
+      const decoded = utf8Decode(encoded);
+      expect(decoded).toBe('a\nb');
+    });
+
+    it('should handle stringToByteArray with empty string', () => {
+      expect(stringToByteArray('')).toEqual([]);
+    });
+
+    it('should handle byteArrayToString with empty array', () => {
+      expect(byteArrayToString([])).toBe('');
+    });
+
+    it('should handle UTF-8 two-byte characters', () => {
+      // ñ = U+00F1 -> two bytes in UTF-8
+      const original = 'niño';
+      const encoded = utf8Encode(original);
+      expect(encoded.length).toBe(5); // n(1) + i(1) + ñ(2) + o(1)
+      expect(utf8Decode(encoded)).toBe(original);
+    });
+
+    it('should handle UTF-8 three-byte characters', () => {
+      // ★ = U+2605 -> three bytes in UTF-8
+      const original = '★';
+      const encoded = utf8Encode(original);
+      expect(encoded.length).toBe(3);
+      expect(utf8Decode(encoded)).toBe(original);
+    });
+  });
+
+  // ============================================================
+  // SECTION: SHA-256 Additional Vectors
+  // ============================================================
+  describe('SHA-256 Additional Vectors', () => {
+    it('should hash "password" correctly', () => {
+      expect(sha256('password')).toBe('5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8');
+    });
+
+    it('should hash "hello" correctly', () => {
+      expect(sha256('hello')).toBe('2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824');
+    });
+
+    it('should hash single character', () => {
+      const hash = sha256('a');
+      expect(hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(hash).toBe('ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb');
+    });
+
+    it('should produce different hashes for different inputs', () => {
+      const h1 = sha256('abc');
+      const h2 = sha256('abd');
+      expect(h1).not.toBe(h2);
+    });
+  });
+
+  // ============================================================
+  // SECTION: isEncrypted Edge Cases
+  // ============================================================
+  describe('isEncrypted Edge Cases', () => {
+    it('should not detect short hex as encrypted', () => {
+      expect(isEncrypted('AABBCCDD')).toBe(false); // < 64 chars
+    });
+
+    it('should detect exactly 64-char hex as encrypted', () => {
+      const hex64 = 'A'.repeat(64);
+      expect(isEncrypted(hex64)).toBe(true);
+    });
+
+    it('should detect 65-char hex as encrypted via base64 fallback', () => {
+      // Not valid as legacy hex (not multiple of 64), but valid as base64 (>40 chars)
+      const hex65 = 'A'.repeat(65);
+      expect(isEncrypted(hex65)).toBe(true);
+    });
+
+    it('should detect 128-char hex as encrypted', () => {
+      expect(isEncrypted('A'.repeat(128))).toBe(true);
+    });
+
+    it('should detect lowercase hex as encrypted via base64 fallback', () => {
+      // Lowercase hex chars are valid base64, and length 64 > 40
+      const lowerHex = 'a'.repeat(64);
+      expect(isEncrypted(lowerHex)).toBe(true);
+    });
+
+    it('should not detect strings with spaces', () => {
+      expect(isEncrypted('This is a regular sentence with more than 40 characters in it')).toBe(false);
+    });
+
+    it('should detect long base64-like strings as encrypted', () => {
+      const base64str = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop==';
+      expect(isEncrypted(base64str)).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Format Auto-Detection
+  // ============================================================
+  describe('Format Auto-Detection', () => {
+    it('should auto-detect and decrypt new format via decryptString', () => {
+      const msg = 'auto detect me';
+      const pwd = 'pwd';
+      const encrypted = encryptString(msg, pwd);
+      // decryptString should auto-detect Base64 format
+      expect(decryptString(encrypted, pwd)).toBe(msg);
+    });
+
+    it('should auto-detect and decrypt legacy format via decryptString', () => {
+      const msg = 'test';
+      const pwd = 'pwd';
+      const encrypted = encryptStringLegacy(msg, pwd);
+      // decryptString should auto-detect hex format
+      expect(decryptString(encrypted, pwd)).toBe(msg);
+    });
+
+    it('should throw on completely invalid ciphertext', () => {
+      expect(() => decryptString('!!!invalid!!!', 'pwd')).toThrow(EncryptionError);
+    });
+
+    it('should throw EncryptionError with code 943 for bad encoding', () => {
+      try {
+        decryptString('not@valid#data$', 'pwd');
+        expect.fail('Should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(EncryptionError);
+        expect((e as EncryptionError).code).toBe(943);
+      }
+    });
+
+    it('should throw EncryptionError with code 942 for wrong password', () => {
+      const encrypted = encryptString('secret', 'correctPwd');
+      try {
+        decryptString(encrypted, 'wrongPwd');
+        expect.fail('Should have thrown');
+      } catch (e) {
+        expect(e).toBeInstanceOf(EncryptionError);
+        expect((e as EncryptionError).code).toBe(942);
+      }
+    });
+  });
+
+  // ============================================================
+  // SECTION: encryptValue/decryptValue Edge Cases
+  // ============================================================
+  describe('encryptValue/decryptValue Edge Cases', () => {
+    it('should use new format when useLegacyMethod is explicitly false', () => {
+      const encrypted = encryptValue('test', 'pwd', false);
+      // New format is Base64
+      expect(encrypted).toMatch(/^[A-Za-z0-9+/=]+$/);
+      expect(decryptValue(encrypted, 'pwd')).toBe('test');
+    });
+
+    it('should use new format by default', () => {
+      const encrypted = encryptValue('test', 'pwd');
+      // Same message encrypted twice with CBC should differ
+      const encrypted2 = encryptValue('test', 'pwd');
+      expect(encrypted).not.toBe(encrypted2);
+    });
+
+    it('should use legacy format when useLegacyMethod is true', () => {
+      const encrypted = encryptValue('test', 'pwd', true);
+      // Legacy is uppercase hex
+      expect(encrypted).toMatch(/^[0-9A-F]+$/);
+      expect(decryptValue(encrypted, 'pwd')).toBe('test');
+    });
+  });
+
+  // ============================================================
+  // SECTION: validatePassword Edge Cases
+  // ============================================================
+  describe('validatePassword Edge Cases', () => {
+    it('should return true for correct password on legacy format', () => {
+      const encrypted = encryptStringLegacy('test', 'pwd');
+      expect(validatePassword(encrypted, 'pwd')).toBe(true);
+    });
+
+    it('should return false for wrong password on legacy format', () => {
+      const encrypted = encryptStringLegacy('test', 'pwd');
+      expect(validatePassword(encrypted, 'wrong')).toBe(false);
+    });
+
+    it('should return false for garbage input', () => {
+      expect(validatePassword('not!encrypted!data', 'pwd')).toBe(false);
+    });
+  });
 });
 
 describe('Cross-compatibility with original iMacros', () => {

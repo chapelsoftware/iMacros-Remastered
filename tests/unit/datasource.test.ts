@@ -784,4 +784,254 @@ describe('DatasourceManager', () => {
       expect(ctx.get('!COL1')).toBe('e');
     });
   });
+
+  // ===== Malformed CSV error handling =====
+
+  describe('malformed CSV error handling', () => {
+    it('handles unclosed quotes gracefully', () => {
+      // Unclosed quote in field
+      const content = '"field without closing quote\nother,data';
+      const result = ds.loadFromContent(content, 'test.csv', { delimiter: ',' });
+      // papaparse should handle this - may parse as error or attempt recovery
+      // Just ensure it doesn't crash
+      expect(result).toBeDefined();
+      if (result.success) {
+        // If it succeeded, verify we can access the datasource
+        expect(ds.isLoaded()).toBe(true);
+      } else {
+        // If it failed, should have an error message
+        expect(result.error).toBeDefined();
+      }
+    });
+
+    it('handles very large field without crashing', () => {
+      // Create a very large string (1MB)
+      const largeField = 'x'.repeat(1024 * 1024);
+      const content = `${largeField},b,c\nd,e,f`;
+      const result = ds.loadFromContent(content, 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe(largeField);
+      expect(ds.getColumn(2)).toBe('b');
+    });
+
+    it('handles completely empty lines with explicit delimiter', () => {
+      const content = 'a,b,c\n\n\nd,e,f';
+      const result = ds.loadFromContent(content, 'test.csv', {
+        delimiter: ',',
+        skipEmptyLines: true,
+      });
+      expect(result.success).toBe(true);
+      // Empty lines should be skipped
+      expect(ds.getRowCount()).toBe(2);
+    });
+
+    it('handles CSV with only delimiters', () => {
+      // Row with just delimiters (empty fields)
+      const content = ',,,\na,b,c,d';
+      const result = ds.loadFromContent(content, 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getRowCount()).toBe(2);
+      // First row should have empty fields
+      expect(ds.getColumn(1)).toBe('');
+      expect(ds.getColumn(2)).toBe('');
+      expect(ds.getColumn(3)).toBe('');
+      expect(ds.getColumn(4)).toBe('');
+    });
+
+    it('handles row with only delimiters and no other data', () => {
+      const content = ';;;';
+      const result = ds.loadFromContent(content, 'test.csv', { delimiter: ';' });
+      expect(result.success).toBe(true);
+      expect(ds.getRowCount()).toBe(1);
+      expect(ds.getColumnCount()).toBe(4); // 3 delimiters = 4 empty fields
+    });
+  });
+
+  // ===== Quoted field edge cases =====
+
+  describe('quoted field edge cases', () => {
+    it('handles quoted fields with semicolons inside', () => {
+      const result = ds.loadFromContent('"a;b;c",d', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe('a;b;c');
+      expect(ds.getColumn(2)).toBe('d');
+    });
+
+    it('handles quoted fields with tabs inside', () => {
+      const result = ds.loadFromContent('"a\tb\tc",d', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe('a\tb\tc');
+      expect(ds.getColumn(2)).toBe('d');
+    });
+
+    it('handles quoted fields with pipes inside', () => {
+      const result = ds.loadFromContent('"a|b|c",d', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe('a|b|c');
+      expect(ds.getColumn(2)).toBe('d');
+    });
+
+    it('handles fields that are just empty quoted strings', () => {
+      const result = ds.loadFromContent('"",b,""', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe('');
+      expect(ds.getColumn(2)).toBe('b');
+      expect(ds.getColumn(3)).toBe('');
+    });
+
+    it('handles whitespace around quotes', () => {
+      // Papaparse behavior: whitespace before quotes is preserved
+      const result = ds.loadFromContent('  "value"  ,b', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      // Depending on papaparse settings, this may include or strip whitespace
+      // Just verify it loads successfully
+      expect(ds.getColumnCount()).toBeGreaterThanOrEqual(2);
+    });
+
+    it('handles quoted field with all delimiter types mixed', () => {
+      const result = ds.loadFromContent('"a,b;c\td|e",f', 'test.csv', { delimiter: ',' });
+      expect(result.success).toBe(true);
+      expect(ds.getColumn(1)).toBe('a,b;c\td|e');
+      expect(ds.getColumn(2)).toBe('f');
+    });
+  });
+
+  // ===== populateVariables edge cases =====
+
+  describe('populateVariables edge cases', () => {
+    let ctx: VariableContext;
+
+    beforeEach(() => {
+      ctx = createVariableContext();
+    });
+
+    it('populateVariables when at end of datasource', () => {
+      ds.loadFromContent('a,b\nc,d', 'test.csv', { delimiter: ',' });
+      // Move past the end
+      ds.nextRow(); // row 2
+      ds.nextRow(); // returns false, stays at row 2
+
+      // Should still populate with the last row's data
+      ds.populateVariables(ctx);
+      expect(ctx.get('!COL1')).toBe('c');
+      expect(ctx.get('!COL2')).toBe('d');
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(2);
+    });
+
+    it('populateVariables when navigating past last row', () => {
+      ds.loadFromContent('x,y', 'test.csv', { delimiter: ',' });
+      // Only 1 row, try to go beyond
+      expect(ds.nextRow()).toBe(false);
+
+      // Should still populate with current (first) row
+      ds.populateVariables(ctx);
+      expect(ctx.get('!COL1')).toBe('x');
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(1);
+    });
+
+    it('populateVariables after unload clears all variables', () => {
+      // Load and populate
+      ds.loadFromContent('a,b,c', 'test.csv', { delimiter: ',' });
+      ds.populateVariables(ctx);
+      expect(ctx.get('!COL1')).toBe('a');
+      expect(ctx.get('!DATASOURCE')).toBe('test.csv');
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(1);
+
+      // Unload and populate again
+      ds.unload();
+      ds.populateVariables(ctx);
+
+      // All datasource variables should be cleared
+      expect(ctx.get('!DATASOURCE')).toBe('');
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(0);
+      expect(ctx.get('!COL1')).toBe('');
+      expect(ctx.get('!COL2')).toBe('');
+    });
+
+    it('populateVariables preserves non-datasource variables', () => {
+      // Set a user variable
+      ctx.set('!VAR1', 'myvalue');
+
+      ds.loadFromContent('a,b', 'test.csv', { delimiter: ',' });
+      ds.populateVariables(ctx);
+
+      // Datasource vars are set
+      expect(ctx.get('!COL1')).toBe('a');
+      // User variable is preserved
+      expect(ctx.get('!VAR1')).toBe('myvalue');
+    });
+  });
+
+  // ===== Iterator edge cases =====
+
+  describe('iterator edge cases', () => {
+    it('iterator resets on subsequent iteration calls', () => {
+      ds.loadFromContent('a,b\nc,d\ne,f', 'test.csv', { delimiter: ',' });
+
+      // First iteration
+      const firstRun: string[][] = [];
+      for (const row of ds) {
+        firstRun.push(row);
+      }
+      expect(firstRun.length).toBe(3);
+
+      // Second iteration - should start from beginning again
+      const secondRun: string[][] = [];
+      for (const row of ds) {
+        secondRun.push(row);
+      }
+      expect(secondRun.length).toBe(3);
+      expect(secondRun).toEqual(firstRun);
+    });
+
+    it('iterator with single row', () => {
+      ds.loadFromContent('solo,field', 'test.csv', { delimiter: ',' });
+
+      const rows: string[][] = [];
+      for (const row of ds) {
+        rows.push(row);
+      }
+
+      expect(rows.length).toBe(1);
+      expect(rows[0]).toEqual(['solo', 'field']);
+    });
+
+    it('iterator does not affect current row position', () => {
+      ds.loadFromContent('a,b\nc,d\ne,f', 'test.csv', { delimiter: ',' });
+
+      // Move to row 2
+      ds.nextRow();
+      expect(ds.getCurrentLineNumber()).toBe(2);
+
+      // Iterate through all rows
+      const rows: string[][] = [];
+      for (const row of ds) {
+        rows.push(row);
+      }
+
+      // Current position should still be at row 2
+      expect(ds.getCurrentLineNumber()).toBe(2);
+      expect(ds.getColumn(1)).toBe('c');
+    });
+
+    it('iterator works after reset', () => {
+      ds.loadFromContent('a,b\nc,d\ne,f', 'test.csv', { delimiter: ',' });
+
+      // Move to last row
+      ds.goToRow(3);
+      expect(ds.getCurrentLineNumber()).toBe(3);
+
+      // Reset
+      ds.reset();
+
+      // Iterator should work normally
+      const rows: string[][] = [];
+      for (const row of ds) {
+        rows.push(row);
+      }
+
+      expect(rows.length).toBe(3);
+      expect(rows[0]).toEqual(['a', 'b']);
+    });
+  });
 });

@@ -27,7 +27,10 @@ export type RecordedEventType =
   | 'submit'
   | 'select'
   | 'focus'
-  | 'keydown';
+  | 'keydown'
+  | 'download'
+  | 'frame'
+  | 'tab';
 
 /**
  * Frame context information for recorded events
@@ -73,6 +76,12 @@ export interface RecordedEvent {
       shift?: boolean;
       meta?: boolean;
     };
+    downloadFolder?: string;
+    downloadFilename?: string;
+    downloadUrl?: string;
+    frameAction?: string;
+    frameIndex?: number;
+    frameName?: string;
   };
 }
 
@@ -300,7 +309,7 @@ export class MacroRecorder {
     const frameContext = this.detectFrameContext();
 
     const event: RecordedEvent = {
-      type: 'click', // Use click as the event type for tab events
+      type: 'tab',
       command,
       timestamp: Date.now(),
       url: window.location.href,
@@ -323,6 +332,62 @@ export class MacroRecorder {
 
     // Send to background script
     this.sendEventToBackground(event);
+  }
+
+  /**
+   * Record a download event with ONDOWNLOAD command.
+   * Called from background script via message handler.
+   */
+  recordDownloadEvent(folder: string, filename: string, url?: string): void {
+    if (!this.recording) {
+      return;
+    }
+
+    // Normalize folder: empty or '*' → '*'
+    const normalizedFolder = (!folder || folder === '*') ? '*' : folder;
+    // Normalize filename: empty or '+' → timestamp pattern
+    const normalizedFilename = (!filename || filename === '+')
+      ? '+_{{!NOW:yyyymmdd_hhnnss}}'
+      : filename;
+
+    // Quote values containing spaces (escape internal quotes)
+    const quoteIfNeeded = (val: string): string => {
+      if (val.includes(' ')) {
+        return `"${val.replace(/"/g, '\\"')}"`;
+      }
+      return val;
+    };
+
+    const command = `ONDOWNLOAD FOLDER=${quoteIfNeeded(normalizedFolder)} FILE=${quoteIfNeeded(normalizedFilename)} WAIT=YES`;
+
+    this.recordEvent('download', command, {
+      downloadFolder: folder,
+      downloadFilename: filename,
+      downloadUrl: url,
+    });
+  }
+
+  /**
+   * Record a frame event (FRAME F=n or FRAME NAME=name).
+   * Called from background script via message handler.
+   */
+  recordFrameEvent(frameIndex?: number, frameName?: string): void {
+    if (!this.recording) {
+      return;
+    }
+
+    let command: string;
+    if (frameName) {
+      command = `FRAME NAME=${frameName}`;
+    } else {
+      command = `FRAME F=${frameIndex ?? 0}`;
+    }
+
+    this.recordEvent('frame', command, {
+      frameAction: 'select',
+      frameIndex,
+      frameName,
+    });
   }
 
   /**
@@ -1267,13 +1332,42 @@ export function setupRecordingMessageListener(): void {
         }
 
         const payload = message.payload as {
-          folder: string;
-          filename: string;
+          folder?: string;
+          filename?: string;
           url?: string;
         };
 
-        const command = `ONDOWNLOAD FOLDER=${payload.folder} FILE=${payload.filename} WAIT=YES`;
-        recorder.recordTabEvent(command);
+        recorder.recordDownloadEvent(
+          payload.folder || '*',
+          payload.filename || '+',
+          payload.url,
+        );
+
+        sendResponse({ success: true });
+      } catch (error) {
+        sendResponse({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return true;
+    }
+
+    // Handle frame events from background script (FRAME F=n, FRAME NAME=name)
+    if (message.type === 'RECORD_FRAME_EVENT') {
+      try {
+        const recorder = getMacroRecorder();
+        if (!recorder.isRecording()) {
+          sendResponse({ success: false, error: 'Not recording' });
+          return true;
+        }
+
+        const payload = message.payload as {
+          frameIndex?: number;
+          frameName?: string;
+        };
+
+        recorder.recordFrameEvent(payload.frameIndex, payload.frameName);
 
         sendResponse({ success: true });
       } catch (error) {

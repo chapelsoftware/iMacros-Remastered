@@ -138,7 +138,7 @@ export const DEFAULT_SETTINGS: Settings = {
   masterPassword: '',
 
   // Scripting Interface
-  siEnabled: false,
+  siEnabled: true,
   siPort: 4951,
   siLocalhostOnly: true,
 

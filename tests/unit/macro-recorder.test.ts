@@ -701,9 +701,8 @@ describe('MacroRecorder', () => {
   });
 
   // ===== Download Recording =====
-  // TODO: These tests are for the download recording feature (separate task)
 
-  describe.skip('download recording', () => {
+  describe('download recording', () => {
     it('should record download event with ONDOWNLOAD command', () => {
       recorder.start();
       recorder.recordDownloadEvent('/downloads', 'report.pdf', 'https://example.com/report.pdf');
@@ -803,7 +802,7 @@ describe('MacroRecorder', () => {
 
   // ===== RECORD_DOWNLOAD Message Handler =====
 
-  describe.skip('RECORD_DOWNLOAD message handler', () => {
+  describe('RECORD_DOWNLOAD message handler', () => {
     let messageListeners: Array<(message: any, sender: any, sendResponse: any) => boolean | void>;
 
     beforeEach(() => {
@@ -1042,7 +1041,7 @@ describe('MacroRecorder', () => {
 
   // ===== Frame Event Recording =====
 
-  describe.skip('frame event recording', () => {
+  describe('frame event recording', () => {
     it('should record FRAME F=n event by index', () => {
       recorder.start();
       recorder.recordFrameEvent(2);
@@ -1115,7 +1114,7 @@ describe('MacroRecorder', () => {
 
   // ===== RECORD_TAB_EVENT Message Handler =====
 
-  describe.skip('RECORD_TAB_EVENT message handler', () => {
+  describe('RECORD_TAB_EVENT message handler', () => {
     let messageListeners: Array<(message: any, sender: any, sendResponse: any) => boolean | void>;
 
     beforeEach(() => {
@@ -1196,7 +1195,7 @@ describe('MacroRecorder', () => {
 
   // ===== RECORD_FRAME_EVENT Message Handler =====
 
-  describe.skip('RECORD_FRAME_EVENT message handler', () => {
+  describe('RECORD_FRAME_EVENT message handler', () => {
     let messageListeners: Array<(message: any, sender: any, sendResponse: any) => boolean | void>;
 
     beforeEach(() => {

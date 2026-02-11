@@ -179,7 +179,10 @@ describe('BrowserBridge', () => {
       });
 
       await expect(framePromise).resolves.toEqual({ success: true });
-      expect(bridge.getCurrentFrame()).toBe(1);
+      // selectFrame does NOT update currentFrameId — iMacros frame index
+      // is not the same as Chrome's internal frame ID. Commands route through
+      // the main frame's content script which uses FrameHandler internally.
+      expect(bridge.getCurrentFrame()).toBe(0);
     });
   });
 

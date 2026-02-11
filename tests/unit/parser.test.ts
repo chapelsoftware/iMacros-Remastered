@@ -1721,5 +1721,699 @@ WAIT SECONDS={{!VAR1}}`;
       expect(reparsed.commands[0].type).toBe('BACK');
       expect(reparsed.commands[0].parameters).toHaveLength(0);
     });
+
+    it('should roundtrip SET with EVAL expression', () => {
+      const original = 'SET !VAR1 EVAL("Math.floor(Math.random()*5 + 1);")';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe('SET');
+      expect(reparsed.commands[0].parameters[0].key).toBe('!VAR1');
+    });
+
+    it('should roundtrip TAG with multiple && in ATTR', () => {
+      const original = 'TAG POS=1 TYPE=INPUT:RADIO FORM=ID:demo ATTR=ID:medium&&VALUE:medium CONTENT=YES';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].parameters.find(p => p.key === 'ATTR')?.value)
+        .toBe('ID:medium&&VALUE:medium');
+    });
+
+    it('should roundtrip TAG with percent-quoted multi-select CONTENT', () => {
+      const original = 'TAG POS=1 TYPE=SELECT ATTR=ID:food CONTENT=%"ice cream":%"Apple Pie"';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].parameters.find(p => p.key === 'CONTENT')?.value)
+        .toBe('%"ice cream":%"Apple Pie"');
+    });
+
+    it('should roundtrip ONDOWNLOAD with WAIT and timestamp', () => {
+      const original = 'ONDOWNLOAD FOLDER=* FILE=+_{{!NOW:yyyymmdd_hhnnss}} WAIT=YES';
+      const parsed = parseMacro(original);
+      const serialized = serializeCommand(parsed.commands[0]);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.commands[0].type).toBe('ONDOWNLOAD');
+      const fileParam = reparsed.commands[0].parameters.find(p => p.key === 'FILE');
+      expect(fileParam?.variables).toHaveLength(1);
+      expect(fileParam?.variables[0].name).toBe('!NOW:yyyymmdd_hhnnss');
+    });
+
+    it('should roundtrip a macro preserving empty lines and comments', () => {
+      const script = "VERSION BUILD=7500718\n\n' Setup\nTAB T=1\n\nURL GOTO=http://example.com";
+      const parsed = parseMacro(script);
+      const serialized = serializeMacro(parsed);
+      const reparsed = parseMacro(serialized);
+      expect(reparsed.lines).toHaveLength(parsed.lines.length);
+      expect(reparsed.commands.length).toBe(parsed.commands.length);
+      expect(reparsed.comments.length).toBe(parsed.comments.length);
+      // Verify line types match
+      for (let i = 0; i < parsed.lines.length; i++) {
+        expect(reparsed.lines[i].type).toBe(parsed.lines[i].type);
+      }
+    });
+  });
+
+  // ============================================================
+  // SECTION: validateCommand - All Command Validations
+  // ============================================================
+  describe('validateCommand - All Commands', () => {
+    // Commands with required parameters - valid cases
+    it('should accept valid PROXY command', () => {
+      const result = parseMacro('PROXY ADDRESS=127.0.0.1:8080', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept valid PROXY with BYPASS', () => {
+      const result = parseMacro('PROXY ADDRESS=127.0.0.1:8080 BYPASS=localhost', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject PROXY without ADDRESS', () => {
+      const result = parseMacro('PROXY BYPASS=localhost', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('ADDRESS');
+    });
+
+    it('should accept valid SCREENSHOT command', () => {
+      const result = parseMacro('SCREENSHOT TYPE=PAGE FILE=screen.png', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject SCREENSHOT without TYPE', () => {
+      const result = parseMacro('SCREENSHOT FILE=screen.png', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('TYPE');
+    });
+
+    it('should reject SCREENSHOT without FILE', () => {
+      const result = parseMacro('SCREENSHOT TYPE=PAGE', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('FILE');
+    });
+
+    it('should accept valid FILEDELETE command', () => {
+      const result = parseMacro('FILEDELETE NAME=temp.txt', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject FILEDELETE without NAME', () => {
+      const result = parseMacro('FILEDELETE', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('NAME');
+    });
+
+    it('should accept valid CMDLINE command', () => {
+      const result = parseMacro('CMDLINE !VAR1 value', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject CMDLINE with fewer than 2 params', () => {
+      const result = parseMacro('CMDLINE !VAR1', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('variable name and value');
+    });
+
+    it('should accept valid EXEC command', () => {
+      const result = parseMacro('EXEC CMD=notepad.exe', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject EXEC without CMD', () => {
+      const result = parseMacro('EXEC WAIT=YES', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('CMD');
+    });
+
+    it('should accept valid CLICK command', () => {
+      const result = parseMacro('CLICK X=100 Y=200', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject CLICK without X', () => {
+      const result = parseMacro('CLICK Y=200', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('X and Y');
+    });
+
+    it('should reject CLICK without Y', () => {
+      const result = parseMacro('CLICK X=100', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('X and Y');
+    });
+
+    it('should accept valid EVENT command', () => {
+      const result = parseMacro('EVENT TYPE=KEYPRESS SELECTOR=input KEY=13', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject EVENT without TYPE', () => {
+      const result = parseMacro('EVENT SELECTOR=input KEY=13', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('TYPE');
+    });
+
+    it('should accept valid EVENTS command', () => {
+      const result = parseMacro('EVENTS TYPE=keypress SELECTOR="#input" CHARS="hello"', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject EVENTS without TYPE', () => {
+      const result = parseMacro('EVENTS SELECTOR="#input" CHARS="hello"', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('EVENTS');
+      expect(error?.message).toContain('TYPE');
+    });
+
+    it('should accept valid SEARCH command', () => {
+      const result = parseMacro('SEARCH SOURCE=TXT:hello', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject SEARCH without SOURCE', () => {
+      const result = parseMacro('SEARCH EXTRACT=$1', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('SOURCE');
+    });
+
+    it('should accept valid ONLOGIN command', () => {
+      const result = parseMacro('ONLOGIN USER=admin PASSWORD=secret', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject ONLOGIN without PASSWORD', () => {
+      const result = parseMacro('ONLOGIN USER=admin', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('USER and PASSWORD');
+    });
+
+    it('should reject ONLOGIN without USER', () => {
+      const result = parseMacro('ONLOGIN PASSWORD=secret', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+    });
+
+    it('should accept valid IMAGESEARCH command', () => {
+      const result = parseMacro('IMAGESEARCH POS=1 IMAGE=tpl.png CONFIDENCE=0.8', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject IMAGESEARCH without CONFIDENCE', () => {
+      const result = parseMacro('IMAGESEARCH POS=1 IMAGE=tpl.png', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('CONFIDENCE');
+    });
+
+    it('should reject IMAGESEARCH without IMAGE', () => {
+      const result = parseMacro('IMAGESEARCH POS=1 CONFIDENCE=0.8', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+    });
+
+    it('should accept valid FILTER command', () => {
+      const result = parseMacro('FILTER TYPE=IMAGES STATUS=ON', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject FILTER without TYPE', () => {
+      const result = parseMacro('FILTER STATUS=ON', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('TYPE');
+    });
+
+    it('should accept valid SAVEAS command', () => {
+      const result = parseMacro('SAVEAS TYPE=CPL FOLDER=* FILE=out', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject SAVEAS without TYPE', () => {
+      const result = parseMacro('SAVEAS FOLDER=* FILE=out', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('TYPE');
+    });
+
+    it('should accept valid ONDIALOG command', () => {
+      const result = parseMacro('ONDIALOG POS=1 BUTTON=OK', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject ONDIALOG without BUTTON', () => {
+      const result = parseMacro('ONDIALOG POS=1', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('BUTTON');
+    });
+
+    it('should reject ONDIALOG without POS', () => {
+      const result = parseMacro('ONDIALOG BUTTON=OK', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('POS');
+    });
+
+    it('should accept valid ONDOWNLOAD with only FOLDER', () => {
+      const result = parseMacro('ONDOWNLOAD FOLDER=*', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept valid ONDOWNLOAD with only FILE', () => {
+      const result = parseMacro('ONDOWNLOAD FILE=*', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept valid FRAME with F param', () => {
+      const result = parseMacro('FRAME F=0', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept valid FRAME with NAME param', () => {
+      const result = parseMacro('FRAME NAME=content', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should reject FRAME without F or NAME', () => {
+      const result = parseMacro('FRAME', false);
+      const error = validateCommand(result.commands[0]);
+      expect(error).not.toBeNull();
+      expect(error?.message).toContain('F or NAME');
+    });
+
+    it('should accept TAB with action NEW', () => {
+      const result = parseMacro('TAB NEW OPEN', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    // Commands that require no validation (always valid)
+    const noValidationCommands = [
+      'BACK', 'CLEAR', 'PAUSE', 'REFRESH', 'EXTRACT', 'PRINT', 'SIZE',
+      'SAVEITEM TYPE=IMG', 'ONCERTIFICATEDIALOG BUTTON=OK',
+      'ONERRORDIALOG BUTTON=OK', 'ONPRINT', 'ONSECURITYDIALOG BUTTON=YES',
+      'ONWEBPAGEDIALOG BUTTON=OK', 'IMAGECLICK X=1 Y=1',
+      'WINCLICK X=1 Y=1', 'DISCONNECT', 'REDIAL', 'DS CMD=NEXT',
+      'NAVIGATE FORWARD', 'VERSION BUILD=1',
+    ];
+
+    for (const cmd of noValidationCommands) {
+      it(`should accept ${cmd.split(' ')[0]} without error`, () => {
+        const result = parseMacro(cmd, false);
+        expect(validateCommand(result.commands[0])).toBeNull();
+      });
+    }
+
+    // STOPWATCH variations should all be valid
+    it('should accept bare STOPWATCH', () => {
+      const result = parseMacro('STOPWATCH', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept STOPWATCH with ID', () => {
+      const result = parseMacro('STOPWATCH ID=timer1', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept STOPWATCH with ACTION', () => {
+      const result = parseMacro('STOPWATCH ACTION=RESET', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept STOPWATCH with LABEL', () => {
+      const result = parseMacro('STOPWATCH LABEL=checkpoint', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept STOPWATCH START ID', () => {
+      const result = parseMacro('STOPWATCH START ID=timer1', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+
+    it('should accept STOPWATCH STOP ID', () => {
+      const result = parseMacro('STOPWATCH STOP ID=timer1', false);
+      expect(validateCommand(result.commands[0])).toBeNull();
+    });
+  });
+
+  // ============================================================
+  // SECTION: Quote and Escape Edge Cases
+  // ============================================================
+  describe('Quote and Escape Edge Cases', () => {
+    it('should handle unquoteValue with null/empty input', () => {
+      expect(unquoteValue('')).toBe('');
+    });
+
+    it('should handle unquoteValue with only whitespace', () => {
+      expect(unquoteValue('   ')).toBe('');
+    });
+
+    it('should handle single character unquoted', () => {
+      expect(unquoteValue('x')).toBe('x');
+    });
+
+    it('should handle quote only at start (no closing quote)', () => {
+      // Not a properly quoted string since no closing quote
+      expect(unquoteValue('"noclose')).toBe('"noclose');
+    });
+
+    it('should handle quote only at end', () => {
+      expect(unquoteValue('noopen"')).toBe('noopen"');
+    });
+
+    it('should handle triple escaped backslashes', () => {
+      // Input: "a\\\\b" -> after unquote: a\\b (two real backslashes become one each)
+      expect(unquoteValue('"a\\\\\\\\b"')).toBe('a\\\\b');
+    });
+
+    it('should handle all escape sequences combined', () => {
+      expect(unquoteValue('"\\n\\t\\"\\\\"')).toBe('\n\t"\\');
+    });
+
+    it('should parse parameter with empty value after equals', () => {
+      const params = parseParameters('KEY=');
+      expect(params).toHaveLength(1);
+      expect(params[0].key).toBe('KEY');
+      expect(params[0].value).toBe('');
+    });
+
+    it('should parse parameter with equals sign in unquoted value', () => {
+      // URL with query string: GOTO=http://x.com?a=1
+      // The parser reads until whitespace, so this is all one value
+      const params = parseParameters('GOTO=http://x.com?a=1');
+      expect(params[0].key).toBe('GOTO');
+      expect(params[0].value).toContain('a=1');
+    });
+
+    it('should handle consecutive equals signs', () => {
+      const params = parseParameters('KEY==value');
+      expect(params[0].key).toBe('KEY');
+      expect(params[0].value).toBe('=value');
+    });
+
+    it('should handle unclosed quoted value', () => {
+      // Parser should handle gracefully - read to end of string
+      const params = parseParameters('KEY="unclosed');
+      expect(params).toHaveLength(1);
+      expect(params[0].key).toBe('KEY');
+    });
+
+    it('should handle completely empty quoted value in parameter', () => {
+      const params = parseParameters('KEY=""');
+      expect(params).toHaveLength(1);
+      expect(params[0].key).toBe('KEY');
+      expect(params[0].value).toBe('');
+    });
+
+    it('should handle multiple quoted positional arguments', () => {
+      const params = parseParameters('"first" "second" "third"');
+      expect(params).toHaveLength(3);
+      expect(params[0].key).toBe('first');
+      expect(params[1].key).toBe('second');
+      expect(params[2].key).toBe('third');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Variable Extraction Edge Cases
+  // ============================================================
+  describe('Variable Extraction Edge Cases', () => {
+    it('should handle unclosed braces', () => {
+      const vars = extractVariables('{{unclosed');
+      expect(vars).toHaveLength(0);
+    });
+
+    it('should handle single braces (not variable)', () => {
+      const vars = extractVariables('{single}');
+      expect(vars).toHaveLength(0);
+    });
+
+    it('should handle empty braces', () => {
+      const vars = extractVariables('{{}}');
+      // Empty name between braces - regex matches non-empty [^}]+ so this won't match
+      expect(vars).toHaveLength(0);
+    });
+
+    it('should handle nested braces', () => {
+      // {{a{{b}}}} - the regex is greedy on [^}]+ so it stops at first }
+      const vars = extractVariables('{{a{{b}}}}');
+      // Inner match: the regex finds 'a{{b' as the name (between first {{ and first }})
+      expect(vars.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should handle variable with spaces', () => {
+      const vars = extractVariables('{{ spaced }}');
+      expect(vars).toHaveLength(1);
+      expect(vars[0].name).toBe(' spaced ');
+    });
+
+    it('should handle variable at start and end of string', () => {
+      const vars = extractVariables('{{start}}middle{{end}}');
+      expect(vars).toHaveLength(2);
+      expect(vars[0].name).toBe('start');
+      expect(vars[0].start).toBe(0);
+      expect(vars[1].name).toBe('end');
+      expect(vars[1].end).toBe('{{start}}middle{{end}}'.length);
+    });
+
+    it('should correctly track multiple variable positions', () => {
+      const text = 'a{{x}}b{{y}}c';
+      const vars = extractVariables(text);
+      // {{x}} at index 1, length 5 -> end=6; {{y}} at index 7, length 5 -> end=12
+      expect(vars[0]).toMatchObject({ name: 'x', start: 1, end: 6 });
+      expect(vars[1]).toMatchObject({ name: 'y', start: 7, end: 12 });
+    });
+  });
+
+  // ============================================================
+  // SECTION: isSystemVariable Edge Cases
+  // ============================================================
+  describe('isSystemVariable Edge Cases', () => {
+    it('should identify all SYSTEM_VARIABLES as system variables', () => {
+      for (const sysVar of SYSTEM_VARIABLES) {
+        expect(isSystemVariable(sysVar)).toBe(true);
+      }
+    });
+
+    it('should identify !NOW with various formats', () => {
+      expect(isSystemVariable('!NOW:yyyy')).toBe(true);
+      expect(isSystemVariable('!NOW:mm')).toBe(true);
+      expect(isSystemVariable('!NOW:dd')).toBe(true);
+      expect(isSystemVariable('!NOW:hh')).toBe(true);
+      expect(isSystemVariable('!NOW:yyyymmdd_hhnnss')).toBe(true);
+      expect(isSystemVariable('!NOW:dow')).toBe(true);
+      expect(isSystemVariable('!NOW:doy')).toBe(true);
+    });
+
+    it('should return false for empty string', () => {
+      expect(isSystemVariable('')).toBe(false);
+    });
+
+    it('should return false for just !', () => {
+      expect(isSystemVariable('!')).toBe(false);
+    });
+
+    it('should identify newer system variables', () => {
+      expect(isSystemVariable('!FILE_PROFILER')).toBe(true);
+      expect(isSystemVariable('!LINENUMBER_DELTA')).toBe(true);
+      expect(isSystemVariable('!DOWNLOAD_FILE')).toBe(true);
+      expect(isSystemVariable('!DOWNLOAD_WAIT')).toBe(true);
+      expect(isSystemVariable('!DOWNLOAD_CHECKSUM')).toBe(true);
+      expect(isSystemVariable('!LAST_DOWNLOAD_ID')).toBe(true);
+      expect(isSystemVariable('!IMAGEFILTER')).toBe(true);
+      expect(isSystemVariable('!DOCUMENT_TITLE')).toBe(true);
+    });
+  });
+
+  // ============================================================
+  // SECTION: parseVersionInfo Edge Cases
+  // ============================================================
+  describe('VERSION Parsing Edge Cases', () => {
+    it('should parse VERSION with only RECORDER', () => {
+      const result = parseMacro('VERSION RECORDER=CR');
+      expect(result.version?.recorder).toBe('CR');
+      expect(result.version?.build).toBeUndefined();
+    });
+
+    it('should parse VERSION with no parameters', () => {
+      const result = parseMacro('VERSION');
+      // No BUILD or RECORDER, so version should be undefined
+      expect(result.version).toBeUndefined();
+    });
+
+    it('should use first VERSION command if multiple present', () => {
+      const script = 'VERSION BUILD=1\nVERSION BUILD=2';
+      const result = parseMacro(script);
+      expect(result.version?.build).toBe('1');
+    });
+
+    it('should be case-insensitive for BUILD and RECORDER keys', () => {
+      const result = parseMacro('VERSION build=123 recorder=FX');
+      expect(result.version?.build).toBe('123');
+      expect(result.version?.recorder).toBe('FX');
+    });
+  });
+
+  // ============================================================
+  // SECTION: collectUniqueVariables
+  // ============================================================
+  describe('Unique Variable Collection', () => {
+    it('should deduplicate variables across multiple commands', () => {
+      const script = 'URL GOTO={{!VAR1}}\nTAG POS=1 TYPE=INPUT ATTR=NAME:{{!VAR1}} CONTENT={{!VAR2}}';
+      const result = parseMacro(script);
+      const names = result.variables.map(v => v.name);
+      expect(names.filter(n => n === '!VAR1')).toHaveLength(1);
+      expect(names).toContain('!VAR2');
+    });
+
+    it('should return empty array when no variables present', () => {
+      const result = parseMacro('BACK\nPAUSE\nREFRESH');
+      expect(result.variables).toHaveLength(0);
+    });
+
+    it('should collect variables from nested parameters', () => {
+      const script = 'SET !DATASOURCE_LINE {{!LOOP}}\nTAG POS={{!LOOP}} TYPE=INPUT ATTR=NAME:f CONTENT={{!COL1}}';
+      const result = parseMacro(script);
+      const names = result.variables.map(v => v.name);
+      expect(names).toContain('!LOOP');
+      expect(names).toContain('!COL1');
+      // !LOOP should appear only once
+      expect(names.filter(n => n === '!LOOP')).toHaveLength(1);
+    });
+  });
+
+  // ============================================================
+  // SECTION: parseMacro Error Aggregation
+  // ============================================================
+  describe('parseMacro Error Aggregation', () => {
+    it('should collect errors from multiple commands', () => {
+      const script = 'URL\nTAG ATTR=x\nWAIT\nSET !VAR1\nFOOBAR';
+      const result = parseMacro(script, true);
+      // URL missing GOTO, TAG missing POS/TYPE, WAIT missing SECONDS, SET missing value, FOOBAR unknown
+      expect(result.errors.length).toBe(5);
+    });
+
+    it('should still parse commands even when errors exist', () => {
+      const script = 'URL\nBACK\nWAIT';
+      const result = parseMacro(script, true);
+      expect(result.commands).toHaveLength(3);
+      // URL and WAIT have errors, BACK doesn't
+      expect(result.errors.length).toBe(2);
+    });
+
+    it('should report correct line numbers for errors in mixed content', () => {
+      const script = "' comment\n\nURL\n' another comment\nWAIT";
+      const result = parseMacro(script, true);
+      const urlError = result.errors.find(e => e.message.includes('GOTO'));
+      const waitError = result.errors.find(e => e.message.includes('SECONDS'));
+      expect(urlError?.lineNumber).toBe(3);
+      expect(waitError?.lineNumber).toBe(5);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Serialization Edge Cases
+  // ============================================================
+  describe('Serialization Edge Cases', () => {
+    it('should serialize macro with only empty lines', () => {
+      const result = parseMacro('\n\n\n');
+      const serialized = serializeMacro(result);
+      expect(serialized).toBe('\n\n\n');
+    });
+
+    it('should serialize macro with only comments', () => {
+      const script = "' line1\n' line2";
+      const result = parseMacro(script);
+      const serialized = serializeMacro(result);
+      expect(serialized).toBe("' line1\n' line2");
+    });
+
+    it('should serialize SET command with positional params', () => {
+      // Positional args (boolean flags) have rawValue set to the key string itself,
+      // so serialization produces key=rawValue format (not ideal roundtrip for SET)
+      const result = parseMacro('SET !VAR1 hello');
+      const serialized = serializeCommand(result.commands[0]);
+      // rawValue is the key itself ('!VAR1', 'hello'), so output is key=rawValue
+      expect(serialized).toBe('SET !VAR1=!VAR1 hello=hello');
+    });
+
+    it('should serialize command with empty parameters list', () => {
+      const cmd: ParsedCommand = {
+        type: 'PAUSE',
+        parameters: [],
+        raw: 'PAUSE',
+        lineNumber: 1,
+        variables: [],
+      };
+      expect(serializeCommand(cmd)).toBe('PAUSE');
+    });
+  });
+
+  // ============================================================
+  // SECTION: EXEC and CMDLINE Command Parsing
+  // ============================================================
+  describe('EXEC and CMDLINE Command Parsing', () => {
+    it('should parse EXEC with all parameters', () => {
+      const result = parseMacro('EXEC CMD=notepad.exe WAIT=YES TIMEOUT=30');
+      expect(result.commands[0].type).toBe('EXEC');
+      expect(result.commands[0].parameters.find(p => p.key === 'CMD')?.value).toBe('notepad.exe');
+      expect(result.commands[0].parameters.find(p => p.key === 'WAIT')?.value).toBe('YES');
+      expect(result.commands[0].parameters.find(p => p.key === 'TIMEOUT')?.value).toBe('30');
+    });
+
+    it('should parse EXEC with quoted CMD', () => {
+      const result = parseMacro('EXEC CMD="C:\\Program Files\\app.exe"');
+      expect(result.commands[0].type).toBe('EXEC');
+      const cmdParam = result.commands[0].parameters.find(p => p.key === 'CMD');
+      expect(cmdParam?.value).toContain('Program Files');
+    });
+
+    it('should parse CMDLINE with variable name and value', () => {
+      const result = parseMacro('CMDLINE !VAR1 myvalue');
+      expect(result.commands[0].type).toBe('CMDLINE');
+      expect(result.commands[0].parameters[0].key).toBe('!VAR1');
+      expect(result.commands[0].parameters[1].key).toBe('myvalue');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Command Case Insensitivity
+  // ============================================================
+  describe('Command Case Insensitivity', () => {
+    const commandVariants = [
+      ['url', 'URL'],
+      ['tag', 'TAG'],
+      ['set', 'SET'],
+      ['wait', 'WAIT'],
+      ['Url', 'URL'],
+      ['Tag', 'TAG'],
+      ['SeT', 'SET'],
+    ];
+
+    for (const [input, expected] of commandVariants) {
+      it(`should parse "${input}" as ${expected}`, () => {
+        const result = parseMacro(`${input} GOTO=http://x.com`);
+        expect(result.commands[0].type).toBe(expected);
+      });
+    }
+
+    it('should be case-insensitive for isValidCommand', () => {
+      expect(isValidCommand('url')).toBe(true);
+      expect(isValidCommand('URL')).toBe(true);
+      expect(isValidCommand('Url')).toBe(true);
+      expect(isValidCommand('notAcommand')).toBe(false);
+    });
   });
 });

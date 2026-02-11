@@ -569,6 +569,148 @@ export async function handleRestorePopupSettings(): Promise<{ success: boolean; 
 }
 
 // ============================================================================
+// Proxy Settings Handler
+// ============================================================================
+
+/** Saved proxy settings to restore at macro end */
+let savedProxyConfig: chrome.proxy.ProxyConfig | null = null;
+
+/**
+ * Handle setProxy message from the macro executor.
+ * Backs up current proxy settings on first use, then applies the new config.
+ */
+export async function handleSetProxy(params: {
+  proxyType: string;
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  bypass?: string[];
+  bypassAppend?: boolean;
+  protocol?: string;
+  backupFirst?: boolean;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Backup current proxy settings on first use in this macro execution
+    if (params.backupFirst && chrome.proxy?.settings) {
+      const current = await new Promise<chrome.proxy.ProxyConfig>((resolve) => {
+        chrome.proxy.settings.get({}, (details) => {
+          resolve(details.value);
+        });
+      });
+      savedProxyConfig = current;
+      console.log('[iMacros] Backed up proxy settings:', JSON.stringify(savedProxyConfig));
+    }
+
+    if (!chrome.proxy?.settings) {
+      return { success: true }; // No proxy API available (e.g., testing)
+    }
+
+    // Build the proxy config based on proxyType
+    let config: chrome.proxy.ProxyConfig;
+
+    if (params.proxyType === 'direct') {
+      config = { mode: 'direct' };
+    } else if (params.proxyType === 'system') {
+      config = { mode: 'system' };
+    } else {
+      // HTTP, HTTPS, SOCKS4, SOCKS5 proxy
+      const scheme = params.proxyType === 'socks4' ? 'socks4'
+        : params.proxyType === 'socks5' ? 'socks5'
+        : params.proxyType === 'https' ? 'https'
+        : 'http';
+
+      const proxyRule: chrome.proxy.ProxyServer = {
+        scheme,
+        host: params.host || '',
+        port: params.port,
+      };
+
+      // Build rules-based config for per-protocol or bypass support
+      const rules: chrome.proxy.ProxyRules = {};
+
+      if (params.protocol === 'http') {
+        rules.proxyForHttp = proxyRule;
+      } else if (params.protocol === 'https') {
+        rules.proxyForHttps = proxyRule;
+      } else {
+        rules.singleProxy = proxyRule;
+      }
+
+      if (params.bypass && params.bypass.length > 0) {
+        rules.bypassList = params.bypass;
+      }
+
+      config = { mode: 'fixed_servers', rules };
+    }
+
+    // Apply the proxy configuration
+    await new Promise<void>((resolve, reject) => {
+      chrome.proxy.settings.set({ value: config }, () => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve();
+        }
+      });
+    });
+
+    console.log(`[iMacros] Proxy set: ${params.proxyType} ${params.host || ''}:${params.port || ''}`);
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[iMacros] Failed to set proxy:', errorMessage);
+    return { success: false, error: errorMessage };
+  }
+}
+
+/**
+ * Handle restoreProxy message (sent at macro end).
+ * Restores proxy settings to the state before the macro modified them.
+ */
+export async function handleRestoreProxy(): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!chrome.proxy?.settings) {
+      savedProxyConfig = null;
+      return { success: true };
+    }
+
+    if (savedProxyConfig) {
+      await new Promise<void>((resolve, reject) => {
+        chrome.proxy.settings.set({ value: savedProxyConfig! }, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        });
+      });
+      console.log('[iMacros] Proxy settings restored');
+    } else {
+      // No backup — clear to system defaults
+      await new Promise<void>((resolve, reject) => {
+        chrome.proxy.settings.clear({}, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        });
+      });
+      console.log('[iMacros] Proxy settings cleared to default');
+    }
+
+    savedProxyConfig = null;
+    return { success: true };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[iMacros] Failed to restore proxy settings:', errorMessage);
+    savedProxyConfig = null;
+    return { success: false, error: errorMessage };
+  }
+}
+
+// ============================================================================
 // Initialization
 // ============================================================================
 

@@ -1083,13 +1083,21 @@ export const browserCommandHandlers = {
 } as const;
 
 /**
- * Register all browser command handlers with the executor
+ * Register all browser command handlers with the executor.
+ * Also registers cleanup callbacks to restore proxy and popup settings at macro end.
  */
 export function registerBrowserCommandHandlers(executor: {
   registerHandler: (type: string, handler: CommandHandler) => void;
+  registerCleanup?: (callback: (ctx: CommandContext) => Promise<void>) => void;
 }): void {
   for (const [type, handler] of Object.entries(browserCommandHandlers)) {
     executor.registerHandler(type, handler);
+  }
+
+  // Register cleanup callbacks for settings that need restoring at macro end
+  if (executor.registerCleanup) {
+    executor.registerCleanup(restoreProxySettings);
+    executor.registerCleanup(restorePopupSettings);
   }
 }
 

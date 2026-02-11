@@ -17,6 +17,8 @@ import {
   handleSetFilter,
   handleSetPopupAllowed,
   handleRestorePopupSettings,
+  handleSetProxy,
+  handleRestoreProxy,
   setAuthCredentials,
   clearAuthCredentials,
   getAuthCredentials,
@@ -680,6 +682,30 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
         break;
       }
 
+      case 'setProxy': {
+        const {
+          proxyType, host, port, username, password,
+          bypass, bypassAppend, protocol, backupFirst,
+        } = params as {
+          proxyType: string; host?: string; port?: number;
+          username?: string; password?: string;
+          bypass?: string[]; bypassAppend?: boolean;
+          protocol?: string; backupFirst?: boolean;
+        };
+        console.log(`[iMacros] setProxy: type=${proxyType}, host=${host}, port=${port}`);
+        result = await handleSetProxy({
+          proxyType, host, port, username, password,
+          bypass, bypassAppend, protocol, backupFirst,
+        });
+        break;
+      }
+
+      case 'restoreProxy': {
+        console.log('[iMacros] restoreProxy');
+        result = await handleRestoreProxy();
+        break;
+      }
+
       default:
         result = { success: false, error: `Unknown command type: ${commandType}` };
     }
@@ -1235,6 +1261,21 @@ async function handleMessage(
     case 'restorePopupSettings':
       console.log('[iMacros] restorePopupSettings received');
       return await handleRestorePopupSettings();
+
+    case 'setProxy': {
+      const proxyPayload = message.payload as {
+        proxyType: string; host?: string; port?: number;
+        username?: string; password?: string;
+        bypass?: string[]; bypassAppend?: boolean;
+        protocol?: string; backupFirst?: boolean;
+      };
+      console.log('[iMacros] setProxy received:', proxyPayload);
+      return await handleSetProxy(proxyPayload);
+    }
+
+    case 'restoreProxy':
+      console.log('[iMacros] restoreProxy received');
+      return await handleRestoreProxy();
 
     case 'SET_AUTH_CREDENTIALS':
       const authPayload = message.payload as { username: string; password: string; urlPattern?: string };

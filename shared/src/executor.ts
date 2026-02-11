@@ -312,6 +312,8 @@ export class MacroExecutor {
   private profilerRecords: ProfilerRecord[] = [];
   /** Cleanup callbacks to run when macro execution ends (all exit paths) */
   private cleanupCallbacks: CleanupCallback[] = [];
+  /** Pending async error (e.g., download timeout) checked between commands */
+  private pendingError: CommandResult | null = null;
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -359,6 +361,18 @@ export class MacroExecutor {
    */
   registerCleanup(callback: CleanupCallback): void {
     this.cleanupCallbacks.push(callback);
+  }
+
+  /**
+   * Set a pending async error (e.g., from a background download timeout).
+   * The error will be checked between command executions and, if present,
+   * will terminate execution just like a normal command error.
+   */
+  setPendingError(error: CommandResult): void {
+    // Only store the first pending error
+    if (!this.pendingError) {
+      this.pendingError = error;
+    }
   }
 
   /**
@@ -577,6 +591,7 @@ export class MacroExecutor {
     this.state.resetForExecution();
     this.abortFlag = false;
     this.pauseFlag = false;
+    this.pendingError = null;
     clearStopwatchRecords();
     this.profilerRecords = [];
 
@@ -606,6 +621,21 @@ export class MacroExecutor {
         let commandIndex = 0;
 
         while (commandIndex < commands.length && !this.abortFlag) {
+          // Check for pending async error (e.g., download timeout)
+          if (this.pendingError) {
+            const pendingResult = this.pendingError;
+            this.pendingError = null;
+            if (this.errorIgnore || this.state.getVariable('!ERRORIGNORE') === 'YES') {
+              this.log('warn', `Async error ignored: ${pendingResult.errorMessage}`);
+            } else {
+              this.state.setError(pendingResult.errorCode as ErrorCode, pendingResult.errorMessage);
+              macroResult = this.buildResult(false, pendingResult.errorCode, pendingResult.errorMessage, commandIndex + 1);
+              await this.writeStopwatchCsv(macroResult);
+              await this.writeProfilerCsv(macroResult);
+              return macroResult;
+            }
+          }
+
           // Check for pause
           if (this.pauseFlag) {
             await this.waitForResume();

@@ -261,6 +261,93 @@ async function sendDownloadMessage(
   }
 }
 
+// ===== Download Timeout Manager =====
+
+/**
+ * Minimum download timeout in seconds (iMacros 8.9.7 parity: min 4s)
+ */
+const MIN_DOWNLOAD_TIMEOUT_S = 4;
+
+/**
+ * Callback to inject an async error into the executor between commands.
+ */
+type PendingErrorCallback = (error: CommandResult) => void;
+
+/**
+ * Manages the "no download occurred" timeout for ONDOWNLOAD.
+ *
+ * In original iMacros, after ONDOWNLOAD is configured, a timer starts
+ * for 4 × !TIMEOUT_TAG seconds (min 4s). If no download event appears
+ * before it fires, error -952 / 804 is raised.
+ */
+class DownloadTimeoutManager {
+  private timerId: ReturnType<typeof setTimeout> | null = null;
+  private onPendingError: PendingErrorCallback | null = null;
+
+  /**
+   * Set the callback used to inject a timeout error into the executor.
+   */
+  setPendingErrorCallback(cb: PendingErrorCallback | null): void {
+    this.onPendingError = cb;
+  }
+
+  /**
+   * Start the download timeout.
+   * @param timeoutTagSeconds The current !TIMEOUT_TAG value (seconds)
+   */
+  start(timeoutTagSeconds: number): void {
+    this.cancel();
+    const timeoutMs = Math.max(MIN_DOWNLOAD_TIMEOUT_S, timeoutTagSeconds * 4) * 1000;
+    this.timerId = setTimeout(() => {
+      this.timerId = null;
+      if (this.onPendingError) {
+        this.onPendingError({
+          success: false,
+          errorCode: IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT,
+          errorMessage: 'ONDOWNLOAD command was used but no download occurred',
+        });
+      }
+    }, timeoutMs);
+  }
+
+  /**
+   * Cancel the running timeout (download arrived, macro ended, or reconfigured).
+   */
+  cancel(): void {
+    if (this.timerId !== null) {
+      clearTimeout(this.timerId);
+      this.timerId = null;
+    }
+  }
+
+  /**
+   * Whether a timeout is currently active.
+   */
+  isActive(): boolean {
+    return this.timerId !== null;
+  }
+}
+
+/**
+ * Module-level timeout manager instance.
+ */
+const downloadTimeoutManager = new DownloadTimeoutManager();
+
+/**
+ * Notify that a download has started (call from extension layer).
+ * Cancels the pending "no download" timeout.
+ */
+export function notifyDownloadStarted(): void {
+  downloadTimeoutManager.cancel();
+}
+
+/**
+ * Get the download timeout manager (for testing).
+ */
+export function getDownloadTimeoutManager(): DownloadTimeoutManager {
+  return downloadTimeoutManager;
+}
+
 // ===== Download State Variables =====
 
 /**
@@ -517,6 +604,11 @@ export const ondownloadHandler: CommandHandler = async (ctx: CommandContext): Pr
       errorMessage: response.error || 'Failed to set download options',
     };
   }
+
+  // Start the no-download timeout (iMacros 8.9.7 parity: 4 × !TIMEOUT_TAG, min 4s)
+  const timeoutTag = ctx.state.getVariable('!TIMEOUT_TAG');
+  const timeoutTagSeconds = typeof timeoutTag === 'number' ? timeoutTag : parseInt(String(timeoutTag), 10) || 6;
+  downloadTimeoutManager.start(timeoutTagSeconds);
 
   return {
     success: true,
@@ -807,6 +899,9 @@ export const saveitemHandler: CommandHandler = async (ctx: CommandContext): Prom
     ctx
   );
 
+  // A download was initiated, cancel the no-download timeout
+  downloadTimeoutManager.cancel();
+
   // Consume ONDOWNLOAD state after use (iMacros 8.9.7 parity)
   // Set to empty string to clear, since there is no deleteVariable
   ctx.state.setVariable(DOWNLOAD_FOLDER_KEY, '');
@@ -848,13 +943,28 @@ export const downloadHandlers = {
 } as const;
 
 /**
- * Register all download handlers with the executor
+ * Register all download handlers with the executor.
+ * Also wires up the download timeout manager for no-download error injection.
  */
 export function registerDownloadHandlers(executor: {
   registerHandler: (type: string, handler: CommandHandler) => void;
+  registerCleanup?: (callback: (ctx: CommandContext) => Promise<void>) => void;
+  setPendingError?: (error: CommandResult) => void;
 }): void {
   for (const [type, handler] of Object.entries(downloadHandlers)) {
     executor.registerHandler(type, handler);
+  }
+
+  // Wire the timeout manager to inject errors into the executor
+  if (executor.setPendingError) {
+    downloadTimeoutManager.setPendingErrorCallback(executor.setPendingError.bind(executor));
+  }
+
+  // Cancel the download timeout when the macro ends
+  if (executor.registerCleanup) {
+    executor.registerCleanup(async () => {
+      downloadTimeoutManager.cancel();
+    });
   }
 }
 

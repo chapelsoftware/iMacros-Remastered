@@ -529,4 +529,452 @@ describe('StatusSync', () => {
       expect(state1).toEqual(state2);
     });
   });
+
+  // ===== Default Status Messages =====
+
+  describe('Default Status Messages', () => {
+    it('should use "Ready" for idle status', () => {
+      sync.setStatus('idle');
+      expect(sync.getState().statusMessage).toBe('Ready');
+    });
+
+    it('should include macro name in playing message', () => {
+      sync.setMacro('Demo.iim');
+      sync.setStatus('playing');
+      expect(sync.getState().statusMessage).toContain('Demo.iim');
+    });
+
+    it('should use "Playing..." when no macro set', () => {
+      sync.setStatus('playing');
+      expect(sync.getState().statusMessage).toBe('Playing...');
+    });
+
+    it('should use "Recording..." for recording status', () => {
+      sync.setStatus('recording');
+      expect(sync.getState().statusMessage).toBe('Recording...');
+    });
+
+    it('should use "Paused" for paused status', () => {
+      sync.setStatus('paused');
+      expect(sync.getState().statusMessage).toBe('Paused');
+    });
+
+    it('should use error message for error status', () => {
+      sync.setError({ message: 'Custom error' });
+      sync.setStatus('error');
+      expect(sync.getState().statusMessage).toBe('Custom error');
+    });
+
+    it('should fallback to "Error occurred" when no error info', () => {
+      sync.setStatus('error');
+      // No error set, so default message
+      expect(sync.getState().statusMessage).toContain('Error');
+    });
+  });
+
+  // ===== Progress Bar UI =====
+
+  describe('Progress Bar UI', () => {
+    it('should update progress bar width based on line/totalLines', () => {
+      const progressBar = document.createElement('div');
+      sync.bindUIElements({ progressBar });
+
+      sync.setMacro('Test.iim', 10);
+      sync.setProgress(5);
+
+      expect(progressBar.style.width).toBe('50%');
+    });
+
+    it('should show 100% progress at last line', () => {
+      const progressBar = document.createElement('div');
+      sync.bindUIElements({ progressBar });
+
+      sync.setMacro('Test.iim', 20);
+      sync.setProgress(20);
+
+      expect(progressBar.style.width).toBe('100%');
+    });
+
+    it('should not update progress bar when totalLines is 0', () => {
+      const progressBar = document.createElement('div');
+      sync.bindUIElements({ progressBar });
+
+      sync.setProgress(5);
+
+      // totalLines is 0, so no width update
+      expect(progressBar.style.width).toBe('');
+    });
+  });
+
+  // ===== Error Display UI =====
+
+  describe('Error Display UI', () => {
+    it('should show error display with formatted message', () => {
+      const errorDisplay = document.createElement('div');
+      sync.bindUIElements({ errorDisplay });
+
+      sync.setError({ message: 'Element not found', line: 5, code: -920 });
+
+      expect(errorDisplay.style.display).toBe('block');
+      expect(errorDisplay.textContent).toContain('Element not found');
+      expect(errorDisplay.textContent).toContain('line 5');
+      expect(errorDisplay.textContent).toContain('Error -920');
+    });
+
+    it('should hide error display when no error', () => {
+      const errorDisplay = document.createElement('div');
+      sync.bindUIElements({ errorDisplay });
+
+      // No error set
+      sync.setStatus('idle');
+
+      expect(errorDisplay.style.display).toBe('none');
+    });
+
+    it('should show error then hide on clearError', () => {
+      const errorDisplay = document.createElement('div');
+      sync.bindUIElements({ errorDisplay });
+
+      sync.setError({ message: 'Something failed' });
+      expect(errorDisplay.style.display).toBe('block');
+
+      sync.clearError();
+      expect(errorDisplay.style.display).toBe('none');
+    });
+
+    it('should format error without line number', () => {
+      const errorDisplay = document.createElement('div');
+      sync.bindUIElements({ errorDisplay });
+
+      sync.setError({ message: 'General error' });
+
+      expect(errorDisplay.textContent).toBe('General error');
+      expect(errorDisplay.textContent).not.toContain('line');
+    });
+
+    it('should format error without code', () => {
+      const errorDisplay = document.createElement('div');
+      sync.bindUIElements({ errorDisplay });
+
+      sync.setError({ message: 'Some error', line: 3 });
+
+      expect(errorDisplay.textContent).toContain('line 3');
+      expect(errorDisplay.textContent).not.toContain('Error ');
+    });
+  });
+
+  // ===== Status Indicator CSS Classes =====
+
+  describe('Status Indicator CSS Classes', () => {
+    it('should use "ready" class for idle status', () => {
+      const statusIndicator = document.createElement('div');
+      sync.bindUIElements({ statusIndicator });
+
+      sync.setStatus('idle');
+      expect(statusIndicator.className).toBe('status-indicator ready');
+    });
+
+    it('should use "recording" class for recording status', () => {
+      const statusIndicator = document.createElement('div');
+      sync.bindUIElements({ statusIndicator });
+
+      sync.setStatus('recording');
+      expect(statusIndicator.className).toBe('status-indicator recording');
+    });
+
+    it('should use "paused" class for paused status', () => {
+      const statusIndicator = document.createElement('div');
+      sync.bindUIElements({ statusIndicator });
+
+      sync.setStatus('paused');
+      expect(statusIndicator.className).toBe('status-indicator paused');
+    });
+
+    it('should use "error" class for error status', () => {
+      const statusIndicator = document.createElement('div');
+      sync.bindUIElements({ statusIndicator });
+
+      sync.setStatus('error');
+      expect(statusIndicator.className).toBe('status-indicator error');
+    });
+  });
+
+  // ===== Message Handling Edge Cases =====
+
+  describe('Message Handling Edge Cases', () => {
+    function sendChromeMessage(message: any): void {
+      if (chromeMessageListenerRef.current) {
+        chromeMessageListenerRef.current(message, {}, () => {});
+      }
+    }
+
+    it('should handle STATUS_UPDATE with macroName', () => {
+      sendChromeMessage({
+        type: 'STATUS_UPDATE',
+        payload: { status: 'playing', macroName: 'Login.iim' },
+      });
+      expect(sync.getState().currentMacro).toBe('Login.iim');
+    });
+
+    it('should handle STATUS_UPDATE with maxLoop', () => {
+      sendChromeMessage({
+        type: 'STATUS_UPDATE',
+        payload: { maxLoop: 10 },
+      });
+      expect(sync.getState().maxLoop).toBe(10);
+    });
+
+    it('should handle MACRO_PROGRESS with alternative field names', () => {
+      sendChromeMessage({
+        type: 'MACRO_PROGRESS',
+        payload: { line: 7, loop: 2, maxLoop: 5, command: 'TAG ...' },
+      });
+      expect(sync.getState().currentLine).toBe(7);
+      expect(sync.getState().currentLoop).toBe(2);
+      expect(sync.getState().maxLoop).toBe(5);
+    });
+
+    it('should log command during MACRO_PROGRESS', () => {
+      sendChromeMessage({
+        type: 'MACRO_PROGRESS',
+        payload: { currentLine: 3, currentCommand: 'URL GOTO=example.com' },
+      });
+      const logs = sync.getLogs();
+      expect(logs.length).toBeGreaterThan(0);
+      const lastLog = logs[logs.length - 1];
+      expect(lastLog.message).toBe('URL GOTO=example.com');
+      expect(lastLog.line).toBe(3);
+    });
+
+    it('should use "Line N" when no command in MACRO_PROGRESS', () => {
+      sendChromeMessage({
+        type: 'MACRO_PROGRESS',
+        payload: { currentLine: 4 },
+      });
+      const logs = sync.getLogs();
+      const lastLog = logs[logs.length - 1];
+      expect(lastLog.message).toBe('Line 4');
+    });
+
+    it('should handle MACRO_COMPLETE with default message', () => {
+      sync.setStatus('playing');
+      sendChromeMessage({
+        type: 'MACRO_COMPLETE',
+        payload: {},
+      });
+      expect(sync.getStatus()).toBe('idle');
+      expect(sync.getState().statusMessage).toBe('Complete');
+    });
+
+    it('should log completion', () => {
+      sendChromeMessage({
+        type: 'MACRO_COMPLETE',
+        payload: { message: 'Done' },
+      });
+      const logs = sync.getLogs();
+      const infoLogs = logs.filter(l => l.type === 'info');
+      expect(infoLogs.length).toBeGreaterThan(0);
+      expect(infoLogs[infoLogs.length - 1].message).toBe('Macro completed successfully');
+    });
+
+    it('should handle MACRO_ERROR with alternative field names', () => {
+      sendChromeMessage({
+        type: 'MACRO_ERROR',
+        payload: { error: 'Timeout', code: -802 },
+      });
+      expect(sync.getStatus()).toBe('error');
+      expect(sync.getState().lastError?.message).toBe('Timeout');
+      expect(sync.getState().lastError?.code).toBe(-802);
+    });
+
+    it('should handle MACRO_ERROR with message field', () => {
+      sendChromeMessage({
+        type: 'MACRO_ERROR',
+        payload: { message: 'Page not found' },
+      });
+      expect(sync.getState().lastError?.message).toBe('Page not found');
+    });
+
+    it('should handle MACRO_ERROR with error details', () => {
+      sendChromeMessage({
+        type: 'MACRO_ERROR',
+        payload: {
+          errorMessage: 'Element error',
+          command: 'TAG POS=1',
+          details: 'CSS selector failed',
+        },
+      });
+      expect(sync.getState().lastError?.command).toBe('TAG POS=1');
+      expect(sync.getState().lastError?.details).toBe('CSS selector failed');
+    });
+
+    it('should log error with line info', () => {
+      sendChromeMessage({
+        type: 'MACRO_ERROR',
+        payload: { errorMessage: 'Not found', errorLine: 7 },
+      });
+      const logs = sync.getLogs();
+      const errorLogs = logs.filter(l => l.type === 'error');
+      expect(errorLogs.length).toBeGreaterThan(0);
+      expect(errorLogs[errorLogs.length - 1].message).toContain('at line 7');
+    });
+
+    it('should handle MACRO_RESUMED with current macro name', () => {
+      sync.setMacro('Test.iim');
+      sync.setStatus('paused');
+      sendChromeMessage({ type: 'MACRO_RESUMED' });
+      expect(sync.getState().statusMessage).toContain('Test.iim');
+    });
+
+    it('should handle RECORDING_LINE with missing fields', () => {
+      sendChromeMessage({
+        type: 'RECORDING_LINE',
+        payload: {},
+      });
+      expect(sync.getState().currentLine).toBe(0);
+    });
+
+    it('should handle RECORDING_SAVED clearing startTime', () => {
+      sync.setStatus('recording');
+      expect(sync.getState().startTime).not.toBeNull();
+
+      sendChromeMessage({ type: 'RECORDING_SAVED' });
+      expect(sync.getState().startTime).toBeNull();
+      expect(sync.getState().currentLine).toBe(0);
+    });
+
+    it('should emit both complete and status_change on RECORDING_SAVED', () => {
+      const listener = vi.fn();
+      sync.addListener(listener);
+
+      sendChromeMessage({ type: 'RECORDING_SAVED' });
+
+      const eventTypes = listener.mock.calls.map((c: any) => c[0].type);
+      expect(eventTypes).toContain('complete');
+      expect(eventTypes).toContain('status_change');
+    });
+
+    it('should handle unknown message type gracefully', () => {
+      // Should not throw
+      expect(() => {
+        sendChromeMessage({ type: 'UNKNOWN_TYPE', payload: {} });
+      }).not.toThrow();
+    });
+
+    it('should handle message without payload', () => {
+      expect(() => {
+        sendChromeMessage({ type: 'STATUS_UPDATE' });
+      }).not.toThrow();
+    });
+  });
+
+  // ===== Multiple Listeners =====
+
+  describe('Multiple Listeners', () => {
+    it('should notify all listeners', () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+      const listener3 = vi.fn();
+
+      sync.addListener(listener1);
+      sync.addListener(listener2);
+      sync.addListener(listener3);
+
+      sync.setStatus('playing');
+
+      expect(listener1).toHaveBeenCalled();
+      expect(listener2).toHaveBeenCalled();
+      expect(listener3).toHaveBeenCalled();
+    });
+
+    it('should handle removing one listener while others stay active', () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+
+      sync.addListener(listener1);
+      const unsub2 = sync.addListener(listener2);
+
+      unsub2();
+      sync.setStatus('playing');
+
+      expect(listener1).toHaveBeenCalled();
+      expect(listener2).not.toHaveBeenCalled();
+    });
+  });
+
+  // ===== Loop Counter Display =====
+
+  describe('Loop Counter Display', () => {
+    it('should show current/max when maxLoop > 1', () => {
+      const loopCounter = document.createElement('span');
+      sync.bindUIElements({ loopCounter });
+
+      sync.setProgress(1, 2, 5);
+      expect(loopCounter.textContent).toBe('2/5');
+    });
+
+    it('should show single number when maxLoop is 1', () => {
+      const loopCounter = document.createElement('span');
+      sync.bindUIElements({ loopCounter });
+
+      sync.setProgress(1, 1, 1);
+      expect(loopCounter.textContent).toBe('1');
+    });
+
+    it('should show "1" when loop is 0 and maxLoop is 1', () => {
+      const loopCounter = document.createElement('span');
+      sync.bindUIElements({ loopCounter });
+
+      sync.setProgress(1, 0, 1);
+      // 0 || 1 = 1, so should show "1"
+      expect(loopCounter.textContent).toBe('1');
+    });
+  });
+
+  // ===== Elapsed Time Edge Cases =====
+
+  describe('Elapsed Time Edge Cases', () => {
+    it('should return null after reset', () => {
+      sync.setStatus('playing');
+      expect(sync.getElapsedTime()).not.toBeNull();
+
+      sync.reset();
+      expect(sync.getElapsedTime()).toBeNull();
+    });
+
+    it('should format 0 seconds as 00:00', () => {
+      sync.setStatus('playing');
+      const formatted = sync.getElapsedTimeString();
+      expect(formatted).toMatch(/^00:0\d$/); // Should be very short time
+    });
+  });
+
+  // ===== UI Binding with null elements =====
+
+  describe('UI Binding with null elements', () => {
+    it('should handle null UI elements gracefully', () => {
+      sync.bindUIElements({
+        statusIndicator: null,
+        statusText: null,
+        lineCounter: null,
+        loopCounter: null,
+        progressBar: null,
+        errorDisplay: null,
+      });
+
+      // Should not throw
+      expect(() => sync.setStatus('playing')).not.toThrow();
+      expect(() => sync.setProgress(5)).not.toThrow();
+      expect(() => sync.setError({ message: 'fail' })).not.toThrow();
+    });
+
+    it('should handle partial UI bindings', () => {
+      const statusText = document.createElement('span');
+      sync.bindUIElements({ statusText });
+
+      // Only statusText is bound, others should be null
+      expect(() => sync.setStatus('playing', 'Test')).not.toThrow();
+      expect(statusText.textContent).toBe('Test');
+    });
+  });
 });

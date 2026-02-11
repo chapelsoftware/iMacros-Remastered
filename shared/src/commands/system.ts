@@ -955,6 +955,61 @@ export function registerSystemHandlers(
   }
 }
 
+// ===== Profiler =====
+
+/**
+ * Profiler record: captured for each command executed while !FILE_PROFILER is active.
+ * Used for per-command timing CSV output.
+ */
+export interface ProfilerRecord {
+  /** Line number (1-based) */
+  line: number;
+  /** Command type/name (e.g. "SET", "TAG", "URL") */
+  command: string;
+  /** Raw command text */
+  rawCommand: string;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+  /** Timestamp when the command finished */
+  timestamp: Date;
+}
+
+/**
+ * Build CSV content for profiler records.
+ *
+ * Format:
+ * - Header line: "Date: YYYY/MM/DD  Time: HH:MM, Macro: <name>, Status: <message> (<code>)"
+ * - Column header: Line,Command,Duration_ms,Timestamp
+ * - One data row per command: <line>,<command>,<duration_ms>,YYYY/MM/DD HH:MM:SS
+ */
+export function buildProfilerCsv(
+  records: ProfilerRecord[],
+  macroName: string,
+  errorCode: number,
+  errorMessage: string,
+): string {
+  const lines: string[] = [];
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}`;
+  const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  lines.push(`"Date: ${dateStr}  Time: ${timeStr}, Macro: ${macroName}, Status: ${errorMessage} (${errorCode})"`);
+  lines.push('Line,Command,Duration_ms,Timestamp');
+
+  for (const record of records) {
+    const ts = record.timestamp;
+    const tsDateStr = `${ts.getFullYear()}/${String(ts.getMonth() + 1).padStart(2, '0')}/${String(ts.getDate()).padStart(2, '0')}`;
+    const tsTimeStr = `${String(ts.getHours()).padStart(2, '0')}:${String(ts.getMinutes()).padStart(2, '0')}:${String(ts.getSeconds()).padStart(2, '0')}`;
+    // Escape command text for CSV (wrap in quotes if it contains commas)
+    const cmdText = record.rawCommand.includes(',')
+      ? `"${record.rawCommand.replace(/"/g, '""')}"`
+      : record.rawCommand;
+    lines.push(`${record.line},${cmdText},${record.durationMs.toFixed(3)},${tsDateStr} ${tsTimeStr}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
 // ===== Exports =====
 
 export type { CommandHandler, CommandContext, CommandResult };

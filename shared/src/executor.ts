@@ -34,9 +34,11 @@ import {
 } from './state-manager';
 import {
   type StopwatchRecord,
+  type ProfilerRecord,
   getStopwatchRecords,
   clearStopwatchRecords,
   buildStopwatchCsv,
+  buildProfilerCsv,
 } from './commands/system';
 
 // ===== Error Codes =====
@@ -149,6 +151,8 @@ export interface MacroResult {
   variables: Record<string, VariableValue>;
   /** Stopwatch records collected during execution (for CSV output / performance API) */
   stopwatchRecords?: StopwatchRecord[];
+  /** Profiler records collected during execution (per-command timing for CSV output) */
+  profilerRecords?: ProfilerRecord[];
 }
 
 // ===== Progress Reporting =====
@@ -298,6 +302,8 @@ export class MacroExecutor {
   private onNativeEval?: NativeEvalCallback;
   /** Callback for file append (stopwatch CSV output) */
   private onFileAppend?: (filePath: string, content: string) => Promise<void> | void;
+  /** Profiler records collected when !FILE_PROFILER is active */
+  private profilerRecords: ProfilerRecord[] = [];
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -556,6 +562,7 @@ export class MacroExecutor {
     this.abortFlag = false;
     this.pauseFlag = false;
     clearStopwatchRecords();
+    this.profilerRecords = [];
 
     // Re-apply initial variables after reset (reset wipes all variables)
     if (this.initialVariables) {
@@ -600,8 +607,25 @@ export class MacroExecutor {
           // Report progress
           this.reportProgress(command);
 
-          // Execute the command
+          // Execute the command (with optional profiler timing)
+          const profilerActive = String(
+            this.state.getVariable('!FILE_PROFILER') || ''
+          ).toUpperCase() !== '' &&
+            String(this.state.getVariable('!FILE_PROFILER') || '').toUpperCase() !== 'NO';
+
+          const startTime = profilerActive ? Date.now() : 0;
           const result = await this.executeCommand(command);
+
+          if (profilerActive) {
+            const durationMs = Date.now() - startTime;
+            this.profilerRecords.push({
+              line: commandIndex + 1,
+              command: command.type,
+              rawCommand: command.raw,
+              durationMs,
+              timestamp: new Date(),
+            });
+          }
 
           // Handle command delay
           if (this.commandDelayMs > 0) {
@@ -623,6 +647,7 @@ export class MacroExecutor {
               this.state.setError(result.errorCode as ErrorCode, result.errorMessage);
               const errorResult = this.buildResult(false, result.errorCode, result.errorMessage, commandIndex + 1);
               await this.writeStopwatchCsv(errorResult);
+              await this.writeProfilerCsv(errorResult);
               return errorResult;
             }
           }
@@ -632,6 +657,7 @@ export class MacroExecutor {
             this.log('info', 'Execution stopped by command');
             const stopResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
             await this.writeStopwatchCsv(stopResult);
+            await this.writeProfilerCsv(stopResult);
             return stopResult;
           }
 
@@ -664,6 +690,7 @@ export class MacroExecutor {
       this.state.complete();
       const macroResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
       await this.writeStopwatchCsv(macroResult);
+      await this.writeProfilerCsv(macroResult);
       return macroResult;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -671,6 +698,7 @@ export class MacroExecutor {
       this.state.setError(ErrorCode.SCRIPT_ERROR, message);
       const macroResult = this.buildResult(false, IMACROS_ERROR_CODES.SCRIPT_ERROR, message);
       await this.writeStopwatchCsv(macroResult);
+      await this.writeProfilerCsv(macroResult);
       return macroResult;
     }
   }
@@ -981,6 +1009,33 @@ export class MacroExecutor {
   }
 
   /**
+   * Write profiler CSV file if !FILE_PROFILER is set to a filename.
+   * Each command's execution time is logged as a CSV row.
+   */
+  private async writeProfilerCsv(result: MacroResult): Promise<void> {
+    if (!this.onFileAppend) return;
+
+    const records = result.profilerRecords;
+    if (!records || records.length === 0) return;
+
+    const vars = this.state.getVariables();
+    const fileProfiler = String(vars.get('!FILE_PROFILER') || '');
+
+    if (!fileProfiler || fileProfiler.toUpperCase() === 'NO') return;
+
+    const macroName = this.state.getMacroName() || 'Macro';
+    const errorMessage = result.success ? 'OK' : (result.errorMessage || 'Error');
+    const csvContent = buildProfilerCsv(records, macroName, result.errorCode, errorMessage);
+
+    try {
+      await this.onFileAppend(fileProfiler, csvContent);
+      this.log('info', `Profiler CSV written to ${fileProfiler}`);
+    } catch (e) {
+      this.log('warn', `Failed to write profiler CSV: ${(e as Error).message}`);
+    }
+  }
+
+  /**
    * Build the final macro result
    */
   private buildResult(
@@ -1000,6 +1055,7 @@ export class MacroExecutor {
       extractData: this.state.getExtractData(),
       variables: this.state.getAllVariables(),
       stopwatchRecords: records.length > 0 ? records : undefined,
+      profilerRecords: this.profilerRecords.length > 0 ? [...this.profilerRecords] : undefined,
     };
   }
 }
@@ -1102,4 +1158,4 @@ export function isRecoverableError(code: IMacrosErrorCode): boolean {
 // Re-export types from dependencies
 export { ExecutionStatus, ErrorCode } from './state-manager';
 export type { ParsedCommand, CommandType } from './parser';
-export type { StopwatchRecord } from './commands/system';
+export type { StopwatchRecord, ProfilerRecord } from './commands/system';

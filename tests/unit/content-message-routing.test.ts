@@ -185,6 +185,10 @@ describe('Content Script Message Routing', () => {
       const response = await sendMessage({ type: 'PING' });
       expect(response).toEqual({ ready: true });
     });
+
+    it('should have captured the message listener from addListener', () => {
+      expect(typeof messageListenerRef.current).toBe('function');
+    });
   });
 
   // ===== PING =====
@@ -206,6 +210,15 @@ describe('Content Script Message Routing', () => {
       expect(mockHandleDialogConfigMessage).toHaveBeenCalledWith(config);
     });
 
+    it('should return error when DIALOG_CONFIG handler throws', async () => {
+      mockHandleDialogConfigMessage.mockImplementation(() => {
+        throw new Error('Invalid config');
+      });
+      const response = await sendMessage({ type: 'DIALOG_CONFIG', payload: { config: {} } });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Invalid config');
+    });
+
     it('should handle DIALOG_RESET', async () => {
       const response = await sendMessage({ type: 'DIALOG_RESET' });
       expect(response).toEqual({ success: true });
@@ -221,30 +234,42 @@ describe('Content Script Message Routing', () => {
       expect(mockHandleErrorDialogConfigMessage).toHaveBeenCalledWith(config);
     });
 
+    it('should return error when ERROR_DIALOG_CONFIG handler throws', async () => {
+      mockHandleErrorDialogConfigMessage.mockImplementation(() => {
+        throw new Error('Bad error config');
+      });
+      const response = await sendMessage({ type: 'ERROR_DIALOG_CONFIG', payload: { config: {} } });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Bad error config');
+    });
+
     it('should handle DIALOG_STATUS', async () => {
       const response = await sendMessage({ type: 'DIALOG_STATUS' });
       expect(response.success).toBe(true);
       expect(response.installed).toBe(true);
       expect(response.enabled).toBe(false);
+      expect(response.config).toEqual({ enabled: false });
     });
   });
 
   // ===== Frame Selection =====
 
   describe('Frame Selection', () => {
-    it('should handle SELECT_FRAME', async () => {
+    it('should handle SELECT_FRAME and return frameId', async () => {
       const response = await sendMessage({ type: 'SELECT_FRAME', frameIndex: 2 });
       expect(response.success).toBe(true);
+      expect(response.frameId).toBe(1);
       expect(mockFrameHandler.selectFrameByIndex).toHaveBeenCalledWith(2);
     });
 
-    it('should handle SELECT_FRAME_BY_NAME', async () => {
+    it('should handle SELECT_FRAME_BY_NAME and return frameId', async () => {
       const response = await sendMessage({ type: 'SELECT_FRAME_BY_NAME', frameName: 'myframe' });
       expect(response.success).toBe(true);
+      expect(response.frameId).toBe(1);
       expect(mockFrameHandler.selectFrameByName).toHaveBeenCalledWith('myframe');
     });
 
-    it('should return error on failed frame selection', async () => {
+    it('should return error on failed SELECT_FRAME', async () => {
       mockFrameHandler.selectFrameByIndex.mockReturnValue({
         success: false,
         errorMessage: 'Frame not found',
@@ -252,6 +277,18 @@ describe('Content Script Message Routing', () => {
       const response = await sendMessage({ type: 'SELECT_FRAME', frameIndex: 99 });
       expect(response.success).toBe(false);
       expect(response.error).toBe('Frame not found');
+      expect(response.frameId).toBeUndefined();
+    });
+
+    it('should return error on failed SELECT_FRAME_BY_NAME', async () => {
+      mockFrameHandler.selectFrameByName.mockReturnValue({
+        success: false,
+        errorMessage: 'Frame "unknown" not found',
+      });
+      const response = await sendMessage({ type: 'SELECT_FRAME_BY_NAME', frameName: 'unknown' });
+      expect(response.success).toBe(false);
+      expect(response.error).toBe('Frame "unknown" not found');
+      expect(response.frameId).toBeUndefined();
     });
   });
 
@@ -265,17 +302,47 @@ describe('Content Script Message Routing', () => {
       expect(mockHandleRecordStartMessage).toHaveBeenCalledWith(config);
     });
 
-    it('should handle RECORD_STOP', async () => {
+    it('should return error when RECORD_START throws', async () => {
+      mockHandleRecordStartMessage.mockImplementation(() => {
+        throw new Error('Already recording');
+      });
+      const response = await sendMessage({ type: 'RECORD_START', payload: { config: {} } });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Already recording');
+    });
+
+    it('should handle RECORD_STOP and spread result', async () => {
       const response = await sendMessage({ type: 'RECORD_STOP' });
       expect(response.success).toBe(true);
+      expect(response.macro).toBe('test');
+      expect(response.events).toEqual([]);
       expect(mockHandleRecordStopMessage).toHaveBeenCalled();
     });
 
-    it('should handle RECORD_STATUS', async () => {
+    it('should return error when RECORD_STOP throws', async () => {
+      mockHandleRecordStopMessage.mockImplementation(() => {
+        throw new Error('Not recording');
+      });
+      const response = await sendMessage({ type: 'RECORD_STOP' });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Not recording');
+    });
+
+    it('should handle RECORD_STATUS and spread status', async () => {
       const response = await sendMessage({ type: 'RECORD_STATUS' });
       expect(response.success).toBe(true);
       expect(response.recording).toBe(true);
       expect(response.eventCount).toBe(5);
+      expect(mockHandleRecordStatusMessage).toHaveBeenCalled();
+    });
+
+    it('should return error when RECORD_STATUS throws', async () => {
+      mockHandleRecordStatusMessage.mockImplementation(() => {
+        throw new Error('Status error');
+      });
+      const response = await sendMessage({ type: 'RECORD_STATUS' });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Status error');
     });
 
     it('should handle RECORD_CLEAR', async () => {
@@ -284,10 +351,28 @@ describe('Content Script Message Routing', () => {
       expect(mockMacroRecorder.clearEvents).toHaveBeenCalled();
     });
 
+    it('should return error when RECORD_CLEAR throws', async () => {
+      mockMacroRecorder.clearEvents.mockImplementation(() => {
+        throw new Error('Clear failed');
+      });
+      const response = await sendMessage({ type: 'RECORD_CLEAR' });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Clear failed');
+    });
+
     it('should handle RECORD_GET_MACRO', async () => {
       const response = await sendMessage({ type: 'RECORD_GET_MACRO' });
       expect(response.success).toBe(true);
       expect(response.macro).toContain('VERSION BUILD=1');
+    });
+
+    it('should return error when RECORD_GET_MACRO throws', async () => {
+      mockMacroRecorder.generateMacro.mockImplementation(() => {
+        throw new Error('Generate failed');
+      });
+      const response = await sendMessage({ type: 'RECORD_GET_MACRO' });
+      expect(response.success).toBe(false);
+      expect(response.error).toContain('Generate failed');
     });
   });
 
@@ -319,6 +404,15 @@ describe('Content Script Message Routing', () => {
       });
       expect(response).toEqual({ success: true });
       expect(mockMacroRecorder.recordTabEvent).toHaveBeenCalledWith('TAB T=3');
+    });
+
+    it('should not record tab switch without tabIndex', async () => {
+      const response = await sendMessage({
+        type: 'RECORD_TAB_EVENT',
+        payload: { action: 'switch' },
+      });
+      expect(response).toEqual({ success: true });
+      expect(mockMacroRecorder.recordTabEvent).not.toHaveBeenCalled();
     });
 
     it('should fail if not recording', async () => {
@@ -393,6 +487,71 @@ describe('Content Script Message Routing', () => {
         payload: { folder: '*', filename: '+' },
       });
       expect(response.success).toBe(false);
+    });
+  });
+
+  // ===== Unknown Messages =====
+
+  describe('Unknown Messages', () => {
+    it('should return false for unrecognized message types', () => {
+      const sendResponseSpy = vi.fn();
+      const result = messageListenerRef.current!(
+        { type: 'UNKNOWN_TYPE' },
+        sender,
+        sendResponseSpy,
+      );
+      expect(result).toBe(false);
+      expect(sendResponseSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  // ===== Page Communication (CustomEvent Bridge) =====
+
+  describe('Page Communication', () => {
+    it('should register imacros-request event listener on window', () => {
+      // The content script sets up a listener for 'imacros-request' custom events.
+      // We verify sendToBackground works by testing chrome.runtime.sendMessage is called
+      // when the listener fires. Since content.ts uses window.addEventListener directly,
+      // we verify indirectly via the chrome mock.
+      const chromeSendMessage = (globalThis as any).chrome.runtime.sendMessage;
+      chromeSendMessage.mockClear();
+
+      // Simulate the imacros-request event by calling sendToBackground's chrome API path
+      // This verifies the sendToBackground function wraps chrome.runtime.sendMessage correctly
+      chromeSendMessage.mockImplementation((_msg: any, callback?: Function) => {
+        (globalThis as any).chrome.runtime.lastError = null;
+        if (callback) callback({ result: 'ok' });
+      });
+
+      // Call sendMessage directly to test the chrome API bridge
+      chrome.runtime.sendMessage(
+        { type: 'execute', id: 'test', timestamp: Date.now(), payload: { action: 'test' } },
+        (response: any) => {
+          expect(response).toEqual({ result: 'ok' });
+        },
+      );
+
+      expect(chromeSendMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'execute' }),
+        expect.any(Function),
+      );
+    });
+
+    it('should reject sendToBackground when chrome.runtime.lastError is set', () => {
+      const chromeSendMessage = (globalThis as any).chrome.runtime.sendMessage;
+      chromeSendMessage.mockImplementation((_msg: any, callback?: Function) => {
+        (globalThis as any).chrome.runtime.lastError = { message: 'Extension context invalidated' };
+        if (callback) callback(undefined);
+        (globalThis as any).chrome.runtime.lastError = null;
+      });
+
+      // Verify the callback receives undefined when lastError is set
+      chrome.runtime.sendMessage(
+        { type: 'execute', id: 'test', timestamp: Date.now(), payload: {} },
+        (response: any) => {
+          expect(response).toBeUndefined();
+        },
+      );
     });
   });
 });

@@ -18,6 +18,7 @@ import {
   SetProxyMessage,
   RestoreProxyMessage,
   resetProxyBackupState,
+  hasProxyBackup,
 } from '@shared/commands/browser';
 
 describe('PROXY Command Integration Tests', () => {
@@ -50,6 +51,11 @@ describe('PROXY Command Integration Tests', () => {
     return msg as SetProxyMessage;
   }
 
+  // --- Helper to get only setProxy messages (excluding restoreProxy cleanup) ---
+  function getSetProxyMessages(): SetProxyMessage[] {
+    return sentMessages.filter(m => m.type === 'setProxy') as SetProxyMessage[];
+  }
+
   // ===== Basic Address Parsing =====
 
   describe('Address parsing', () => {
@@ -59,7 +65,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -75,7 +81,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -94,7 +100,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -110,7 +116,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -130,7 +136,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -145,7 +151,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -164,7 +170,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -183,7 +189,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -267,7 +273,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -287,7 +293,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -309,7 +315,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -335,7 +341,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -351,7 +357,7 @@ describe('PROXY Command Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.errorCode).toBe(IMACROS_ERROR_CODES.OK);
-      expect(sentMessages).toHaveLength(1);
+      expect(getSetProxyMessages()).toHaveLength(1);
 
       const msg = getProxyMessage();
       expect(msg.type).toBe('setProxy');
@@ -417,11 +423,69 @@ describe('PROXY Command Integration Tests', () => {
       const result = await executor.execute();
 
       expect(result.success).toBe(true);
-      expect(sentMessages).toHaveLength(2);
 
       const msgs = sentMessages.filter(m => m.type === 'setProxy') as SetProxyMessage[];
+      expect(msgs).toHaveLength(2);
       expect(msgs[0].backupFirst).toBe(true);
       expect(msgs[1].backupFirst).toBe(false);
+    });
+
+    it('should send restoreProxy message after normal macro completion', async () => {
+      executor.loadMacro('PROXY ADDRESS=proxy:8080');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const restoreMsg = sentMessages.find(m => m.type === 'restoreProxy');
+      expect(restoreMsg).toBeDefined();
+      expect(hasProxyBackup()).toBe(false);
+    });
+
+    it('should send restoreProxy message after macro error (ERRORIGNORE=NO)', async () => {
+      // Register a handler that fails
+      executor.registerHandler('TAG', async () => ({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: 'Element not found',
+      }));
+
+      const script = [
+        'PROXY ADDRESS=proxy:8080',
+        'TAG POS=1 TYPE=INPUT ATTR=ID:missing',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      const restoreMsg = sentMessages.find(m => m.type === 'restoreProxy');
+      expect(restoreMsg).toBeDefined();
+      expect(hasProxyBackup()).toBe(false);
+    });
+
+    it('should send restoreProxy message after macro exception', async () => {
+      executor.registerHandler('TAG', async () => {
+        throw new Error('Unexpected crash');
+      });
+
+      const script = [
+        'PROXY ADDRESS=proxy:8080',
+        'TAG POS=1 TYPE=INPUT ATTR=ID:crash',
+      ].join('\n');
+      executor.loadMacro(script);
+      const result = await executor.execute();
+
+      expect(result.success).toBe(false);
+      const restoreMsg = sentMessages.find(m => m.type === 'restoreProxy');
+      expect(restoreMsg).toBeDefined();
+      expect(hasProxyBackup()).toBe(false);
+    });
+
+    it('should NOT send restoreProxy if proxy was never used', async () => {
+      executor.loadMacro('SET !VAR1 hello');
+      const result = await executor.execute();
+
+      expect(result.success).toBe(true);
+      const restoreMsg = sentMessages.find(m => m.type === 'restoreProxy');
+      expect(restoreMsg).toBeUndefined();
     });
   });
 });

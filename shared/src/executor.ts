@@ -230,6 +230,12 @@ const defaultCommandHandler: CommandHandler = async (ctx) => {
 // ===== Executor Options =====
 
 /**
+ * Cleanup callback type for macro teardown.
+ * Receives a CommandContext that can be used to send browser commands at macro end.
+ */
+export type CleanupCallback = (ctx: CommandContext) => Promise<void>;
+
+/**
  * Options for the MacroExecutor
  */
 export interface ExecutorOptions {
@@ -304,6 +310,8 @@ export class MacroExecutor {
   private onFileAppend?: (filePath: string, content: string) => Promise<void> | void;
   /** Profiler records collected when !FILE_PROFILER is active */
   private profilerRecords: ProfilerRecord[] = [];
+  /** Cleanup callbacks to run when macro execution ends (all exit paths) */
+  private cleanupCallbacks: CleanupCallback[] = [];
 
   constructor(options: ExecutorOptions = {}) {
     this.state = createStateManager({
@@ -343,6 +351,14 @@ export class MacroExecutor {
         this.handlers.set(type as CommandType, handler);
       }
     }
+  }
+
+  /**
+   * Register a cleanup callback to run when macro execution ends.
+   * Cleanup runs for all exit paths: success, error, and user stop.
+   */
+  registerCleanup(callback: CleanupCallback): void {
+    this.cleanupCallbacks.push(callback);
   }
 
   /**
@@ -577,6 +593,7 @@ export class MacroExecutor {
     this.log('info', `Starting macro execution (${this.state.getMaxLoops()} loop(s))`);
 
     let loopsCompleted = 0;
+    let macroResult: MacroResult;
 
     try {
       // Main loop iteration
@@ -645,20 +662,20 @@ export class MacroExecutor {
 
               // Fatal error - stop execution
               this.state.setError(result.errorCode as ErrorCode, result.errorMessage);
-              const errorResult = this.buildResult(false, result.errorCode, result.errorMessage, commandIndex + 1);
-              await this.writeStopwatchCsv(errorResult);
-              await this.writeProfilerCsv(errorResult);
-              return errorResult;
+              macroResult = this.buildResult(false, result.errorCode, result.errorMessage, commandIndex + 1);
+              await this.writeStopwatchCsv(macroResult);
+              await this.writeProfilerCsv(macroResult);
+              return macroResult;
             }
           }
 
           // Handle special control flow
           if (result.stopExecution) {
             this.log('info', 'Execution stopped by command');
-            const stopResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
-            await this.writeStopwatchCsv(stopResult);
-            await this.writeProfilerCsv(stopResult);
-            return stopResult;
+            macroResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
+            await this.writeStopwatchCsv(macroResult);
+            await this.writeProfilerCsv(macroResult);
+            return macroResult;
           }
 
           if (result.skipToNextLoop) {
@@ -688,7 +705,7 @@ export class MacroExecutor {
 
       // Execution completed successfully
       this.state.complete();
-      const macroResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
+      macroResult = this.buildResult(true, IMACROS_ERROR_CODES.OK);
       await this.writeStopwatchCsv(macroResult);
       await this.writeProfilerCsv(macroResult);
       return macroResult;
@@ -696,10 +713,13 @@ export class MacroExecutor {
       const message = error instanceof Error ? error.message : String(error);
       this.log('error', `Execution error: ${message}`);
       this.state.setError(ErrorCode.SCRIPT_ERROR, message);
-      const macroResult = this.buildResult(false, IMACROS_ERROR_CODES.SCRIPT_ERROR, message);
+      macroResult = this.buildResult(false, IMACROS_ERROR_CODES.SCRIPT_ERROR, message);
       await this.writeStopwatchCsv(macroResult);
       await this.writeProfilerCsv(macroResult);
       return macroResult;
+    } finally {
+      // Run cleanup callbacks (restore proxy, popup settings, etc.)
+      await this.runCleanup();
     }
   }
 
@@ -852,6 +872,34 @@ export class MacroExecutor {
   }
 
   // ===== Private Helpers =====
+
+  /**
+   * Run all registered cleanup callbacks.
+   * Creates a synthetic CommandContext for cleanup operations.
+   */
+  private async runCleanup(): Promise<void> {
+    if (this.cleanupCallbacks.length === 0) return;
+
+    const variables = this.state.getVariables();
+    const cleanupCtx: CommandContext = {
+      command: { type: 'SET' as CommandType, parameters: [], raw: '', lineNumber: 0, variables: [] },
+      variables,
+      state: this.state,
+      getParam: () => undefined,
+      getRequiredParam: () => { throw new Error('No parameters in cleanup context'); },
+      expand: (text: string) => variables.expand(text).expanded,
+      log: (level, message) => this.log(level, message),
+    };
+
+    for (const callback of this.cleanupCallbacks) {
+      try {
+        await callback(cleanupCtx);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.log('warn', `Cleanup callback error: ${message}`);
+      }
+    }
+  }
 
   /**
    * Apply !LINENUMBER_DELTA to a line number for user-visible output.

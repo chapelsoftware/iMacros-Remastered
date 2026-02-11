@@ -611,11 +611,11 @@ export class MacroExecutor {
           // Handle result
           if (!result.success) {
             if (this.errorIgnore || this.state.getVariable('!ERRORIGNORE') === 'YES') {
-              this.log('warn', `Error ignored on line ${commandIndex + 1}: ${result.errorMessage}`);
+              this.log('warn', `Error ignored on line ${this.applyLineNumberDelta(commandIndex + 1)}: ${result.errorMessage}`);
             } else {
               // Check for !ERRORLOOP
               if (this.state.getVariable('!ERRORLOOP') === 'YES') {
-                this.log('warn', `Error on line ${commandIndex + 1}, skipping to next loop: ${result.errorMessage}`);
+                this.log('warn', `Error on line ${this.applyLineNumberDelta(commandIndex + 1)}, skipping to next loop: ${result.errorMessage}`);
                 break; // Skip to next loop
               }
 
@@ -813,7 +813,7 @@ export class MacroExecutor {
    */
   getProgress(): ProgressInfo {
     return {
-      currentLine: this.state.getCurrentLine(),
+      currentLine: this.applyLineNumberDelta(this.state.getCurrentLine()),
       totalLines: this.state.getTotalLines(),
       currentLoop: this.state.getLoopCounter(),
       maxLoops: this.state.getMaxLoops(),
@@ -824,6 +824,16 @@ export class MacroExecutor {
   }
 
   // ===== Private Helpers =====
+
+  /**
+   * Apply !LINENUMBER_DELTA to a line number for user-visible output.
+   * Returns the adjusted line number (original + delta).
+   */
+  private applyLineNumberDelta(line: number): number {
+    const delta = this.state.getVariable('!LINENUMBER_DELTA');
+    const numDelta = typeof delta === 'number' ? delta : parseInt(String(delta), 10) || 0;
+    return line + numDelta;
+  }
 
   /**
    * Wait for resume after pause
@@ -907,7 +917,7 @@ export class MacroExecutor {
   private reportProgress(currentCommand?: ParsedCommand): void {
     if (this.onProgress) {
       this.onProgress({
-        currentLine: this.state.getCurrentLine(),
+        currentLine: this.applyLineNumberDelta(this.state.getCurrentLine()),
         totalLines: this.state.getTotalLines(),
         currentLoop: this.state.getLoopCounter(),
         maxLoops: this.state.getMaxLoops(),
@@ -984,7 +994,7 @@ export class MacroExecutor {
       success,
       errorCode,
       errorMessage,
-      errorLine,
+      errorLine: errorLine !== undefined ? this.applyLineNumberDelta(errorLine) : undefined,
       loopsCompleted: this.state.getLoopCounter(),
       executionTimeMs: this.state.getExecutionTimeMs(),
       extractData: this.state.getExtractData(),

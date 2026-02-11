@@ -800,4 +800,80 @@ describe('MacroExecutor', () => {
       expect(state.getStatus()).toBe(ExecutionStatus.IDLE);
     });
   });
+
+  // ===== !LINENUMBER_DELTA =====
+
+  describe('!LINENUMBER_DELTA', () => {
+    it('should adjust errorLine in result when delta is set', async () => {
+      executor.registerHandler('URL', async () => ({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.TIMEOUT,
+        errorMessage: 'timed out',
+      }));
+      // Line 1: SET delta, Line 2: SET VAR, Line 3: URL (fails)
+      executor.loadMacro('SET !LINENUMBER_DELTA -5\nSET !VAR0 ok\nURL GOTO=http://example.com');
+      const result = await executor.execute();
+      expect(result.success).toBe(false);
+      // Actual line 3, delta -5, displayed line = 3 + (-5) = -2
+      expect(result.errorLine).toBe(-2);
+    });
+
+    it('should not adjust errorLine when delta is 0 (no-op)', async () => {
+      executor.registerHandler('URL', async () => ({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.TIMEOUT,
+        errorMessage: 'timed out',
+      }));
+      executor.loadMacro('SET !LINENUMBER_DELTA 0\nURL GOTO=http://example.com');
+      const result = await executor.execute();
+      expect(result.success).toBe(false);
+      expect(result.errorLine).toBe(2);
+    });
+
+    it('should reject positive values for !LINENUMBER_DELTA', async () => {
+      executor.loadMacro('SET !LINENUMBER_DELTA 5');
+      const result = await executor.execute();
+      expect(result.success).toBe(false);
+      expect(result.errorMessage).toContain('must be negative integer or zero');
+    });
+
+    it('should reject non-integer values for !LINENUMBER_DELTA', async () => {
+      executor.loadMacro('SET !LINENUMBER_DELTA -2.5');
+      const result = await executor.execute();
+      expect(result.success).toBe(false);
+      expect(result.errorMessage).toContain('must be negative integer or zero');
+    });
+
+    it('should adjust line numbers in error-ignored log messages', async () => {
+      const logFn = vi.fn();
+      const ex = createExecutor({ onLog: logFn });
+      ex.registerHandler('URL', async () => ({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: 'not found',
+      }));
+      ex.loadMacro('SET !LINENUMBER_DELTA -10\nSET !ERRORIGNORE YES\nURL GOTO=http://example.com');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      // URL is on actual line 3, delta -10, displayed line = -7
+      const warnCalls = logFn.mock.calls.filter(
+        (c: any[]) => c[0] === 'warn' && typeof c[1] === 'string' && c[1].includes('Error ignored on line')
+      );
+      expect(warnCalls.length).toBe(1);
+      expect(warnCalls[0][1]).toContain('line -7');
+    });
+
+    it('should adjust currentLine in progress reports', async () => {
+      const progressFn = vi.fn();
+      const ex = createExecutor({ onProgress: progressFn });
+      ex.loadMacro('SET !LINENUMBER_DELTA -3\nSET !VAR0 ok');
+      await ex.execute();
+      // Progress is reported before command execution, so:
+      // Line 1: delta=0 (not yet set), displayed=1
+      // Line 2: delta=-3 (set by line 1), displayed=2+(-3)=-1
+      const reportedLines = progressFn.mock.calls.map((c: any[]) => c[0].currentLine);
+      expect(reportedLines).toContain(1);
+      expect(reportedLines).toContain(-1);
+    });
+  });
 });

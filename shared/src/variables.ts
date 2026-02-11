@@ -344,6 +344,15 @@ export class VariableContext {
       return null;
     }
 
+    // !LINENUMBER_DELTA must be a non-positive integer (0 or negative)
+    // (iMacros 8.9.7: "!LINENUMBER_DELTA must be negative integer or zero")
+    if (upperName === '!LINENUMBER_DELTA') {
+      if (isNaN(numValue) || !Number.isInteger(numValue) || numValue > 0) {
+        return `${upperName} must be negative integer or zero`;
+      }
+      return null;
+    }
+
     return null;
   }
 

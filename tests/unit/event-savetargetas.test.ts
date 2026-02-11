@@ -82,12 +82,23 @@ describe('EVENT:SAVE_ELEMENT_SCREENSHOT', () => {
 });
 
 describe('EVENT command routing', () => {
+  const mouseEvents: Record<string, string> = {
+    'MOUSEOVER': 'mouseover',
+    'MOUSEOUT': 'mouseout',
+    'MOUSEMOVE': 'mousemove',
+    'MOUSEDOWN': 'mousedown',
+    'MOUSEUP': 'mouseup',
+    'MOUSEENTER': 'mouseenter',
+    'MOUSELEAVE': 'mouseleave',
+  };
+
   function routeEventCommand(content: string): string {
     if (!content.toUpperCase().startsWith('EVENT:')) return 'NOT_EVENT';
     const eventCommand = content.substring(6).toUpperCase();
     if (eventCommand.startsWith('SAVETARGETAS')) return 'SAVETARGETAS';
     if (eventCommand.startsWith('SAVEITEM') || eventCommand.startsWith('SAVEPICTUREAS')) return 'SAVEITEM';
     if (eventCommand.startsWith('SAVE_ELEMENT_SCREENSHOT')) return 'SCREENSHOT';
+    if (mouseEvents[eventCommand]) return 'MOUSE_EVENT';
     return 'UNKNOWN';
   }
 
@@ -111,6 +122,16 @@ describe('EVENT command routing', () => {
     expect(routeEventCommand('EVENT:SAVE_ELEMENT_SCREENSHOT=el.png')).toBe('SCREENSHOT');
   });
 
+  it('routes mouse events (MOUSEOVER, MOUSEDOWN, etc.)', () => {
+    expect(routeEventCommand('EVENT:MOUSEOVER')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSEOUT')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSEMOVE')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSEDOWN')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSEUP')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSEENTER')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('EVENT:MOUSELEAVE')).toBe('MOUSE_EVENT');
+  });
+
   it('returns UNKNOWN for unrecognized events', () => {
     expect(routeEventCommand('EVENT:SOMETHING_ELSE')).toBe('UNKNOWN');
   });
@@ -123,5 +144,7 @@ describe('EVENT command routing', () => {
     expect(routeEventCommand('event:saveitem')).toBe('SAVEITEM');
     expect(routeEventCommand('Event:SaveTargetAs')).toBe('SAVETARGETAS');
     expect(routeEventCommand('event:savepictureas')).toBe('SAVEITEM');
+    expect(routeEventCommand('event:mouseover')).toBe('MOUSE_EVENT');
+    expect(routeEventCommand('Event:MouseDown')).toBe('MOUSE_EVENT');
   });
 });

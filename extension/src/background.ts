@@ -15,6 +15,8 @@ import {
   initWebRequestHandlers,
   handleLoginConfig,
   handleSetFilter,
+  handleSetPopupAllowed,
+  handleRestorePopupSettings,
   setAuthCredentials,
   clearAuthCredentials,
   getAuthCredentials,
@@ -662,6 +664,22 @@ async function handleBrowserCommand(message: ResponseMessage): Promise<void> {
         break;
       }
 
+      // Popup settings commands
+      case 'setPopupAllowed': {
+        const { primaryPattern } = params as { primaryPattern: string };
+        console.log(`[iMacros] setPopupAllowed: pattern=${primaryPattern}`);
+        const popupResult = await handleSetPopupAllowed(primaryPattern);
+        result = popupResult;
+        break;
+      }
+
+      case 'restorePopupSettings': {
+        console.log('[iMacros] restorePopupSettings');
+        const restoreResult = await handleRestorePopupSettings();
+        result = restoreResult;
+        break;
+      }
+
       default:
         result = { success: false, error: `Unknown command type: ${commandType}` };
     }
@@ -1207,6 +1225,16 @@ async function handleMessage(
         filterType: 'IMAGES' | 'FLASH' | 'POPUPS';
         status: 'ON' | 'OFF';
       });
+
+    case 'setPopupAllowed': {
+      const popupPayload = message.payload as { primaryPattern: string };
+      console.log('[iMacros] setPopupAllowed received:', popupPayload);
+      return await handleSetPopupAllowed(popupPayload.primaryPattern);
+    }
+
+    case 'restorePopupSettings':
+      console.log('[iMacros] restorePopupSettings received');
+      return await handleRestorePopupSettings();
 
     case 'SET_AUTH_CREDENTIALS':
       const authPayload = message.payload as { username: string; password: string; urlPattern?: string };

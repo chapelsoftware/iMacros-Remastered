@@ -129,8 +129,8 @@ export const DEFAULT_VALUES: Record<string, VariableValue> = {
   // Browser/Page control
   // !USERAGENT: native-host-only - browser user agent requires extension API
   '!USERAGENT': '',
-  // !POPUP_ALLOWED: native-host-only - popup permission manager requires extension API
-  '!POPUP_ALLOWED': 'NO',
+  // !POPUP_ALLOWED: URL of site to temporarily allow popups for during macro execution
+  '!POPUP_ALLOWED': '',
   '!WAITPAGECOMPLETE': 'YES',
   // Profiler
   '!FILE_PROFILER': '',
@@ -279,11 +279,21 @@ export class VariableContext {
     const yesNoVars = [
       '!ERRORIGNORE', '!ERRORLOOP', '!SINGLESTEP',
       '!EXTRACT_TEST_POPUP', '!STOPWATCH', '!STOPWATCH_HEADER',
-      '!WAITPAGECOMPLETE', '!DOWNLOADPDF', '!POPUP_ALLOWED',
+      '!WAITPAGECOMPLETE', '!DOWNLOADPDF',
     ];
     if (yesNoVars.includes(upperName)) {
       if (strValue !== 'YES' && strValue !== 'NO') {
         return `${upperName} must be YES or NO, got: ${value}`;
+      }
+      return null;
+    }
+
+    // !POPUP_ALLOWED accepts a URL string (site to allow popups for)
+    // Original iMacros: SET !POPUP_ALLOWED <url> — prepends http:// if no scheme
+    if (upperName === '!POPUP_ALLOWED') {
+      const raw = String(value).trim();
+      if (raw === '') {
+        return `${upperName} requires a site URL`;
       }
       return null;
     }

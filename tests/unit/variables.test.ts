@@ -1528,4 +1528,422 @@ describe('Variable System Unit Tests', () => {
       expect(result.errorMessage).toBe('User stopped macro');
     });
   });
+
+  describe('Dynamic !COL resolution from datasourceRows', () => {
+    it('should resolve !COL1-10 from datasource rows based on !DATASOURCE_LINE', () => {
+      const rows = [
+        ['a1', 'b1', 'c1'],
+        ['a2', 'b2', 'c2'],
+        ['a3', 'b3', 'c3']
+      ];
+      ctx.setDatasourceRows(rows);
+
+      // Default line is 1
+      expect(ctx.get('!DATASOURCE_LINE')).toBe(1);
+      expect(ctx.get('!COL1')).toBe('a1');
+      expect(ctx.get('!COL2')).toBe('b1');
+      expect(ctx.get('!COL3')).toBe('c1');
+    });
+
+    it('should update !COL values when !DATASOURCE_LINE changes', () => {
+      const rows = [
+        ['a1', 'b1', 'c1'],
+        ['a2', 'b2', 'c2'],
+        ['a3', 'b3', 'c3']
+      ];
+      ctx.setDatasourceRows(rows);
+
+      ctx.setDatasourceLine(2);
+      expect(ctx.get('!COL1')).toBe('a2');
+      expect(ctx.get('!COL2')).toBe('b2');
+      expect(ctx.get('!COL3')).toBe('c2');
+
+      ctx.setDatasourceLine(3);
+      expect(ctx.get('!COL1')).toBe('a3');
+      expect(ctx.get('!COL2')).toBe('b3');
+      expect(ctx.get('!COL3')).toBe('c3');
+    });
+
+    it('should fallback to stored values when datasource rows are not set', () => {
+      // No datasource rows loaded, use setDatasourceCols
+      ctx.setDatasourceCols(['stored1', 'stored2', 'stored3']);
+      expect(ctx.get('!COL1')).toBe('stored1');
+      expect(ctx.get('!COL2')).toBe('stored2');
+      expect(ctx.get('!COL3')).toBe('stored3');
+    });
+
+    it('should return empty string for out-of-bounds row access', () => {
+      const rows = [
+        ['a1', 'b1'],
+        ['a2', 'b2']
+      ];
+      ctx.setDatasourceRows(rows);
+
+      // Try to access row 3 (doesn't exist)
+      ctx.setDatasourceLine(3);
+      expect(ctx.get('!COL1')).toBe('');
+      expect(ctx.get('!COL2')).toBe('');
+    });
+
+    it('should return empty string for out-of-bounds column access', () => {
+      const rows = [
+        ['a1', 'b1'], // Only 2 columns
+      ];
+      ctx.setDatasourceRows(rows);
+
+      ctx.setDatasourceLine(1);
+      expect(ctx.get('!COL1')).toBe('a1');
+      expect(ctx.get('!COL2')).toBe('b1');
+      expect(ctx.get('!COL3')).toBe(''); // Column 3 doesn't exist
+      expect(ctx.get('!COL10')).toBe('');
+    });
+
+    it('should return empty string for negative row index', () => {
+      const rows = [['a1', 'b1']];
+      ctx.setDatasourceRows(rows);
+
+      ctx.setDatasourceLine(0);
+      expect(ctx.get('!COL1')).toBe('');
+    });
+
+    it('should update !DATASOURCE_COLUMNS to max column count', () => {
+      const rows = [
+        ['a1', 'b1'],
+        ['a2', 'b2', 'c2', 'd2'],
+        ['a3']
+      ];
+      ctx.setDatasourceRows(rows);
+
+      // Max columns is 4 (from row 2)
+      expect(ctx.get('!DATASOURCE_COLUMNS')).toBe(4);
+    });
+
+    it('should preserve datasource rows on clone', () => {
+      const rows = [
+        ['a1', 'b1'],
+        ['a2', 'b2']
+      ];
+      ctx.setDatasourceRows(rows);
+      ctx.setDatasourceLine(2);
+
+      const cloned = ctx.clone();
+      expect(cloned.get('!COL1')).toBe('a2');
+      expect(cloned.get('!COL2')).toBe('b2');
+      expect(cloned.getDatasourceRows()).toBe(rows); // Same reference (immutable)
+    });
+
+    it('should handle empty datasource rows array', () => {
+      ctx.setDatasourceRows([]);
+      expect(ctx.getDatasourceRowCount()).toBe(0);
+      expect(ctx.get('!DATASOURCE_COLUMNS')).toBe(0);
+      expect(ctx.get('!COL1')).toBe('');
+    });
+  });
+
+  describe('YES/NO variable validation', () => {
+    describe('!ERRORIGNORE', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!ERRORIGNORE', 'YES').success).toBe(true);
+        expect(ctx.set('!ERRORIGNORE', 'NO').success).toBe(true);
+        expect(ctx.set('!ERRORIGNORE', 'yes').success).toBe(true);
+        expect(ctx.set('!ERRORIGNORE', 'no').success).toBe(true);
+        expect(ctx.set('!ERRORIGNORE', 'Yes').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!ERRORIGNORE', 'maybe').success).toBe(false);
+        expect(ctx.set('!ERRORIGNORE', 'true').success).toBe(false);
+        expect(ctx.set('!ERRORIGNORE', 'false').success).toBe(false);
+        expect(ctx.set('!ERRORIGNORE', '1').success).toBe(false);
+        expect(ctx.set('!ERRORIGNORE', '0').success).toBe(false);
+      });
+    });
+
+    describe('!ERRORLOOP', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!ERRORLOOP', 'YES').success).toBe(true);
+        expect(ctx.set('!ERRORLOOP', 'NO').success).toBe(true);
+        expect(ctx.set('!ERRORLOOP', 'yes').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!ERRORLOOP', 'maybe').success).toBe(false);
+        expect(ctx.set('!ERRORLOOP', 'true').success).toBe(false);
+      });
+    });
+
+    describe('!SINGLESTEP', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!SINGLESTEP', 'YES').success).toBe(true);
+        expect(ctx.set('!SINGLESTEP', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!SINGLESTEP', 'maybe').success).toBe(false);
+        expect(ctx.set('!SINGLESTEP', '1').success).toBe(false);
+      });
+    });
+
+    describe('!EXTRACT_TEST_POPUP', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!EXTRACT_TEST_POPUP', 'YES').success).toBe(true);
+        expect(ctx.set('!EXTRACT_TEST_POPUP', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!EXTRACT_TEST_POPUP', 'maybe').success).toBe(false);
+      });
+    });
+
+    describe('!STOPWATCH', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!STOPWATCH', 'YES').success).toBe(true);
+        expect(ctx.set('!STOPWATCH', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!STOPWATCH', 'true').success).toBe(false);
+      });
+    });
+
+    describe('!STOPWATCH_HEADER', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!STOPWATCH_HEADER', 'YES').success).toBe(true);
+        expect(ctx.set('!STOPWATCH_HEADER', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!STOPWATCH_HEADER', 'false').success).toBe(false);
+      });
+    });
+
+    describe('!WAITPAGECOMPLETE', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!WAITPAGECOMPLETE', 'YES').success).toBe(true);
+        expect(ctx.set('!WAITPAGECOMPLETE', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!WAITPAGECOMPLETE', '1').success).toBe(false);
+      });
+    });
+
+    describe('!DOWNLOADPDF', () => {
+      it('should accept YES and NO (case insensitive)', () => {
+        expect(ctx.set('!DOWNLOADPDF', 'YES').success).toBe(true);
+        expect(ctx.set('!DOWNLOADPDF', 'NO').success).toBe(true);
+      });
+
+      it('should reject invalid values', () => {
+        expect(ctx.set('!DOWNLOADPDF', 'maybe').success).toBe(false);
+      });
+    });
+  });
+
+  describe('ADD numeric vs string edge cases', () => {
+    it('should treat empty current value as 0 when adding numeric', () => {
+      // !VAR0 starts as empty string
+      const result = ctx.add('!VAR0', '5');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe(5);
+      expect(ctx.get('!VAR0')).toBe(5);
+    });
+
+    it('should do numeric addition for numeric strings', () => {
+      ctx.set('!VAR0', '10');
+      const result = ctx.add('!VAR0', '20');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe(30);
+      expect(ctx.get('!VAR0')).toBe(30);
+    });
+
+    it('should concatenate when current is numeric but value is string', () => {
+      ctx.set('!VAR0', 10);
+      const result = ctx.add('!VAR0', 'abc');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe('10abc');
+      expect(ctx.get('!VAR0')).toBe('10abc');
+    });
+
+    it('should concatenate when current is string but value is numeric', () => {
+      ctx.set('!VAR0', 'hello');
+      const result = ctx.add('!VAR0', '5');
+      expect(result.success).toBe(true);
+      expect(result.newValue).toBe('hello5');
+      expect(ctx.get('!VAR0')).toBe('hello5');
+    });
+
+    it('should accumulate multiple ADDs to !EXTRACT', () => {
+      executeAdd(ctx, '!EXTRACT', 'first');
+      executeAdd(ctx, '!EXTRACT', 'second');
+      executeAdd(ctx, '!EXTRACT', 'third');
+
+      expect(ctx.get('!EXTRACT')).toBe('first[EXTRACT]second[EXTRACT]third');
+      expect(ctx.getExtractArray()).toEqual(['first', 'second', 'third']);
+    });
+
+    it('should handle ADD to custom variable with empty initial value', () => {
+      const result = executeAdd(ctx, 'COUNTER', '100');
+      expect(result.success).toBe(true);
+      expect(ctx.get('COUNTER')).toBe(100);
+    });
+
+    it('should handle decimal addition with empty value', () => {
+      const result = ctx.add('!VAR0', '3.14');
+      expect(result.success).toBe(true);
+      expect(ctx.get('!VAR0')).toBeCloseTo(3.14);
+    });
+  });
+
+  describe('!EXTRACT accumulation details', () => {
+    it('should accumulate multiple values with [EXTRACT] delimiter', () => {
+      ctx.set('!EXTRACTADD', 'val1');
+      ctx.set('!EXTRACTADD', 'val2');
+      ctx.set('!EXTRACTADD', 'val3');
+
+      const accumulated = ctx.getExtractAdd();
+      expect(accumulated).toBe('val1[EXTRACT]val2[EXTRACT]val3');
+    });
+
+    it('should clear and reset on SET !EXTRACT', () => {
+      ctx.set('!EXTRACTADD', 'old1');
+      ctx.set('!EXTRACTADD', 'old2');
+
+      ctx.set('!EXTRACT', 'new_value');
+
+      expect(ctx.get('!EXTRACT')).toBe('new_value');
+      expect(ctx.getExtractArray()).toEqual(['new_value']);
+      expect(ctx.getExtractAdd()).toBe('new_value');
+    });
+
+    it('should keep getExtractAdd() in sync with !EXTRACT', () => {
+      ctx.set('!EXTRACTADD', 'a');
+      expect(ctx.getExtractAdd()).toBe('a');
+
+      ctx.set('!EXTRACTADD', 'b');
+      expect(ctx.getExtractAdd()).toBe('a[EXTRACT]b');
+
+      ctx.set('!EXTRACT', 'reset');
+      expect(ctx.getExtractAdd()).toBe('reset');
+    });
+
+    it('should handle ADD !EXTRACT with executeAdd helper', () => {
+      executeAdd(ctx, '!EXTRACT', 'item1');
+      executeAdd(ctx, '!EXTRACT', 'item2');
+
+      expect(ctx.getExtractAdd()).toBe('item1[EXTRACT]item2');
+    });
+
+    it('should handle empty string values in accumulation', () => {
+      ctx.set('!EXTRACTADD', '');
+      ctx.set('!EXTRACTADD', 'value');
+      ctx.set('!EXTRACTADD', '');
+
+      expect(ctx.getExtractAdd()).toBe('[EXTRACT]value[EXTRACT]');
+      expect(ctx.getExtractArray()).toEqual(['', 'value', '']);
+    });
+
+    it('should preserve delimiter in multi-value extraction', () => {
+      for (let i = 1; i <= 5; i++) {
+        ctx.set('!EXTRACTADD', `value${i}`);
+      }
+
+      const result = ctx.getExtractAdd();
+      const parts = result.split('[EXTRACT]');
+      expect(parts).toEqual(['value1', 'value2', 'value3', 'value4', 'value5']);
+    });
+  });
+
+  describe('Clone and import edge cases', () => {
+    it('should clone and preserve datasource row data', () => {
+      const rows = [['a1', 'b1'], ['a2', 'b2']];
+      ctx.setDatasourceRows(rows);
+      ctx.setDatasourceLine(2);
+
+      const cloned = ctx.clone();
+
+      expect(cloned.getDatasourceRows()).toBe(rows);
+      expect(cloned.get('!COL1')).toBe('a2');
+      expect(cloned.get('!DATASOURCE_LINE')).toBe(2);
+    });
+
+    it('should import variables and overwrite existing', () => {
+      ctx.set('!VAR0', 'original');
+      ctx.set('MYVAR', 'original_custom');
+
+      ctx.importVariables({
+        '!VAR0': 'imported',
+        'MYVAR': 'imported_custom',
+        'NEWVAR': 'new_value'
+      });
+
+      expect(ctx.get('!VAR0')).toBe('imported');
+      expect(ctx.get('MYVAR')).toBe('imported_custom');
+      expect(ctx.get('NEWVAR')).toBe('new_value');
+    });
+
+    it('should import variables with empty record', () => {
+      ctx.set('!VAR0', 'value');
+      ctx.importVariables({});
+
+      // Should not change existing variables
+      expect(ctx.get('!VAR0')).toBe('value');
+    });
+
+    it('should clone independently - changes to original do not affect clone', () => {
+      ctx.set('!VAR0', 'original');
+      const cloned = ctx.clone();
+
+      ctx.set('!VAR0', 'modified');
+
+      expect(ctx.get('!VAR0')).toBe('modified');
+      expect(cloned.get('!VAR0')).toBe('original');
+    });
+
+    it('should clone extract accumulator independently', () => {
+      ctx.set('!EXTRACTADD', 'val1');
+      const cloned = ctx.clone();
+
+      ctx.set('!EXTRACTADD', 'val2');
+
+      expect(ctx.getExtractArray()).toEqual(['val1', 'val2']);
+      expect(cloned.getExtractArray()).toEqual(['val1']);
+    });
+
+    it('should import and handle numeric values', () => {
+      ctx.importVariables({
+        '!VAR0': 123,
+        '!LOOP': 5,
+        'COUNT': 42
+      });
+
+      expect(ctx.get('!VAR0')).toBe(123);
+      expect(ctx.get('!LOOP')).toBe(5);
+      expect(ctx.get('COUNT')).toBe(42);
+    });
+
+    it('should clone all timeout values', () => {
+      ctx.setTimeout('page', 120);
+      ctx.setTimeout('step', 10);
+      ctx.setTimeout('default', 90);
+
+      const cloned = ctx.clone();
+
+      expect(cloned.getTimeout('page')).toBe(120);
+      expect(cloned.getTimeout('step')).toBe(10);
+      expect(cloned.getTimeout('default')).toBe(90);
+    });
+
+    it('should clone all folder values', () => {
+      ctx.setFolder('datasource', '/data');
+      ctx.setFolder('download', '/downloads');
+      ctx.setFolder('macros', '/macros');
+
+      const cloned = ctx.clone();
+
+      expect(cloned.get('!FOLDER_DATASOURCE')).toBe('/data');
+      expect(cloned.get('!FOLDER_DOWNLOAD')).toBe('/downloads');
+      expect(cloned.get('!FOLDER_MACROS')).toBe('/macros');
+    });
+  });
 });

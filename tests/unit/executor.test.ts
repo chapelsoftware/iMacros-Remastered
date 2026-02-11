@@ -876,4 +876,303 @@ describe('MacroExecutor', () => {
       expect(reportedLines).toContain(-1);
     });
   });
+
+  // ===== Cleanup on all exit paths =====
+
+  describe('Cleanup on all exit paths', () => {
+    it('should run cleanup after successful execution', async () => {
+      const cleanupFn = vi.fn();
+      executor.registerCleanup(cleanupFn);
+      executor.loadMacro('SET !VAR0 test');
+      const result = await executor.execute();
+      expect(result.success).toBe(true);
+      expect(cleanupFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should run cleanup after error', async () => {
+      const cleanupFn = vi.fn();
+      executor.registerCleanup(cleanupFn);
+      executor.registerHandler('URL', async () => ({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+        errorMessage: 'not found',
+      }));
+      executor.loadMacro('URL GOTO=http://example.com');
+      const result = await executor.execute();
+      expect(result.success).toBe(false);
+      expect(cleanupFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should run cleanup after stop()', async () => {
+      const cleanupFn = vi.fn();
+      executor.registerCleanup(cleanupFn);
+      executor.registerHandler('WAIT', async () => {
+        await new Promise(r => setTimeout(r, 200));
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      executor.loadMacro('WAIT SECONDS=5');
+      const execPromise = executor.execute();
+      await new Promise(r => setTimeout(r, 50));
+      executor.stop();
+      await execPromise;
+      expect(cleanupFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('should run multiple cleanup callbacks', async () => {
+      const cleanup1 = vi.fn();
+      const cleanup2 = vi.fn();
+      const cleanup3 = vi.fn();
+      executor.registerCleanup(cleanup1);
+      executor.registerCleanup(cleanup2);
+      executor.registerCleanup(cleanup3);
+      executor.loadMacro('SET !VAR0 test');
+      await executor.execute();
+      expect(cleanup1).toHaveBeenCalledTimes(1);
+      expect(cleanup2).toHaveBeenCalledTimes(1);
+      expect(cleanup3).toHaveBeenCalledTimes(1);
+    });
+
+    it('should log cleanup error but not prevent other cleanups', async () => {
+      const logFn = vi.fn();
+      const ex = createExecutor({ onLog: logFn });
+      const cleanup1 = vi.fn(async () => {
+        throw new Error('cleanup1 failed');
+      });
+      const cleanup2 = vi.fn();
+      ex.registerCleanup(cleanup1);
+      ex.registerCleanup(cleanup2);
+      ex.loadMacro('SET !VAR0 test');
+      await ex.execute();
+      expect(cleanup1).toHaveBeenCalledTimes(1);
+      expect(cleanup2).toHaveBeenCalledTimes(1);
+      const warnCalls = logFn.mock.calls.filter((c: any[]) => c[0] === 'warn' && c[1].includes('Cleanup callback error'));
+      expect(warnCalls.length).toBeGreaterThan(0);
+    });
+  });
+
+  // ===== Pending async errors =====
+
+  describe('Pending async errors', () => {
+    it('should terminate execution when pending error is set', async () => {
+      executor.loadMacro('SET !VAR0 first\nWAIT SECONDS=0.01\nSET !VAR1 second');
+      const execPromise = executor.execute();
+
+      // Set pending error after a short delay
+      await new Promise(r => setTimeout(r, 5));
+      executor.setPendingError({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT,
+        errorMessage: 'Download timed out',
+      });
+
+      const result = await execPromise;
+      expect(result.success).toBe(false);
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT);
+      expect(result.errorMessage).toBe('Download timed out');
+    });
+
+    it('should ignore pending error when !ERRORIGNORE=YES', async () => {
+      executor.loadMacro('SET !ERRORIGNORE YES\nSET !VAR0 first\nWAIT SECONDS=0.01\nSET !VAR1 second');
+      const execPromise = executor.execute();
+
+      await new Promise(r => setTimeout(r, 5));
+      executor.setPendingError({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT,
+        errorMessage: 'Download timed out',
+      });
+
+      const result = await execPromise;
+      expect(result.success).toBe(true);
+      expect(result.variables['!VAR1']).toBe('second');
+    });
+
+    it('should only store first pending error', async () => {
+      executor.loadMacro('SET !VAR0 first\nWAIT SECONDS=0.01\nSET !VAR1 second');
+      const execPromise = executor.execute();
+
+      await new Promise(r => setTimeout(r, 5));
+      executor.setPendingError({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT,
+        errorMessage: 'First error',
+      });
+      executor.setPendingError({
+        success: false,
+        errorCode: IMACROS_ERROR_CODES.DOWNLOAD_FAILED,
+        errorMessage: 'Second error',
+      });
+
+      const result = await execPromise;
+      expect(result.errorMessage).toBe('First error');
+      expect(result.errorCode).toBe(IMACROS_ERROR_CODES.DOWNLOAD_TIMEOUT);
+    });
+  });
+
+  // ===== Profiler CSV =====
+
+  describe('Profiler CSV', () => {
+    it('should collect profiler records when !FILE_PROFILER is set', async () => {
+      const ex = createExecutor();
+      ex.loadMacro('SET !FILE_PROFILER profiler.csv\nSET !VAR0 a\nSET !VAR1 b');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      expect(result.profilerRecords).toBeDefined();
+      expect(result.profilerRecords!.length).toBeGreaterThan(0);
+    });
+
+    it('should invoke onFileAppend callback with CSV content', async () => {
+      const fileAppendFn = vi.fn();
+      const ex = createExecutor({ onFileAppend: fileAppendFn });
+      ex.loadMacro('SET !FILE_PROFILER profiler.csv\nSET !VAR0 a\nSET !VAR1 b');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      expect(fileAppendFn).toHaveBeenCalled();
+      const callArgs = fileAppendFn.mock.calls[0];
+      expect(callArgs[0]).toBe('profiler.csv');
+      expect(typeof callArgs[1]).toBe('string');
+      expect(callArgs[1]).toContain('SET');
+    });
+
+    it('should not collect profiler records when !FILE_PROFILER is not set', async () => {
+      executor.loadMacro('SET !VAR0 a\nSET !VAR1 b');
+      const result = await executor.execute();
+      expect(result.success).toBe(true);
+      expect(result.profilerRecords).toBeUndefined();
+    });
+
+    it('should not collect profiler records when !FILE_PROFILER is NO', async () => {
+      executor.loadMacro('SET !FILE_PROFILER NO\nSET !VAR0 a\nSET !VAR1 b');
+      const result = await executor.execute();
+      expect(result.success).toBe(true);
+      expect(result.profilerRecords).toBeUndefined();
+    });
+  });
+
+  // ===== Datasource callback =====
+
+  describe('Datasource callback', () => {
+    it('should invoke onDatasourceLoad when SET !DATASOURCE is executed', async () => {
+      const datasourceLoadFn = vi.fn(async () => 'col1,col2\nval1,val2');
+      const ex = createExecutor({ onDatasourceLoad: datasourceLoadFn });
+      ex.loadMacro('SET !DATASOURCE data.csv');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      expect(datasourceLoadFn).toHaveBeenCalledWith('data.csv');
+    });
+
+    it('should not invoke onDatasourceLoad when callback is not provided', async () => {
+      executor.loadMacro('SET !DATASOURCE data.csv');
+      const result = await executor.execute();
+      expect(result.success).toBe(true);
+    });
+  });
+
+  // ===== Single-step mode (step()) =====
+
+  describe('Single-step mode', () => {
+    it('should pause execution between commands in single-step mode', async () => {
+      const ex = createExecutor({ singleStep: true });
+      const commandsExecuted: string[] = [];
+      ex.registerHandler('URL', async () => {
+        commandsExecuted.push('URL');
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      ex.registerHandler('TAG', async () => {
+        commandsExecuted.push('TAG');
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      ex.loadMacro('URL GOTO=http://example.com\nTAG POS=1 TYPE=INPUT ATTR=TXT:*');
+
+      const execPromise = ex.execute();
+
+      // Execution starts but waits for step() before first command
+      await new Promise(r => setTimeout(r, 20));
+      expect(commandsExecuted.length).toBe(0);
+
+      // Step to execute first command
+      ex.step();
+      await new Promise(r => setTimeout(r, 20));
+      expect(commandsExecuted.length).toBe(1);
+      expect(commandsExecuted[0]).toBe('URL');
+
+      // Step to execute second command
+      ex.step();
+      await new Promise(r => setTimeout(r, 20));
+      expect(commandsExecuted.length).toBe(2);
+      expect(commandsExecuted[1]).toBe('TAG');
+
+      // Complete execution
+      await execPromise;
+    });
+
+    it('should advance to next command when step() is called', async () => {
+      const ex = createExecutor({ singleStep: true });
+      let executeCount = 0;
+      ex.registerHandler('URL', async () => {
+        executeCount++;
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      ex.loadMacro('URL GOTO=http://example.com');
+
+      const execPromise = ex.execute();
+
+      // Wait for execution to start and pause
+      await new Promise(r => setTimeout(r, 20));
+      expect(executeCount).toBe(0);
+
+      // Step to execute the command
+      ex.step();
+      await new Promise(r => setTimeout(r, 20));
+      expect(executeCount).toBe(1);
+
+      await execPromise;
+    });
+  });
+
+  // ===== ERRORLOOP with multiple loops =====
+
+  describe('ERRORLOOP with multiple loops', () => {
+    it('should continue to other loops when error occurs on specific iteration', async () => {
+      const ex = createExecutor({ maxLoops: 3 });
+      let callCount = 0;
+      ex.registerHandler('URL', async (ctx) => {
+        callCount++;
+        if (ctx.state.getLoopCounter() === 2) {
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.ELEMENT_NOT_FOUND,
+            errorMessage: 'error on loop 2',
+          };
+        }
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      ex.loadMacro('SET !ERRORLOOP YES\nURL GOTO=http://example.com');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      expect(callCount).toBe(3);
+      expect(result.loopsCompleted).toBe(3);
+    });
+
+    it('should handle error on last loop', async () => {
+      const ex = createExecutor({ maxLoops: 3 });
+      let callCount = 0;
+      ex.registerHandler('URL', async (ctx) => {
+        callCount++;
+        if (ctx.state.getLoopCounter() === 3) {
+          return {
+            success: false,
+            errorCode: IMACROS_ERROR_CODES.TIMEOUT,
+            errorMessage: 'error on last loop',
+          };
+        }
+        return { success: true, errorCode: IMACROS_ERROR_CODES.OK };
+      });
+      ex.loadMacro('SET !ERRORLOOP YES\nURL GOTO=http://example.com');
+      const result = await ex.execute();
+      expect(result.success).toBe(true);
+      expect(callCount).toBe(3);
+      expect(result.loopsCompleted).toBe(3);
+    });
+  });
 });

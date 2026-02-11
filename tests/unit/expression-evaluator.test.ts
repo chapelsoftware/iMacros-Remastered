@@ -1165,4 +1165,517 @@ describe('Safe Expression Evaluator', () => {
       expect(result.value).toBe(true);
     });
   });
+
+  // ============================================================
+  // SECTION: String Function Edge Cases
+  // ============================================================
+  describe('String Function Edge Cases', () => {
+    it('should handle substr() with negative start', () => {
+      const result = evaluate('substr("hello", -2, 2)');
+      expect(result.success).toBe(true);
+      // substring(-2, 0) swaps to substring(0, -2) which becomes substring(0, 0) = ''
+      expect(result.value).toBe('');
+    });
+
+    it('should handle substr() with out-of-bounds start', () => {
+      const result = evaluate('substr("hello", 100, 2)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle substr() with length exceeding bounds', () => {
+      const result = evaluate('substr("hello", 2, 100)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('llo');
+    });
+
+    it('should handle substr() on empty string', () => {
+      const result = evaluate('substr("", 0, 5)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle substring() with swapped indices', () => {
+      // JavaScript substring() swaps if start > end
+      const result = evaluate('substring("hello", 3, 1)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('el');
+    });
+
+    it('should handle substring() with negative indices', () => {
+      const result = evaluate('substring("hello", -2, 3)');
+      expect(result.success).toBe(true);
+      // Negative treated as 0
+      expect(result.value).toBe('hel');
+    });
+
+    it('should handle indexOf() on empty string', () => {
+      const result = evaluate('indexOf("", "a")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-1);
+    });
+
+    it('should handle indexOf() with empty search string', () => {
+      const result = evaluate('indexOf("hello", "")');
+      expect(result.success).toBe(true);
+      // Empty string found at position 0
+      expect(result.value).toBe(0);
+    });
+
+    it('should handle indexOf() both empty', () => {
+      const result = evaluate('indexOf("", "")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should handle replace() with empty search string', () => {
+      const result = evaluate('replace("hello", "", "x")');
+      expect(result.success).toBe(true);
+      // Replace empty at start inserts at beginning
+      expect(result.value).toBe('xhello');
+    });
+
+    it('should handle replace() with empty replacement', () => {
+      const result = evaluate('replace("hello", "l", "")');
+      expect(result.success).toBe(true);
+      // Removes first occurrence
+      expect(result.value).toBe('helo');
+    });
+
+    it('should handle replace() on empty string', () => {
+      const result = evaluate('replace("", "x", "y")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle char_at() with negative index', () => {
+      const result = evaluate('char_at("hello", -1)');
+      expect(result.success).toBe(true);
+      // JavaScript charAt with negative returns empty
+      expect(result.value).toBe('');
+    });
+
+    it('should handle char_at() with out-of-bounds index', () => {
+      const result = evaluate('char_at("hello", 100)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle char_at() on empty string', () => {
+      const result = evaluate('char_at("", 0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle split_get() with negative index', () => {
+      const result = evaluate('split_get("a,b,c", ",", -1)');
+      expect(result.success).toBe(true);
+      // Implementation returns empty for negative
+      expect(result.value).toBe('');
+    });
+
+    it('should handle split_get() with out-of-bounds positive index', () => {
+      const result = evaluate('split_get("a,b,c", ",", 10)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('');
+    });
+
+    it('should handle split_get() on empty string', () => {
+      const result = evaluate('split_get("", ",", 0)');
+      expect(result.success).toBe(true);
+      // Empty string split gives [""]
+      expect(result.value).toBe('');
+    });
+
+    it('should handle split_get() with empty delimiter', () => {
+      const result = evaluate('split_get("hello", "", 2)');
+      expect(result.success).toBe(true);
+      // Empty delimiter splits each char
+      expect(result.value).toBe('l');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Math Function Domain and Edge Cases
+  // ============================================================
+  describe('Math Function Domain and Edge Cases', () => {
+    it('should return NaN for sqrt() with negative number', () => {
+      const result = evaluate('sqrt(-1)');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should return -Infinity for log(0)', () => {
+      const result = evaluate('log(0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-Infinity);
+    });
+
+    it('should return NaN for log() with negative number', () => {
+      const result = evaluate('log(-5)');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should handle pow(0, 0) returns 1', () => {
+      const result = evaluate('pow(0, 0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(1);
+    });
+
+    it('should return NaN for pow() with negative base and fractional exponent', () => {
+      const result = evaluate('pow(-2, 0.5)');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should handle pow() with large exponents producing Infinity', () => {
+      const result = evaluate('pow(2, 10000)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(Infinity);
+    });
+
+    it('should handle tan() near PI/2 returns large value', () => {
+      // Math.PI/2 is close to but not exactly PI/2, so tan is large but finite
+      const result = evaluate('tan(PI / 2)');
+      expect(result.success).toBe(true);
+      expect(Math.abs(result.value as number)).toBeGreaterThan(1e15);
+    });
+
+    it('should handle exp() with very large values producing Infinity', () => {
+      const result = evaluate('exp(1000)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(Infinity);
+    });
+
+    it('should handle exp() with very negative values approaching 0', () => {
+      const result = evaluate('exp(-1000)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(0);
+    });
+
+    it('should handle min() with no arguments', () => {
+      const result = evaluate('min()');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(Infinity);
+    });
+
+    it('should handle max() with no arguments', () => {
+      const result = evaluate('max()');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-Infinity);
+    });
+
+    it('should handle min() with single argument', () => {
+      const result = evaluate('min(42)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(42);
+    });
+
+    it('should handle max() with single argument', () => {
+      const result = evaluate('max(42)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(42);
+    });
+
+    it('should handle min() with mixed positive and negative', () => {
+      const result = evaluate('min(5, -10, 3, -2)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-10);
+    });
+
+    it('should handle max() with mixed positive and negative', () => {
+      const result = evaluate('max(-5, -10, -3, -2)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-2);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Type Conversion with NaN and Infinity
+  // ============================================================
+  describe('Type Conversion with NaN and Infinity', () => {
+    it('should error on num() with non-numeric string', () => {
+      const result = evaluate('num("not_a_number")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should error on num() with alphabetic string', () => {
+      const result = evaluate('num("xyz")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should handle num() with numeric string', () => {
+      const result = evaluate('num("123.45")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(123.45);
+    });
+
+    it('should handle num() with whitespace around number', () => {
+      const result = evaluate('num("  42  ")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(42);
+    });
+
+    it('should error on int() with Infinity string', () => {
+      const result = evaluate('int("Infinity")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should error on int() with non-numeric string', () => {
+      const result = evaluate('int("abc123")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should handle int() with partial numeric string', () => {
+      // parseInt parses leading numbers
+      const result = evaluate('int("123abc")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(123);
+    });
+
+    it('should error on float() with non-numeric string', () => {
+      const result = evaluate('float("hello")');
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot convert');
+    });
+
+    it('should handle operations producing NaN', () => {
+      const result = evaluate('0 / 0');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should handle Infinity in arithmetic', () => {
+      const result = evaluate('1 / 0 + 100');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(Infinity);
+    });
+
+    it('should handle negative Infinity', () => {
+      const result = evaluate('-1 / 0');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(-Infinity);
+    });
+
+    it('should handle Infinity minus Infinity produces NaN', () => {
+      const result = evaluate('(1 / 0) - (1 / 0)');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should handle Infinity times zero produces NaN', () => {
+      const result = evaluate('(1 / 0) * 0');
+      expect(result.success).toBe(true);
+      expect(Number.isNaN(result.value)).toBe(true);
+    });
+
+    it('should convert NaN to string', () => {
+      const result = evaluate('str(0 / 0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('NaN');
+    });
+
+    it('should convert Infinity to string', () => {
+      const result = evaluate('str(1 / 0)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('Infinity');
+    });
+  });
+
+  // ============================================================
+  // SECTION: Variable Substitution with Special Characters
+  // ============================================================
+  describe('Variable Substitution with Special Characters', () => {
+    it('should handle variables with underscores', () => {
+      const result = evaluate('{{my_var}} + 5', { my_var: 10 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(15);
+    });
+
+    it('should handle variables with numbers', () => {
+      const result = evaluate('{{var123}} * 2', { var123: 7 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(14);
+    });
+
+    it('should handle variables with both underscores and numbers', () => {
+      const result = evaluate('{{test_var_99}} - 1', { test_var_99: 100 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(99);
+    });
+
+    it('should handle multiple {{}} in same expression', () => {
+      const result = evaluate('{{a}} + {{b}} + {{c}}', { a: 1, b: 2, c: 3 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(6);
+    });
+
+    it('should handle multiple references to same variable', () => {
+      const result = evaluate('{{x}} * {{x}} + {{x}}', { x: 3 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(12); // 3*3 + 3 = 12
+    });
+
+    it('should handle system variables with ! prefix', () => {
+      const result = evaluate('{{!VAR0}} + {{!VAR1}}', { '!VAR0': 10, '!VAR1': 20 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(30);
+    });
+
+    it('should handle system variable !TIMEOUT_STEP', () => {
+      const result = evaluate('{{!TIMEOUT_STEP}} * 1000', { '!TIMEOUT_STEP': 5 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(5000);
+    });
+
+    it('should handle mixed user and system variables', () => {
+      const result = evaluate('{{myvar}} + {{!LOOP}}', { myvar: 100, '!LOOP': 5 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(105);
+    });
+
+    it('should handle variables in string functions', () => {
+      const result = evaluate('concat({{first}}, " ", {{last}})', {
+        first: 'John',
+        last: 'Doe',
+      });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe('John Doe');
+    });
+
+    it('should handle variables with hyphens converted to underscores', () => {
+      // Hyphens get sanitized to underscores
+      const result = evaluate('{{my-var}} + 1', { 'my-var': 99 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(100);
+    });
+
+    it('should handle variables with dots converted to underscores', () => {
+      const result = evaluate('{{obj.property}} * 2', { 'obj.property': 21 });
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(42);
+    });
+  });
+
+  // ============================================================
+  // SECTION: Comparison and Logical Operator Edge Cases
+  // ============================================================
+  describe('Comparison and Logical Operator Edge Cases', () => {
+    it('should handle and/or precedence without parentheses', () => {
+      // AND has higher precedence than OR
+      const result = evaluate('true or false and false');
+      expect(result.success).toBe(true);
+      // Equivalent to: true or (false and false) = true or false = true
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle multiple and operators', () => {
+      const result = evaluate('true and true and false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should handle multiple or operators', () => {
+      const result = evaluate('false or false or true');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle mixed and/or with explicit parentheses', () => {
+      const result = evaluate('(true or false) and (false or true)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle not with and', () => {
+      const result = evaluate('not false and true');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle not with or', () => {
+      const result = evaluate('not false or false');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should compare string with string', () => {
+      const result = evaluate('"100" == "100"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should compare string with number (type coercion)', () => {
+      // expr-eval may handle type coercion
+      const result = evaluate('"100" == 100');
+      expect(result.success).toBe(true);
+      // Behavior depends on expr-eval implementation
+      expect(typeof result.value).toBe('boolean');
+    });
+
+    it('should handle less than with strings', () => {
+      const result = evaluate('"a" < "b"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle greater than with strings', () => {
+      const result = evaluate('"z" > "a"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle string comparison case sensitivity', () => {
+      const result = evaluate('"A" == "a"');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(false);
+    });
+
+    it('should handle comparison of empty strings', () => {
+      const result = evaluate('"" == ""');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle comparison with zero', () => {
+      const result = evaluate('0 == 0');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle comparison with negative numbers', () => {
+      const result = evaluate('-5 < -3');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle chained comparisons with and', () => {
+      const result = evaluate('5 > 3 and 10 > 8');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle inequality chain', () => {
+      const result = evaluate('1 < 2 and 2 < 3 and 3 < 4');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle mixed comparison operators', () => {
+      const result = evaluate('5 >= 5 and 10 <= 10');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+
+    it('should handle not with comparison', () => {
+      const result = evaluate('not (5 > 10)');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(true);
+    });
+  });
 });

@@ -454,7 +454,51 @@ describe('Settings Module', () => {
     });
   });
 
-  describe('Edge Cases', () => {
+  describe('customSpeedToDelay() Edge Cases', () => {
+    it('should handle NaN speed value', () => {
+      expect(customSpeedToDelay(NaN)).toBe(2000);
+    });
+
+    it('should handle Infinity speed value', () => {
+      expect(customSpeedToDelay(Infinity)).toBe(2000);
+    });
+
+    it('should handle -Infinity speed value', () => {
+      expect(customSpeedToDelay(-Infinity)).toBe(2000);
+    });
+
+    it('should handle speed 1 (near slowest)', () => {
+      // (10 - 1) * 200 = 1800
+      expect(customSpeedToDelay(1)).toBe(1800);
+    });
+
+    it('should handle speed 9 (near fastest)', () => {
+      // (10 - 9) * 200 = 200
+      expect(customSpeedToDelay(9)).toBe(200);
+    });
+
+    it('should handle speed 3', () => {
+      // (10 - 3) * 200 = 1400
+      expect(customSpeedToDelay(3)).toBe(1400);
+    });
+
+    it('should round fractional results', () => {
+      // speed 2.5 -> (10 - 2.5) * 200 = 1500
+      expect(customSpeedToDelay(2.5)).toBe(1500);
+      // speed 0.1 -> (10 - 0.1) * 200 = 1980
+      expect(customSpeedToDelay(0.1)).toBe(1980);
+    });
+
+    it('should clamp large negative values', () => {
+      expect(customSpeedToDelay(-100)).toBe(2000);
+    });
+
+    it('should clamp large positive values', () => {
+      expect(customSpeedToDelay(100)).toBe(0);
+    });
+  });
+
+  describe('parseHotkey() Edge Cases', () => {
     it('should handle empty hotkey string', () => {
       const result = parseHotkey('');
       expect(result.ctrl).toBe(false);
@@ -469,21 +513,186 @@ describe('Settings Module', () => {
       expect(result.key).toBe('');
     });
 
-    it('should handle NaN speed value', () => {
-      expect(customSpeedToDelay(NaN)).toBe(2000); // Clamps to 0, so max delay
+    it('should parse Alt+key', () => {
+      const result = parseHotkey('Alt+F4');
+      expect(result.alt).toBe(true);
+      expect(result.ctrl).toBe(false);
+      expect(result.key).toBe('F4');
     });
 
-    it('should handle Infinity speed value', () => {
-      // Infinity is treated as invalid, defaulting to slowest delay
-      expect(customSpeedToDelay(Infinity)).toBe(2000);
+    it('should parse Ctrl+Alt+key', () => {
+      const result = parseHotkey('Ctrl+Alt+Delete');
+      expect(result.ctrl).toBe(true);
+      expect(result.alt).toBe(true);
+      expect(result.key).toBe('Delete');
     });
 
+    it('should parse Alt+Shift+key', () => {
+      const result = parseHotkey('Alt+Shift+T');
+      expect(result.alt).toBe(true);
+      expect(result.shift).toBe(true);
+      expect(result.key).toBe('T');
+    });
+
+    it('should parse Meta+Shift+key', () => {
+      const result = parseHotkey('Meta+Shift+P');
+      expect(result.meta).toBe(true);
+      expect(result.shift).toBe(true);
+      expect(result.key).toBe('P');
+    });
+
+    it('should handle modifiers in any order', () => {
+      const r1 = parseHotkey('Shift+Ctrl+M');
+      const r2 = parseHotkey('Ctrl+Shift+M');
+      expect(r1.ctrl).toBe(r2.ctrl);
+      expect(r1.shift).toBe(r2.shift);
+      expect(r1.key).toBe(r2.key);
+    });
+
+    it('should parse key with number', () => {
+      const result = parseHotkey('Ctrl+1');
+      expect(result.ctrl).toBe(true);
+      expect(result.key).toBe('1');
+    });
+
+    it('should handle Escape key', () => {
+      const result = parseHotkey('Escape');
+      expect(result.key).toBe('Escape');
+      expect(result.ctrl).toBe(false);
+    });
+
+    it('should handle Tab key with modifier', () => {
+      const result = parseHotkey('Ctrl+Tab');
+      expect(result.ctrl).toBe(true);
+      expect(result.key).toBe('Tab');
+    });
+  });
+
+  describe('matchesHotkey() Edge Cases', () => {
+    function createKeyboardEvent(options: {
+      key: string;
+      ctrlKey?: boolean;
+      altKey?: boolean;
+      shiftKey?: boolean;
+      metaKey?: boolean;
+    }): KeyboardEvent {
+      return {
+        key: options.key,
+        ctrlKey: options.ctrlKey ?? false,
+        altKey: options.altKey ?? false,
+        shiftKey: options.shiftKey ?? false,
+        metaKey: options.metaKey ?? false,
+      } as KeyboardEvent;
+    }
+
+    it('should match all four modifiers', () => {
+      const event = createKeyboardEvent({
+        key: 'x', ctrlKey: true, altKey: true, shiftKey: true, metaKey: true,
+      });
+      expect(matchesHotkey(event, 'Ctrl+Alt+Shift+Meta+X')).toBe(true);
+    });
+
+    it('should not match when event has no modifiers but hotkey requires all', () => {
+      const event = createKeyboardEvent({ key: 'x' });
+      expect(matchesHotkey(event, 'Ctrl+Alt+Shift+Meta+X')).toBe(false);
+    });
+
+    it('should match key-only hotkey with no modifiers', () => {
+      const event = createKeyboardEvent({ key: 'Escape' });
+      expect(matchesHotkey(event, 'Escape')).toBe(true);
+    });
+
+    it('should not match key-only hotkey when modifier is pressed', () => {
+      const event = createKeyboardEvent({ key: 'Escape', ctrlKey: true });
+      expect(matchesHotkey(event, 'Escape')).toBe(false);
+    });
+
+    it('should match Command alias for Meta', () => {
+      const event = createKeyboardEvent({ key: 'c', metaKey: true });
+      expect(matchesHotkey(event, 'Command+C')).toBe(true);
+    });
+
+    it('should match Control alias for Ctrl', () => {
+      const event = createKeyboardEvent({ key: 'a', ctrlKey: true });
+      expect(matchesHotkey(event, 'Control+A')).toBe(true);
+    });
+
+    it('should handle case mismatch between event key and hotkey', () => {
+      const event = createKeyboardEvent({ key: 'A', ctrlKey: true, shiftKey: true });
+      expect(matchesHotkey(event, 'Ctrl+Shift+a')).toBe(true);
+    });
+  });
+
+  describe('mergeWithDefaults() Edge Cases', () => {
     it('should handle null/undefined in mergeWithDefaults', () => {
       const result = mergeWithDefaults({
         pathMacros: undefined as unknown as string,
       });
       // undefined should override, resulting in undefined
       expect(result.pathMacros).toBeUndefined();
+    });
+
+    it('should preserve security settings when not overridden', () => {
+      const result = mergeWithDefaults({ debugMode: true });
+      expect(result.showUntrustedWarnings).toBe(DEFAULT_SETTINGS.showUntrustedWarnings);
+      expect(result.trustLocalMacros).toBe(DEFAULT_SETTINGS.trustLocalMacros);
+      expect(result.trustedSites).toEqual(DEFAULT_SETTINGS.trustedSites);
+    });
+
+    it('should override only specified security settings', () => {
+      const result = mergeWithDefaults({
+        showUntrustedWarnings: false,
+      });
+      expect(result.showUntrustedWarnings).toBe(false);
+      expect(result.trustLocalMacros).toBe(DEFAULT_SETTINGS.trustLocalMacros);
+    });
+
+    it('should override trustedSites array', () => {
+      const sites = [{ pattern: '*.example.com', permissions: [] as string[] }];
+      const result = mergeWithDefaults({
+        trustedSites: sites as any,
+      });
+      expect(result.trustedSites).toBe(sites);
+    });
+
+    it('should override recording options independently', () => {
+      const result = mergeWithDefaults({
+        recordMousemove: true,
+        recordScreenshots: true,
+      });
+      expect(result.recordMousemove).toBe(true);
+      expect(result.recordScreenshots).toBe(true);
+      expect(result.recordCoordinates).toBe(false); // default
+      expect(result.recordDirectScreen).toBe(true); // default
+    });
+
+    it('should override timeout values independently', () => {
+      const result = mergeWithDefaults({
+        timeoutPage: 120,
+      });
+      expect(result.timeoutPage).toBe(120);
+      expect(result.timeoutTag).toBe(10); // default unchanged
+      expect(result.timeoutStep).toBe(0); // default unchanged
+    });
+  });
+
+  describe('getEffectiveCommandDelay() Edge Cases', () => {
+    it('should fall back to custom speed when preset is null-ish', () => {
+      const settings = mergeWithDefaults({
+        replaySpeedPreset: null as unknown as ReplaySpeedPreset,
+        replaySpeed: 10,
+      });
+      // null is falsy, so falls back to custom speed 10 -> 0ms
+      expect(getEffectiveCommandDelay(settings)).toBe(0);
+    });
+
+    it('should handle custom speed 0 when preset is empty', () => {
+      const settings = mergeWithDefaults({
+        replaySpeedPreset: '' as ReplaySpeedPreset,
+        replaySpeed: 0,
+      });
+      // Empty preset -> custom speed 0 -> 2000ms
+      expect(getEffectiveCommandDelay(settings)).toBe(2000);
     });
   });
 
